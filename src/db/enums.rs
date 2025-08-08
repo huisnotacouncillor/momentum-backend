@@ -1,0 +1,180 @@
+use diesel::backend::Backend;
+use diesel::deserialize::{self, FromSql, Queryable};
+use diesel::pg::Pg;
+use diesel::serialize::{self, IsNull, Output, ToSql};
+use diesel::sql_types::Text;
+use serde::{Deserialize, Serialize};
+use std::io::Write;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ProjectStatus {
+    Planned,
+    Active,
+    Paused,
+    Completed,
+    Canceled,
+}
+
+impl FromSql<Text, Pg> for ProjectStatus {
+    fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        match s.as_str() {
+            "planned" => Ok(ProjectStatus::Planned),
+            "active" => Ok(ProjectStatus::Active),
+            "paused" => Ok(ProjectStatus::Paused),
+            "completed" => Ok(ProjectStatus::Completed),
+            "canceled" => Ok(ProjectStatus::Canceled),
+            _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl ToSql<Text, Pg> for ProjectStatus {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        match *self {
+            ProjectStatus::Planned => out.write_all(b"planned")?,
+            ProjectStatus::Active => out.write_all(b"active")?,
+            ProjectStatus::Paused => out.write_all(b"paused")?,
+            ProjectStatus::Completed => out.write_all(b"completed")?,
+            ProjectStatus::Canceled => out.write_all(b"canceled")?,
+        }
+        Ok(IsNull::No)
+    }
+}
+
+impl Queryable<Text, Pg> for ProjectStatus {
+    type Row = Self;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        Ok(row)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CycleStatus {
+    Planned,
+    Active,
+    Completed,
+}
+
+impl FromSql<Text, Pg> for CycleStatus {
+    fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        match s.as_str() {
+            "planned" => Ok(CycleStatus::Planned),
+            "active" => Ok(CycleStatus::Active),
+            "completed" => Ok(CycleStatus::Completed),
+            _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl ToSql<Text, Pg> for CycleStatus {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        match *self {
+            CycleStatus::Planned => out.write_all(b"planned")?,
+            CycleStatus::Active => out.write_all(b"active")?,
+            CycleStatus::Completed => out.write_all(b"completed")?,
+        }
+        Ok(IsNull::No)
+    }
+}
+
+impl Queryable<Text, Pg> for CycleStatus {
+    type Row = Self;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        Ok(row)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum IssueStatus {
+    Backlog,
+    Todo,
+    InProgress,
+    InReview,
+    Done,
+    Canceled,
+}
+
+impl FromSql<Text, Pg> for IssueStatus {
+    fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        match s.as_str() {
+            "backlog" => Ok(IssueStatus::Backlog),
+            "todo" => Ok(IssueStatus::Todo),
+            "in_progress" => Ok(IssueStatus::InProgress),
+            "in_review" => Ok(IssueStatus::InReview),
+            "done" => Ok(IssueStatus::Done),
+            "canceled" => Ok(IssueStatus::Canceled),
+            _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl ToSql<Text, Pg> for IssueStatus {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        match *self {
+            IssueStatus::Backlog => out.write_all(b"backlog")?,
+            IssueStatus::Todo => out.write_all(b"todo")?,
+            IssueStatus::InProgress => out.write_all(b"in_progress")?,
+            IssueStatus::InReview => out.write_all(b"in_review")?,
+            IssueStatus::Done => out.write_all(b"done")?,
+            IssueStatus::Canceled => out.write_all(b"canceled")?,
+        }
+        Ok(IsNull::No)
+    }
+}
+
+impl Queryable<Text, Pg> for IssueStatus {
+    type Row = Self;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        Ok(row)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum IssuePriority {
+    None,
+    Low,
+    Medium,
+    High,
+    Urgent,
+}
+
+impl FromSql<Text, Pg> for IssuePriority {
+    fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        match s.as_str() {
+            "none" => Ok(IssuePriority::None),
+            "low" => Ok(IssuePriority::Low),
+            "medium" => Ok(IssuePriority::Medium),
+            "high" => Ok(IssuePriority::High),
+            "urgent" => Ok(IssuePriority::Urgent),
+            _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl ToSql<Text, Pg> for IssuePriority {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        match *self {
+            IssuePriority::None => out.write_all(b"none")?,
+            IssuePriority::Low => out.write_all(b"low")?,
+            IssuePriority::Medium => out.write_all(b"medium")?,
+            IssuePriority::High => out.write_all(b"high")?,
+            IssuePriority::Urgent => out.write_all(b"urgent")?,
+        }
+        Ok(IsNull::No)
+    }
+}
+
+impl Queryable<Text, Pg> for IssuePriority {
+    type Row = Self;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        Ok(row)
+    }
+}

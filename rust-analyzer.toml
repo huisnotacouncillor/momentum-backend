@@ -1,0 +1,5 @@
+[diagnostics]
+disabled = ["unlinked-file"]
+
+[check]
+command = "check"
