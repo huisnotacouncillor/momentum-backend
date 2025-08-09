@@ -126,7 +126,7 @@ pub async fn register(
         let new_team = NewTeam {
             workspace_id: workspace.id,
             name: team_name,
-            team_key: team_key,
+            team_key,
         };
 
         let team: Team = diesel::insert_into(schema::teams::table)
@@ -616,11 +616,12 @@ pub async fn switch_workspace(
     // 构建响应数据
     let workspace_info = WorkspaceInfo {
         id: target_workspace.id,
-        name: target_workspace.name,
-        url_key: target_workspace.url_key,
+        name: target_workspace.name.clone(),
+        url_key: target_workspace.url_key.clone(),
     };
 
     let available_teams: Vec<TeamInfo> = user_teams_in_workspace
+        .clone()
         .into_iter()
         .map(|(team, role)| TeamInfo {
             id: team.id,
@@ -634,7 +635,7 @@ pub async fn switch_workspace(
         user_id: claims.sub,
         previous_workspace_id,
         current_workspace: workspace_info,
-        user_role_in_workspace: user_role,
+        user_role_in_workspace: user_role.clone(),
         available_teams,
     };
 

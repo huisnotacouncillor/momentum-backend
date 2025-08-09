@@ -1,8 +1,8 @@
-use axum::{Router, Server, middleware};
-use diesel::PgConnection;
-use diesel::r2d2::{self, ConnectionManager as DbConnectionManager};
+use axum::{Router, Server, middleware::{from_fn, from_fn_with_state}};
+use diesel::{PgConnection, r2d2::{self, ConnectionManager as DbConnectionManager}};
 use rust_backend::{AppState, db::DbPool, websocket};
 use tower_http::cors::{Any, CorsLayer};
+use std::sync::Arc;
 use tracing_subscriber;
 
 #[tokio::main]
@@ -21,7 +21,7 @@ async fn main() {
     let redis = redis::Client::open(config.redis_url).expect("Failed to create Redis client");
 
     // Application state
-    let state = std::sync::Arc::new(AppState { db, redis });
+    let state = Arc::new(AppState { db, redis });
 
     // CORS configuration
     let cors = CorsLayer::new()
@@ -30,7 +30,7 @@ async fn main() {
         .allow_headers(Any);
 
     // Create WebSocket state and start cleanup task
-    let ws_state = websocket::create_websocket_state(std::sync::Arc::new(state.db.clone()));
+    let ws_state = websocket::create_websocket_state(Arc::new(state.db.clone()));
     let ws_manager = ws_state.ws_manager.clone();
 
     // Start WebSocket cleanup task
@@ -38,11 +38,26 @@ async fn main() {
         websocket::start_connection_cleanup_task(ws_manager).await;
     });
 
-    // Build router
+    // Create the auth routes that don't need authentication
+    let auth_routes = Router::new()
+        .route("/auth/register", axum::routing::post(rust_backend::routes::auth::register))
+        .route("/auth/login", axum::routing::post(rust_backend::routes::auth::login))
+        .route("/auth/refresh", axum::routing::post(rust_backend::routes::auth::refresh_token))
+        .with_state(Arc::new(state.db.clone()));
+
+    // Build router - apply auth middleware only to routes that need it
+    let protected_routes = rust_backend::routes::create_router(state.clone())
+        .layer(from_fn_with_state(
+            Arc::new(state.db.clone()),
+            rust_backend::middleware::auth::auth_middleware,
+        ));
+
     let app = Router::new()
-        .merge(rust_backend::routes::create_router(state.db.clone()))
+        .merge(auth_routes)
+        .merge(protected_routes)
+        .merge(websocket::create_websocket_routes().with_state(ws_state))
         .layer(cors)
-        .layer(middleware::from_fn(
+        .layer(from_fn(
             rust_backend::middleware::logger::logger,
         ));
 

@@ -9,5 +9,5 @@ ALTER TABLE issues ALTER COLUMN project_id DROP NOT NULL;
 ALTER TABLE projects DROP COLUMN IF EXISTS team_id;
 
 -- Add indexes for better query performance
-CREATE INDEX idx_issues_team_id ON issues(team_id);
-CREATE INDEX idx_issues_project_id ON issues(project_id);
+CREATE INDEX IF NOT EXISTS idx_issues_team_id ON issues(team_id);
+CREATE INDEX IF NOT EXISTS idx_issues_project_id ON issues(project_id);

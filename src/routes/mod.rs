@@ -5,26 +5,26 @@ pub mod projects;
 pub mod teams;
 pub mod users;
 
-use crate::{db::DbPool, websocket};
+use crate::AppState;
 use axum::{
     Router,
     routing::{get, post, put, delete},
 };
 use std::sync::Arc;
 
-pub fn create_router(pool: DbPool) -> Router {
-    let db_arc = Arc::new(pool);
+pub fn create_router(state: Arc<AppState>) -> Router {
+    // Create a router for routes that need the full AppState (including Redis)
+    let app_routes = Router::new()
+        .route("/labels", get(labels::get_labels))
+        .route("/labels", post(labels::create_label))
+        .route("/labels/:label_id", put(labels::update_label))
+        .route("/labels/:label_id", delete(labels::delete_label))
+        .with_state(state.clone());
 
-    // Create WebSocket state
-    let ws_state = websocket::create_websocket_state(db_arc.clone());
-
-    // Create main router with auth and user routes
-    let main_router = Router::new()
+    // Create a router for routes that only need the database pool
+    // Note: Auth routes are handled in main.rs to avoid middleware conflicts
+    let db_routes = Router::new()
         .route("/users", get(crate::routes::users::get_users))
-        .route("/auth/register", post(auth::register))
-        .route("/auth/login", post(auth::login))
-        .route("/auth/refresh", post(auth::refresh_token))
-        .route("/auth/logout", post(auth::logout))
         .route("/auth/profile", get(auth::get_profile))
         .route("/auth/switch-workspace", post(auth::switch_workspace))
         .route(
@@ -35,7 +35,6 @@ pub fn create_router(pool: DbPool) -> Router {
         .route("/projects", post(projects::create_project))
         .route("/projects", get(projects::get_projects))
         .route("/issues/priorities", get(issues::get_issue_priorities))
-        .route("/labels", get(labels::get_labels))
         .route("/teams", post(teams::create_team))
         .route("/teams", get(teams::get_teams))
         .route("/teams/:team_id", get(teams::get_team))
@@ -46,11 +45,8 @@ pub fn create_router(pool: DbPool) -> Router {
         .route("/teams/:team_id/members/:user_id", put(teams::update_team_member))
         .route("/teams/:team_id/members/:user_id", delete(teams::remove_team_member))
         .route("/user/teams", get(teams::get_user_teams))
-        .with_state(db_arc);
+        .with_state(Arc::new(state.db.clone()));
 
-    // Create WebSocket router
-    let ws_router = websocket::create_websocket_routes().with_state(ws_state);
-
-    // Merge routers
-    main_router.merge(ws_router)
+    // Merge the routers
+    app_routes.merge(db_routes)
 }

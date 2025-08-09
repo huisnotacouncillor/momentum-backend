@@ -283,7 +283,7 @@ pub async fn get_projects(
 
     // 分页设置
     let page = query.page.unwrap_or(1).max(1);
-    let per_page = query.per_page.unwrap_or(20).min(100).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
     let offset = (page - 1) * per_page;
 
     // 获取总数（克隆查询以避免移动所有权）

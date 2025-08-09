@@ -151,11 +151,12 @@ pub async fn create_team(
         role: "admin".to_string(),
     };
 
-    if let Err(_) = diesel::insert_into(schema::team_members::table)
+    if diesel::insert_into(schema::team_members::table)
         .values(&new_team_member)
         .execute(&mut conn)
+        .is_err()
     {
-        let response = ApiResponse::<()>::internal_error("Failed to add creator to team");
+        let response = ApiResponse::<()>::internal_error("Failed to add team member");
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
     }
 

@@ -1,5 +1,11 @@
 // @generated automatically by Diesel CLI.
 
+pub mod sql_types {
+    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+    #[diesel(postgres_type(name = "label_level_enum"))]
+    pub struct LabelLevelEnum;
+}
+
 diesel::table! {
     comments (id) {
         id -> Uuid,
@@ -34,7 +40,6 @@ diesel::table! {
 diesel::table! {
     issues (id) {
         id -> Uuid,
-        team_id -> Uuid,
         project_id -> Nullable<Uuid>,
         cycle_id -> Nullable<Uuid>,
         creator_id -> Uuid,
@@ -49,17 +54,24 @@ diesel::table! {
         is_changelog_candidate -> Bool,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        team_id -> Uuid,
     }
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+    use super::sql_types::LabelLevelEnum;
+
     labels (id) {
         id -> Uuid,
         workspace_id -> Uuid,
         #[max_length = 255]
         name -> Varchar,
         #[max_length = 7]
-        color -> Nullable<Varchar>,
+        color -> Varchar,
+        level -> LabelLevelEnum,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 

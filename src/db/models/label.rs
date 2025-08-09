@@ -1,6 +1,7 @@
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use crate::db::enums::LabelLevel;
 
 // Label models
 #[derive(Queryable, Selectable, Serialize, Deserialize, Clone)]
@@ -10,7 +11,10 @@ pub struct Label {
     pub id: Uuid,
     pub workspace_id: Uuid,
     pub name: String,
-    pub color: Option<String>,
+    pub color: String,
+    pub level: LabelLevel,
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
 }
 
 #[derive(Insertable)]
@@ -18,5 +22,8 @@ pub struct Label {
 pub struct NewLabel {
     pub workspace_id: Uuid,
     pub name: String,
-    pub color: Option<String>,
+    pub color: String,
+    pub level: LabelLevel,
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
 }

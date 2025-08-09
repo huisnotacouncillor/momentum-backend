@@ -7,7 +7,6 @@ pub mod schema;
 pub mod websocket;
 
 use crate::db::DbPool;
-use tracing_subscriber;
 
 #[derive(Clone)]
 pub struct AppState {

@@ -5,6 +5,7 @@ use diesel::serialize::{self, IsNull, Output, ToSql};
 use diesel::sql_types::Text;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+use crate::schema::sql_types::LabelLevelEnum;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ProjectStatus {
@@ -172,6 +173,43 @@ impl ToSql<Text, Pg> for IssuePriority {
 }
 
 impl Queryable<Text, Pg> for IssuePriority {
+    type Row = Self;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        Ok(row)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(diesel::expression::AsExpression)]
+#[diesel(sql_type = LabelLevelEnum)]
+pub enum LabelLevel {
+    Project,
+    Issue,
+}
+
+impl FromSql<LabelLevelEnum, Pg> for LabelLevel {
+    fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        match s.as_str() {
+            "project" => Ok(LabelLevel::Project),
+            "issue" => Ok(LabelLevel::Issue),
+            _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl ToSql<LabelLevelEnum, Pg> for LabelLevel {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        match *self {
+            LabelLevel::Project => out.write_all(b"project")?,
+            LabelLevel::Issue => out.write_all(b"issue")?,
+        }
+        Ok(IsNull::No)
+    }
+}
+
+impl Queryable<LabelLevelEnum, Pg> for LabelLevel {
     type Row = Self;
 
     fn build(row: Self::Row) -> deserialize::Result<Self> {

@@ -135,13 +135,7 @@ pub async fn auth_middleware(
         .headers()
         .get(AUTHORIZATION)
         .and_then(|auth_header| auth_header.to_str().ok())
-        .and_then(|auth_str| {
-            if auth_str.starts_with("Bearer ") {
-                Some(auth_str[7..].to_string())
-            } else {
-                None
-            }
-        });
+        .and_then(|auth_str| auth_str.strip_prefix("Bearer ").map(|stripped| stripped.to_string()));
 
     let token = auth_header.ok_or(StatusCode::UNAUTHORIZED)?;
 
@@ -173,18 +167,12 @@ pub async fn optional_auth_middleware(
         .headers()
         .get(AUTHORIZATION)
         .and_then(|auth_header| auth_header.to_str().ok())
-        .and_then(|auth_str| {
-            if auth_str.starts_with("Bearer ") {
-                Some(auth_str[7..].to_string())
-            } else {
-                None
-            }
-        });
+        .and_then(|auth_str| auth_str.strip_prefix("Bearer ").map(|stripped| stripped.to_string()));
 
     if let Some(token) = &auth_header {
         let auth_service = AuthService::new(AuthConfig::default());
 
-        if let Ok(claims) = auth_service.verify_token(&token) {
+        if let Ok(claims) = auth_service.verify_token(token) {
             if let Ok(user) = get_user_by_id(&pool, claims.sub).await {
                 request.extensions_mut().insert(Some(user));
             } else {
