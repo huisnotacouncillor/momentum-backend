@@ -19,6 +19,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/labels", post(labels::create_label))
         .route("/labels/:label_id", put(labels::update_label))
         .route("/labels/:label_id", delete(labels::delete_label))
+        .route("/auth/switch-workspace", post(auth::switch_workspace))
         .with_state(state.clone());
 
     // Create a router for routes that only need the database pool
@@ -26,7 +27,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
     let db_routes = Router::new()
         .route("/users", get(crate::routes::users::get_users))
         .route("/auth/profile", get(auth::get_profile))
-        .route("/auth/switch-workspace", post(auth::switch_workspace))
         .route(
             "/auth/oauth/:provider/authorize",
             get(auth::oauth_authorize),

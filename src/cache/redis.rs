@@ -51,5 +51,11 @@ pub async fn get_user_current_workspace_id_cached(client: &redis::Client, pool: 
             _ => return None,
         };
         
-    user.current_workspace_id
+    // 将从数据库获取的workspace_id存入Redis缓存
+    if let Some(workspace_id) = user.current_workspace_id {
+        let _ = set_user_current_workspace_id(client, user_id, workspace_id).await;
+        Some(workspace_id)
+    } else {
+        None
+    }
 }

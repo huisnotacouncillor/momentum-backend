@@ -8,6 +8,7 @@ use bcrypt::{DEFAULT_COST, hash, verify};
 use diesel::prelude::*;
 
 use crate::{
+    AppState,
     db::{DbPool, models::*},
     middleware::auth::{AuthConfig, AuthService},
     schema,
@@ -496,11 +497,11 @@ pub async fn get_profile(
 }
 
 pub async fn switch_workspace(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Json(payload): Json<SwitchWorkspaceRequest>,
 ) -> impl IntoResponse {
-    let mut conn = match pool.get() {
+    let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
             let response = ApiResponse::<()>::internal_error("Database connection failed");
@@ -611,6 +612,12 @@ pub async fn switch_workspace(
     if updated_rows == 0 {
         let response = ApiResponse::<()>::internal_error("Failed to update user workspace");
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+    }
+
+    // 同时更新Redis缓存中的current_workspace_id
+    if let Err(_) = crate::cache::set_user_current_workspace_id(&state.redis, claims.sub, payload.workspace_id).await {
+        // 即使Redis更新失败也不应该影响主要功能
+        // 只记录日志（如果以后添加了日志功能）
     }
 
     // 构建响应数据
