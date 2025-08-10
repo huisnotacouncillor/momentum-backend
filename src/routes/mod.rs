@@ -4,6 +4,8 @@ pub mod labels;
 pub mod projects;
 pub mod teams;
 pub mod users;
+pub mod workspaces;
+pub mod workspace_members;
 
 use crate::AppState;
 use axum::{
@@ -20,6 +22,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/labels/:label_id", put(labels::update_label))
         .route("/labels/:label_id", delete(labels::delete_label))
         .route("/auth/switch-workspace", post(auth::switch_workspace))
+        .route("/workspaces", post(workspaces::create_workspace))
+        .route("/workspaces/current", get(workspaces::get_current_workspace))
+        .route("/workspaces/:workspace_id", put(workspaces::update_workspace))
+        .route("/workspaces/:workspace_id", delete(workspaces::delete_workspace))
+        .route("/workspace-members", get(workspace_members::get_current_workspace_members))
+        .route("/workspaces/:workspace_id/members", get(workspace_members::get_workspace_members))
         .with_state(state.clone());
 
     // Create a router for routes that only need the database pool

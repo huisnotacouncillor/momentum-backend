@@ -4,6 +4,10 @@ pub mod sql_types {
     #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "label_level_enum"))]
     pub struct LabelLevelEnum;
+
+    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+    #[diesel(postgres_type(name = "workspace_user_role"))]
+    pub struct WorkspaceUserRole;
 }
 
 diesel::table! {
@@ -201,6 +205,19 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+    use super::sql_types::WorkspaceUserRole;
+
+    workspace_members (user_id, workspace_id) {
+        user_id -> Uuid,
+        workspace_id -> Uuid,
+        role -> WorkspaceUserRole,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     workspaces (id) {
         id -> Uuid,
         #[max_length = 255]
@@ -231,6 +248,8 @@ diesel::joinable!(teams -> workspaces (workspace_id));
 diesel::joinable!(user_credentials -> users (user_id));
 diesel::joinable!(user_sessions -> users (user_id));
 diesel::joinable!(users -> workspaces (current_workspace_id));
+diesel::joinable!(workspace_members -> users (user_id));
+diesel::joinable!(workspace_members -> workspaces (workspace_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     comments,
@@ -246,5 +265,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     user_credentials,
     user_sessions,
     users,
+    workspace_members,
     workspaces,
 );
