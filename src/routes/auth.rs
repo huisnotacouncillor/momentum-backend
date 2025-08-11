@@ -9,14 +9,32 @@ use diesel::prelude::*;
 
 use crate::{
     AppState,
-    db::{DbPool, models::*},
+    db::{
+        DbPool,
+        models::{
+            api::ApiResponse,
+            auth::{User, NewUser, AuthUser, RegisterRequest, LoginRequest, LoginResponse, NewUserCredential, RefreshTokenRequest, UserProfile, UserCredential},
+            team::{Team, NewTeamMember, NewTeam, TeamInfo},
+            workspace::{Workspace, NewWorkspace, WorkspaceInfo, SwitchWorkspaceRequest, WorkspaceSwitchResult},
+            workspace_member::{WorkspaceMemberRole, NewWorkspaceMember},
+            label::NewLabel,
+        },
+    },
     middleware::auth::{AuthConfig, AuthService},
     schema,
+    db::enums::LabelLevel,
 };
 use axum::TypedHeader;
 use headers::Authorization;
 use headers::authorization::Bearer;
 use std::{collections::HashMap, sync::Arc};
+use chrono::Utc;
+
+// 定义错误码常量
+mod error_codes {
+    pub const USER_EMAIL_EXISTS: &str = "USER_EMAIL_EXISTS";
+    pub const USER_USERNAME_EXISTS: &str = "USER_USERNAME_EXISTS";
+}
 
 pub async fn register(
     State(pool): State<Arc<DbPool>>,
@@ -145,11 +163,58 @@ pub async fn register(
             .values(&new_team_member)
             .execute(conn)?;
 
+        // 将用户添加为工作区成员，角色为 "owner"
+        let new_workspace_member = NewWorkspaceMember {
+            user_id: user.id,
+            workspace_id: workspace.id,
+            role: WorkspaceMemberRole::Owner,
+        };
+
+        diesel::insert_into(schema::workspace_members::table)
+            .values(&new_workspace_member)
+            .execute(conn)?;
+
         // 设置用户的当前workspace为新创建的默认workspace
         diesel::update(schema::users::table)
             .filter(schema::users::id.eq(user.id))
             .set(schema::users::current_workspace_id.eq(Some(workspace.id)))
             .execute(conn)?;
+
+        // 为新创建的工作区添加默认标签
+        let now = Utc::now().naive_utc();
+        let default_labels = vec![
+            NewLabel {
+                workspace_id: workspace.id,
+                name: "Feature".to_string(),
+                color: "#BB8FCE".to_string(),
+                level: LabelLevel::Issue,
+                created_at: now,
+                updated_at: now,
+            },
+            NewLabel {
+                workspace_id: workspace.id,
+                name: "Improvement".to_string(),
+                color: "#85C1E9".to_string(),
+                level: LabelLevel::Issue,
+                created_at: now,
+                updated_at: now,
+            },
+            NewLabel {
+                workspace_id: workspace.id,
+                name: "Bug".to_string(),
+                color: "#FF6B6B".to_string(),
+                level: LabelLevel::Issue,
+                created_at: now,
+                updated_at: now,
+            },
+        ];
+
+        for new_label in default_labels {
+            diesel::insert_into(schema::labels::table)
+                .values(&new_label)
+                .execute(conn)
+                .ok(); // 忽略插入失败的情况，保证即使标签创建失败也不会影响注册流程
+        }
 
         Ok(user)
     });
@@ -614,10 +679,10 @@ pub async fn switch_workspace(
         return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
     }
 
-    // 同时更新Redis缓存中的current_workspace_id
-    if let Err(_) = crate::cache::set_user_current_workspace_id(&state.redis, claims.sub, payload.workspace_id).await {
-        // 即使Redis更新失败也不应该影响主要功能
-        // 只记录日志（如果以后添加了日志功能）
+    // 更新Redis缓存
+    if crate::cache::set_user_current_workspace_id(&state.redis, claims.sub, payload.workspace_id).await.is_err() {
+        let response = ApiResponse::<()>::internal_error("Failed to update user workspace cache");
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
     }
 
     // 构建响应数据
