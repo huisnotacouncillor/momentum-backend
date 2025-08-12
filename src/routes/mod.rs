@@ -28,6 +28,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/workspaces/:workspace_id", delete(workspaces::delete_workspace))
         .route("/workspace-members", get(workspace_members::get_current_workspace_members))
         .route("/workspaces/:workspace_id/members", get(workspace_members::get_workspace_members))
+        .route("/issues", post(issues::create_issue))
+        .route("/issues", get(issues::get_issues))
+        .route("/issues/:issue_id", get(issues::get_issue_by_id))
+        .route("/issues/:issue_id", put(issues::update_issue))
+        .route("/issues/:issue_id", delete(issues::delete_issue))
         .with_state(state.clone());
 
     // Create a router for routes that only need the database pool

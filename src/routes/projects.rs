@@ -281,35 +281,9 @@ pub async fn get_projects(
         base_query = base_query.filter(schema::projects::status.eq(status_str));
     }
 
-    // 分页设置
-    let page = query.page.unwrap_or(1).max(1);
-    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
-    let offset = (page - 1) * per_page;
-
-    // 获取总数（克隆查询以避免移动所有权）
-    let total_count = match base_query.count().get_result::<i64>(&mut conn) {
-        Ok(count) => count,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    // 重新构建查询以获取项目列表
-    let mut data_query = schema::projects::table
-        .filter(schema::projects::workspace_id.eq(workspace_id))
-        .into_boxed();
-
-    // 重新添加相同的过滤条件
-    if let Some(status_str) = status_filter {
-        data_query = data_query.filter(schema::projects::status.eq(status_str));
-    }
-
-    // 获取项目列表
-    let projects = match data_query
+    // 获取项目列表（只取第一个）
+    let projects = match base_query
         .order(schema::projects::created_at.desc())
-        .limit(per_page)
-        .offset(offset)
         .select(Project::as_select())
         .load(&mut conn)
     {
@@ -372,25 +346,7 @@ pub async fn get_projects(
         });
     }
 
-    let project_list = ProjectListResponse {
-        projects: project_infos,
-        total_count,
-    };
-
-    let meta = ResponseMeta {
-        request_id: None,
-        pagination: Some(Pagination {
-            page,
-            per_page,
-            total_pages: (total_count + per_page - 1) / per_page,
-            has_next: page * per_page < total_count,
-            has_prev: page > 1,
-        }),
-        total_count: Some(total_count),
-        execution_time_ms: None,
-    };
-
-    let response =
-        ApiResponse::success_with_meta(project_list, "Projects retrieved successfully", meta);
+    // 返回项目数组，但只包含一个项目
+    let response = ApiResponse::success(project_infos, "Projects retrieved successfully");
     (StatusCode::OK, Json(response)).into_response()
 }
