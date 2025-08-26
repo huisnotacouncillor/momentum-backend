@@ -33,6 +33,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/issues/:issue_id", get(issues::get_issue_by_id))
         .route("/issues/:issue_id", put(issues::update_issue))
         .route("/issues/:issue_id", delete(issues::delete_issue))
+        .route("/users/profile", put(users::update_profile))
         .with_state(state.clone());
 
     // Create a router for routes that only need the database pool
