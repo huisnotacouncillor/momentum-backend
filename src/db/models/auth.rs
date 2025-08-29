@@ -1,3 +1,7 @@
+use axum::async_trait;
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+use axum::http::StatusCode;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -55,13 +59,29 @@ pub struct NewUserCredential {
 }
 
 // Authentication DTOs
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 pub struct AuthUser {
     pub id: Uuid,
     pub email: String,
     pub username: String,
     pub name: String,
     pub avatar_url: Option<String>,
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        if let Some(auth_info) = parts.extensions.get::<crate::middleware::auth::AuthUserInfo>() {
+            Ok(auth_info.user.clone())
+        } else {
+            Err((StatusCode::UNAUTHORIZED, "Unauthorized".to_string()))
+        }
+    }
 }
 
 #[derive(Deserialize)]

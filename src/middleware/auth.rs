@@ -1,14 +1,17 @@
 use crate::db::{DbPool, models::AuthUser};
 use axum::{
-    extract::State,
+    extract::{FromRequestParts, State},
     http::{Request, StatusCode, header::AUTHORIZATION},
     middleware::Next,
-    response::Response,
+    response::{Response, IntoResponse},
+    Json,
 };
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
+use crate::db::models::{ApiResponse, ErrorDetail, User};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -130,30 +133,70 @@ pub async fn auth_middleware(
     State(pool): State<Arc<DbPool>>,
     mut request: Request<axum::body::Body>,
     next: Next<axum::body::Body>,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, Response> {
     let auth_header = request
         .headers()
         .get(AUTHORIZATION)
         .and_then(|auth_header| auth_header.to_str().ok())
         .and_then(|auth_str| auth_str.strip_prefix("Bearer ").map(|stripped| stripped.to_string()));
 
-    let token = auth_header.ok_or(StatusCode::UNAUTHORIZED)?;
+    let token = match auth_header {
+        Some(token) => token,
+        None => {
+            let response = ApiResponse::<()>::unauthorized("Missing authorization header");
+            return Err((StatusCode::UNAUTHORIZED, Json(response)).into_response());
+        }
+    };
 
     // 创建认证服务实例
     let auth_service: AuthService = AuthService::new(AuthConfig::default());
 
     // 验证token
-    let claims = auth_service
-        .verify_token(&token)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let claims = match auth_service.verify_token(&token) {
+        Ok(claims) => claims,
+        Err(_) => {
+            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
+            return Err((StatusCode::UNAUTHORIZED, Json(response)).into_response());
+        }
+    };
 
     // 从数据库获取用户信息
-    let user = get_user_by_id(&pool, claims.sub)
-        .await
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let user = match get_user_by_id(&pool, claims.sub).await {
+        Ok(user) => user,
+        Err(_) => {
+            let response = ApiResponse::<()>::unauthorized("User not found or inactive");
+            return Err((StatusCode::UNAUTHORIZED, Json(response)).into_response());
+        }
+    };
+
+    // 检查用户是否有当前工作区
+    if user.current_workspace_id.is_none() {
+        let response = ApiResponse::<()>::error(
+            400, 
+            "No current workspace found", 
+            vec![ErrorDetail {
+                field: None,
+                code: "NO_WORKSPACE".to_string(),
+                message: "No current workspace found for user".to_string(),
+            }]
+        );
+        return Err((StatusCode::BAD_REQUEST, Json(response)).into_response());
+    }
+
+    // 构建认证用户信息
+    let auth_user_info = AuthUserInfo {
+        user: AuthUser {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            name: user.name,
+            avatar_url: user.avatar_url,
+        },
+        current_workspace_id: user.current_workspace_id,
+    };
 
     // 将用户信息添加到请求扩展中
-    request.extensions_mut().insert(user);
+    request.extensions_mut().insert(auth_user_info);
 
     Ok(next.run(request).await)
 }
@@ -191,25 +234,17 @@ pub async fn optional_auth_middleware(
 async fn get_user_by_id(
     pool: &Arc<DbPool>,
     user_id: uuid::Uuid,
-) -> Result<AuthUser, diesel::result::Error> {
+) -> Result<User, diesel::result::Error> {
     use crate::schema::users::dsl::*;
     use diesel::prelude::*;
 
     let mut conn = pool.get().expect("Failed to get DB connection");
 
-    let user = users
+    users
         .filter(id.eq(user_id))
         .filter(is_active.eq(true))
-        .select(crate::db::models::User::as_select())
-        .first(&mut conn)?;
-
-    Ok(AuthUser {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        name: user.name,
-        avatar_url: user.avatar_url,
-    })
+        .select(User::as_select())
+        .first(&mut conn)
 }
 
 // 提取器，用于从请求中获取当前用户
@@ -224,4 +259,29 @@ pub async fn extract_optional_user(
     axum::extract::Extension(user): axum::extract::Extension<Option<AuthUser>>,
 ) -> Option<AuthUser> {
     user
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthUserInfo {
+    pub user: AuthUser,
+    pub current_workspace_id: Option<Uuid>,
+}
+
+use axum::async_trait;
+use axum::http::request::Parts;
+
+#[async_trait]
+impl<S> FromRequestParts<S> for AuthUserInfo
+where
+    S: Send + Sync,
+{
+    type Rejection = (StatusCode, String);
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        if let Some(auth_info) = parts.extensions.get::<AuthUserInfo>() {
+            Ok(auth_info.clone())
+        } else {
+            Err((StatusCode::UNAUTHORIZED, "Unauthorized".to_string()))
+        }
+    }
 }

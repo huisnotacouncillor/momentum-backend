@@ -1,18 +1,17 @@
 use crate::AppState;
 use axum::{
-    extract::{Path, State, TypedHeader},
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     Json
 };
 use diesel::prelude::*;
-use headers::{Authorization, authorization::Bearer};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::db::models::*;
-use crate::middleware::auth::{AuthService, AuthConfig};
+use crate::middleware::auth::AuthUserInfo;
 use crate::schema;
 
 #[derive(Deserialize, Serialize)]
@@ -30,18 +29,11 @@ pub struct UpdateWorkspaceRequest {
 // 创建工作空间
 pub async fn create_workspace(
     State(state): State<Arc<AppState>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Json(payload): Json<CreateWorkspaceRequest>,
 ) -> impl IntoResponse {
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
+    let user_id = auth_info.user.id;
+    let _workspace_id = auth_info.current_workspace_id.unwrap();
 
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -51,7 +43,7 @@ pub async fn create_workspace(
         }
     };
 
-    // 验证工作空间名称和url_key不为空
+    // 验证工作空间名称不为空
     if payload.name.trim().is_empty() {
         let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
             field: Some("name".to_string()),
@@ -61,11 +53,22 @@ pub async fn create_workspace(
         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
 
+    // 验证 url_key 不为空且格式正确
     if payload.url_key.trim().is_empty() {
         let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
             field: Some("url_key".to_string()),
             code: "REQUIRED".to_string(),
             message: "Workspace url_key is required".to_string(),
+        }]);
+        return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+    }
+
+    // 检查 url_key 格式
+    if !payload.url_key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+            field: Some("url_key".to_string()),
+            code: "INVALID_FORMAT".to_string(),
+            message: "Workspace url_key can only contain letters, numbers, hyphens, and underscores".to_string(),
         }]);
         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
@@ -76,58 +79,67 @@ pub async fn create_workspace(
         url_key: payload.url_key.clone(),
     };
 
-    let workspace_result = diesel::insert_into(schema::workspaces::table)
+    let workspace = match diesel::insert_into(schema::workspaces::table)
         .values(&new_workspace)
-        .get_result::<Workspace>(&mut conn);
-
-    match workspace_result {
-        Ok(workspace) => {
-            // 更新用户的当前工作空间
-            let update_result = diesel::update(schema::users::table.filter(schema::users::id.eq(claims.sub)))
-                .set(schema::users::current_workspace_id.eq(workspace.id))
-                .execute(&mut conn);
-
-            match update_result {
-                Ok(_) => {
-                    let workspace_info = WorkspaceInfo {
-                        id: workspace.id,
-                        name: workspace.name,
-                        url_key: workspace.url_key,
-                    };
-                    
-                    let response = ApiResponse::success(
-                        Some(workspace_info),
-                        "Workspace created successfully and set as current workspace"
-                    );
-                    (StatusCode::CREATED, Json(response)).into_response()
-                }
-                Err(_) => {
-                    let response = ApiResponse::<()>::internal_error("Failed to set workspace as current");
-                    (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
-                }
+        .get_result::<Workspace>(&mut conn)
+    {
+        Ok(workspace) => workspace,
+        Err(e) => {
+            // 检查是否是唯一性约束违反错误
+            if e.to_string().contains("url_key") {
+                let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                    field: Some("url_key".to_string()),
+                    code: "DUPLICATE".to_string(),
+                    message: "Workspace with this url_key already exists".to_string(),
+                }]);
+                return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+            } else {
+                let response = ApiResponse::<()>::internal_error("Failed to create workspace");
+                return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
             }
         }
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to create workspace");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
-        }
+    };
+
+    // 创建工作空间成员关系
+    let new_workspace_member = NewWorkspaceMember {
+        user_id,
+        workspace_id: workspace.id,
+        role: WorkspaceMemberRole::Owner,
+    };
+
+    if let Err(_) = diesel::insert_into(schema::workspace_members::table)
+        .values(&new_workspace_member)
+        .execute(&mut conn)
+    {
+        let response = ApiResponse::<()>::internal_error("Failed to create workspace member relationship");
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
     }
+
+    // 更新用户的 current_workspace_id
+    let _updated_user = match diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
+        .set(schema::users::current_workspace_id.eq(workspace.id))
+        .get_result::<User>(&mut conn)
+    {
+        Ok(user) => user,
+        Err(_) => {
+            let response = ApiResponse::<()>::internal_error("Failed to update user's current workspace");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
+
+    let response = ApiResponse::success(
+        Some(workspace),
+        "Workspace created successfully",
+    );
+    (StatusCode::CREATED, Json(response)).into_response()
 }
 
 // 获取当前工作空间
 pub async fn get_current_workspace(
     State(state): State<Arc<AppState>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
 ) -> impl IntoResponse {
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
+    let workspace_id = auth_info.current_workspace_id.unwrap();
 
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -137,72 +149,33 @@ pub async fn get_current_workspace(
         }
     };
 
-    // 获取用户信息
-    let user_result = schema::users::table
-        .filter(schema::users::id.eq(claims.sub))
-        .select(User::as_select())
-        .first::<User>(&mut conn);
-
-    match user_result {
-        Ok(user) => {
-            match user.current_workspace_id {
-                Some(workspace_id) => {
-                    // 获取工作空间信息
-                    let workspace_result = schema::workspaces::table
-                        .filter(schema::workspaces::id.eq(workspace_id))
-                        .select(Workspace::as_select())
-                        .first::<Workspace>(&mut conn);
-                    
-                    match workspace_result {
-                        Ok(workspace) => {
-                            let workspace_info = WorkspaceInfo {
-                                id: workspace.id,
-                                name: workspace.name,
-                                url_key: workspace.url_key,
-                            };
-                            
-                            let response = ApiResponse::success(
-                                Some(workspace_info),
-                                "Current workspace retrieved successfully"
-                            );
-                            (StatusCode::OK, Json(response)).into_response()
-                        }
-                        Err(_) => {
-                            let response = ApiResponse::<()>::not_found("Workspace not found");
-                            (StatusCode::NOT_FOUND, Json(response)).into_response()
-                        }
-                    }
-                }
-                None => {
-                    let response = ApiResponse::<()>::not_found("No current workspace set");
-                    (StatusCode::NOT_FOUND, Json(response)).into_response()
-                }
-            }
-        }
+    use crate::schema::workspaces::dsl::*;
+    let workspace = match workspaces
+        .filter(id.eq(workspace_id))
+        .select(Workspace::as_select())
+        .first(&mut conn)
+    {
+        Ok(workspace) => workspace,
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to retrieve user");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+            let response = ApiResponse::<()>::not_found("Workspace not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
-    }
+    };
+
+    let response = ApiResponse::success(
+        Some(workspace),
+        "Current workspace retrieved successfully",
+    );
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 // 更新工作空间
 pub async fn update_workspace(
     State(state): State<Arc<AppState>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    _auth_info: AuthUserInfo,
     Path(workspace_id): Path<Uuid>,
     Json(payload): Json<UpdateWorkspaceRequest>,
 ) -> impl IntoResponse {
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -211,112 +184,145 @@ pub async fn update_workspace(
         }
     };
 
-    // 检查用户是否有权访问该工作空间
-    // 这里简单检查用户当前工作空间是否是目标工作空间
-    let user_result = schema::users::table
-        .filter(schema::users::id.eq(claims.sub))
-        .select(User::as_select())
-        .first::<User>(&mut conn);
+    // 检查工作空间是否存在
+    use crate::schema::workspaces::dsl::*;
+    let existing_workspace = match workspaces
+        .filter(id.eq(workspace_id))
+        .select(Workspace::as_select())
+        .first::<Workspace>(&mut conn)
+    {
+        Ok(workspace) => workspace,
+        Err(_) => {
+            let response = ApiResponse::<()>::not_found("Workspace not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
+        }
+    };
 
-    match user_result {
-        Ok(user) => {
-            match user.current_workspace_id {
-                Some(current_workspace_id) if current_workspace_id == workspace_id => {
-                    // 检查是否提供了更新数据
-                    if payload.name.is_none() && payload.url_key.is_none() {
+    // 构建更新数据
+    let mut name_update = None;
+    let mut url_key_update = None;
+
+    if let Some(ref workspace_name) = payload.name {
+        if workspace_name.trim().is_empty() {
+            let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                field: Some("name".to_string()),
+                code: "REQUIRED".to_string(),
+                message: "Workspace name cannot be empty".to_string(),
+            }]);
+            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+        }
+        name_update = Some(schema::workspaces::name.eq(workspace_name));
+    }
+
+    if let Some(ref workspace_url_key) = payload.url_key {
+        if workspace_url_key.trim().is_empty() {
+            let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                field: Some("url_key".to_string()),
+                code: "REQUIRED".to_string(),
+                message: "Workspace url_key cannot be empty".to_string(),
+            }]);
+            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+        }
+
+        // 检查 url_key 格式
+        if !workspace_url_key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                field: Some("url_key".to_string()),
+                code: "INVALID_FORMAT".to_string(),
+                message: "Workspace url_key can only contain letters, numbers, hyphens, and underscores".to_string(),
+            }]);
+            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+        }
+        url_key_update = Some(schema::workspaces::url_key.eq(workspace_url_key));
+    }
+
+    // 如果没有要更新的字段，直接返回
+    if name_update.is_none() && url_key_update.is_none() {
+        let response = ApiResponse::success(
+            Some(existing_workspace),
+            "Workspace retrieved successfully",
+        );
+        return (StatusCode::OK, Json(response)).into_response();
+    }
+
+    // 执行更新 - 需要分别处理不同的字段组合
+    let updated_workspace = if let Some(name_update) = name_update {
+        if let Some(url_key_update) = url_key_update {
+            // 同时更新 name 和 url_key
+            match diesel::update(schema::workspaces::table.filter(schema::workspaces::id.eq(workspace_id)))
+                .set((name_update, url_key_update))
+                .get_result::<Workspace>(&mut conn)
+            {
+                Ok(workspace) => workspace,
+                Err(e) => {
+                    // 检查是否是唯一性约束违反错误
+                    if e.to_string().contains("url_key") {
                         let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
-                            field: None,
-                            code: "NO_UPDATE_DATA".to_string(),
-                            message: "No update data provided".to_string(),
+                            field: Some("url_key".to_string()),
+                            code: "DUPLICATE".to_string(),
+                            message: "Workspace with this url_key already exists".to_string(),
                         }]);
                         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-                    }
-
-                    // 执行更新
-                    let result = if let Some(name) = &payload.name {
-                        if name.trim().is_empty() {
-                            let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
-                                field: Some("name".to_string()),
-                                code: "REQUIRED".to_string(),
-                                message: "Workspace name cannot be empty".to_string(),
-                            }]);
-                            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-                        }
-                        
-                        diesel::update(schema::workspaces::table.filter(schema::workspaces::id.eq(workspace_id)))
-                            .set(schema::workspaces::name.eq(name))
-                            .get_result::<Workspace>(&mut conn)
-                    } else if let Some(url_key) = &payload.url_key {
-                        if url_key.trim().is_empty() {
-                            let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
-                                field: Some("url_key".to_string()),
-                                code: "REQUIRED".to_string(),
-                                message: "Workspace url_key cannot be empty".to_string(),
-                            }]);
-                            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-                        }
-                        
-                        diesel::update(schema::workspaces::table.filter(schema::workspaces::id.eq(workspace_id)))
-                            .set(schema::workspaces::url_key.eq(url_key))
-                            .get_result::<Workspace>(&mut conn)
                     } else {
-                        // 不应该到达这里，但为了安全起见
-                        let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
-                            field: None,
-                            code: "NO_UPDATE_DATA".to_string(),
-                            message: "No update data provided".to_string(),
-                        }]);
-                        return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-                    };
-
-                    match result {
-                        Ok(workspace) => {
-                            let workspace_info = WorkspaceInfo {
-                                id: workspace.id,
-                                name: workspace.name,
-                                url_key: workspace.url_key,
-                            };
-                            
-                            let response = ApiResponse::success(
-                                Some(workspace_info),
-                                "Workspace updated successfully"
-                            );
-                            (StatusCode::OK, Json(response)).into_response()
-                        }
-                        Err(_) => {
-                            let response = ApiResponse::<()>::internal_error("Failed to update workspace");
-                            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
-                        }
+                        let response = ApiResponse::<()>::internal_error("Failed to update workspace");
+                        return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
                     }
                 }
-                _ => {
-                    let response = ApiResponse::<()>::forbidden("Access denied to this workspace");
-                    (StatusCode::FORBIDDEN, Json(response)).into_response()
+            }
+        } else {
+            // 只更新 name
+            match diesel::update(schema::workspaces::table.filter(schema::workspaces::id.eq(workspace_id)))
+                .set(name_update)
+                .get_result::<Workspace>(&mut conn)
+            {
+                Ok(workspace) => workspace,
+                Err(_) => {
+                    let response = ApiResponse::<()>::internal_error("Failed to update workspace");
+                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
                 }
             }
         }
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to retrieve user");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response() // 修复：移除末尾分号
+    } else if let Some(url_key_update) = url_key_update {
+        // 只更新 url_key
+        match diesel::update(schema::workspaces::table.filter(schema::workspaces::id.eq(workspace_id)))
+            .set(url_key_update)
+            .get_result::<Workspace>(&mut conn)
+        {
+            Ok(workspace) => workspace,
+            Err(e) => {
+                // 检查是否是唯一性约束违反错误
+                if e.to_string().contains("url_key") {
+                    let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                        field: Some("url_key".to_string()),
+                        code: "DUPLICATE".to_string(),
+                        message: "Workspace with this url_key already exists".to_string(),
+                    }]);
+                    return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+                } else {
+                    let response = ApiResponse::<()>::internal_error("Failed to update workspace");
+                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+                }
+            }
         }
-    }
+    } else {
+        // 没有要更新的字段，这种情况已经被前面处理过了，但为了完整性保留
+        existing_workspace
+    };
+
+    let response = ApiResponse::success(
+        Some(updated_workspace),
+        "Workspace updated successfully",
+    );
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 // 删除工作空间
 pub async fn delete_workspace(
     State(state): State<Arc<AppState>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Path(workspace_id): Path<Uuid>,
 ) -> impl IntoResponse {
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
+    let _user_id = auth_info.user.id;
 
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -326,57 +332,42 @@ pub async fn delete_workspace(
         }
     };
 
-    // 检查用户是否有权访问该工作空间
-    let user_result = schema::users::table
-        .filter(schema::users::id.eq(claims.sub))
-        .select(User::as_select())
-        .first::<User>(&mut conn);
-
-    match user_result {
-        Ok(user) => {
-            match user.current_workspace_id {
-                Some(current_workspace_id) if current_workspace_id == workspace_id => {
-                    // 检查工作空间中是否有项目、团队等关联数据
-                    // 这里简化处理，实际应用中可能需要更复杂的检查
-                    
-                    let delete_result = diesel::delete(
-                        schema::workspaces::table.filter(schema::workspaces::id.eq(workspace_id))
-                    )
-                    .execute(&mut conn);
-
-                    match delete_result {
-                        Ok(0) => {
-                            let response = ApiResponse::<()>::not_found("Workspace not found");
-                            (StatusCode::NOT_FOUND, Json(response)).into_response()
-                        }
-                        Ok(_) => {
-                            // 清除用户的当前工作空间
-                            let _ = diesel::update(
-                                schema::users::table.filter(schema::users::id.eq(claims.sub))
-                            )
-                            .set(schema::users::current_workspace_id.eq(None::<Uuid>))
-                            .execute(&mut conn);
-                            
-                            let response = ApiResponse::<()>::success(
-                                (), 
-                                "Workspace deleted successfully"
-                            );
-                            (StatusCode::OK, Json(response)).into_response()
-                        }
-                        Err(_) => {
-                            let response = ApiResponse::<()>::internal_error("Failed to delete workspace");
-                            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
-                        }
-                    }
-                }
-                _ => {
-                    let response = ApiResponse::<()>::forbidden("Access denied to this workspace");
-                    (StatusCode::FORBIDDEN, Json(response)).into_response()
-                }
-            }
-        }
+    // 检查工作空间是否存在
+    use crate::schema::workspaces::dsl::*;
+    let existing_workspace = match workspaces
+        .filter(id.eq(workspace_id))
+        .select(Workspace::as_select())
+        .first::<Workspace>(&mut conn)
+    {
+        Ok(workspace) => workspace,
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to retrieve user");
+            let response = ApiResponse::<()>::not_found("Workspace not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
+        }
+    };
+
+    // 检查用户是否是工作空间的所有者
+    if existing_workspace.id != workspace_id {
+        let response = ApiResponse::<()>::forbidden("Only workspace owner can delete workspace");
+        return (StatusCode::FORBIDDEN, Json(response)).into_response();
+    }
+
+    // 删除工作空间
+    match diesel::delete(workspaces.filter(id.eq(workspace_id))).execute(&mut conn) {
+        Ok(_) => {
+            // 清除所有用户的 current_workspace_id
+            use crate::schema::users::dsl::*;
+            let _ = diesel::update(
+                users.filter(current_workspace_id.eq(workspace_id))
+            )
+            .set(current_workspace_id.eq(None::<Uuid>))
+            .execute(&mut conn);
+
+            let response = ApiResponse::<()>::success((), "Workspace deleted successfully");
+            (StatusCode::OK, Json(response)).into_response()
+        },
+        Err(_) => {
+            let response = ApiResponse::<()>::internal_error("Failed to delete workspace");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }

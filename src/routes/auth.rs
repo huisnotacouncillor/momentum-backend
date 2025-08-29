@@ -229,14 +229,14 @@ pub async fn register(
 
     // 生成token
     let auth_service = AuthService::new(AuthConfig::default());
+
     let auth_user = AuthUser {
         id: user.id,
-        email: user.email,
-        username: user.username,
-        name: user.name,
-        avatar_url: user.avatar_url,
+        email: user.email.clone(),
+        username: user.username.clone(),
+        name: user.name.clone(),
+        avatar_url: user.avatar_url.clone(),
     };
-
     let access_token = match auth_service.generate_access_token(&auth_user) {
         Ok(token) => token,
         Err(_) => {
@@ -339,10 +339,10 @@ pub async fn login(
     let auth_service = AuthService::new(AuthConfig::default());
     let auth_user = AuthUser {
         id: user.id,
-        email: user.email,
-        username: user.username,
-        name: user.name,
-        avatar_url: user.avatar_url,
+        email: user.email.clone(),
+        username: user.username.clone(),
+        name: user.name.clone(),
+        avatar_url: user.avatar_url.clone(),
     };
 
     let access_token = match auth_service.generate_access_token(&auth_user) {
@@ -417,10 +417,10 @@ pub async fn refresh_token(
     // 生成新的token
     let auth_user = AuthUser {
         id: user.id,
-        email: user.email,
-        username: user.username,
-        name: user.name,
-        avatar_url: user.avatar_url,
+        email: user.email.clone(),
+        username: user.username.clone(),
+        name: user.name.clone(),
+        avatar_url: user.avatar_url.clone(),
     };
 
     let new_access_token = match auth_service.generate_access_token(&auth_user) {

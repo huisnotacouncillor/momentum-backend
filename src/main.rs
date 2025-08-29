@@ -1,4 +1,4 @@
-use axum::{Router, Server, middleware::{from_fn, from_fn_with_state}};
+use axum::{Router, Server, middleware::from_fn};
 use diesel::{PgConnection, r2d2::{self, ConnectionManager as DbConnectionManager}};
 use rust_backend::{AppState, db::DbPool, websocket};
 use tower_http::cors::{Any, CorsLayer};
@@ -47,7 +47,7 @@ async fn main() {
 
     // Build router - apply auth middleware only to routes that need it
     let protected_routes = rust_backend::routes::create_router(state.clone())
-        .layer(from_fn_with_state(
+        .layer(axum::middleware::from_fn_with_state(
             Arc::new(state.db.clone()),
             rust_backend::middleware::auth::auth_middleware,
         ));

@@ -1,7 +1,6 @@
 use crate::db::{DbPool, models::*};
-use crate::middleware::auth::{AuthConfig, AuthService};
+use crate::middleware::auth::AuthUserInfo;
 use crate::schema;
-use axum::TypedHeader;
 use axum::{
     Json,
     extract::{Query, State},
@@ -9,13 +8,18 @@ use axum::{
     response::IntoResponse,
 };
 use diesel::prelude::*;
-use headers::Authorization;
-use headers::authorization::Bearer;
+use serde::Deserialize;
 use std::sync::Arc;
+// 移除未使用的 Uuid 导入
+
+#[derive(Deserialize)]
+pub struct ProjectQueryParams {
+    pub search: Option<String>,
+}
 
 pub async fn create_project(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Json(payload): Json<CreateProjectRequest>,
 ) -> impl IntoResponse {
     let mut conn = match pool.get() {
@@ -26,13 +30,15 @@ pub async fn create_project(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
+    let _workspace_id = match auth_info.current_workspace_id {
+        Some(id) => id,
+        None => {
+            let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                field: None,
+                code: "NO_WORKSPACE".to_string(),
+                message: "No current workspace selected".to_string(),
+            }]);
+            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
         }
     };
 
@@ -68,7 +74,7 @@ pub async fn create_project(
 
     // 获取用户的当前工作空间
     let user = match schema::users::table
-        .filter(schema::users::id.eq(claims.sub))
+        .filter(schema::users::id.eq(auth_info.user.id))
         .filter(schema::users::is_active.eq(true))
         .select(User::as_select())
         .first(&mut conn)
@@ -85,7 +91,7 @@ pub async fn create_project(
         }
     };
 
-    let workspace_id = match user.current_workspace_id {
+    let _workspace_id = match user.current_workspace_id {
         Some(id) => id,
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -97,30 +103,20 @@ pub async fn create_project(
         }
     };
 
-    // 验证用户对工作空间的访问权限
-    let user_has_access = match schema::team_members::table
-        .inner_join(schema::teams::table.on(schema::teams::id.eq(schema::team_members::team_id)))
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .filter(schema::teams::workspace_id.eq(workspace_id))
-        .select(schema::team_members::user_id)
-        .first::<uuid::Uuid>(&mut conn)
-        .optional()
-    {
-        Ok(result) => result,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
+    let user_id = auth_info.user.id;
+    let _current_workspace_id = auth_info.current_workspace_id.unwrap();
 
-    if user_has_access.is_none() {
-        let response = ApiResponse::<()>::forbidden("You don't have access to this workspace");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
+    // 检查 project_key 格式
+    if !payload.project_key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+            field: Some("project_key".to_string()),
+            code: "INVALID_FORMAT".to_string(),
+            message: "Project key can only contain letters, numbers, hyphens, and underscores".to_string(),
+        }]);
+        return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
-
-    // 检查项目键在工作空间中是否唯一
     let key_exists = match schema::projects::table
-        .filter(schema::projects::workspace_id.eq(workspace_id))
+        .filter(schema::projects::workspace_id.eq(_current_workspace_id))
         .filter(schema::projects::project_key.eq(&payload.project_key))
         .select(schema::projects::id)
         .first::<uuid::Uuid>(&mut conn)
@@ -142,18 +138,15 @@ pub async fn create_project(
         return (StatusCode::CONFLICT, Json(response)).into_response();
     }
 
-    // 创建新项目
+    // 创建项目
     let new_project = NewProject {
-        workspace_id,
-        roadmap_id: payload.roadmap_id,
-        owner_id: claims.sub,
-        name: payload.name.trim().to_string(),
-        project_key: payload.project_key.trim().to_uppercase(),
-        description: payload
-            .description
-            .map(|d| d.trim().to_string())
-            .filter(|d| !d.is_empty()),
-        target_date: payload.target_date,
+        name: payload.name.clone(),
+        project_key: payload.project_key.clone(),
+        description: payload.description.clone(),
+        workspace_id: _current_workspace_id,
+        owner_id: user_id, // 使用当前用户作为项目所有者
+        roadmap_id: None, // 暂时设置为None，可以根据需要修改
+        target_date: None, // 暂时设置为None，可以根据需要修改
     };
 
     let project = match diesel::insert_into(schema::projects::table)
@@ -161,44 +154,38 @@ pub async fn create_project(
         .get_result::<Project>(&mut conn)
     {
         Ok(project) => project,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to create project");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        Err(e) => {
+            // 检查是否是唯一性约束违反错误
+            if e.to_string().contains("project_key") {
+                let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                    field: Some("project_key".to_string()),
+                    code: "DUPLICATE".to_string(),
+                    message: "Project with this key already exists in this workspace".to_string(),
+                }]);
+                return (StatusCode::BAD_REQUEST, Json(response)).into_response();
+            } else {
+                let response = ApiResponse::<()>::internal_error("Failed to create project");
+                return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            }
         }
     };
 
-    // 构建项目信息响应
-    let owner_info = UserBasicInfo {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        email: user.email,
-        avatar_url: user.avatar_url,
-    };
+    let _response = ApiResponse::success(
+        Some(project.clone()),
+        "Project created successfully",
+    );
 
-    let project_info = ProjectInfo {
-        id: project.id,
-        name: project.name,
-        project_key: project.project_key,
-        description: project.description,
-        status: project.status,
-        target_date: project.target_date,
-        owner: owner_info,
-        teams: vec![], // 新创建的项目还没有关联的团队
-        workspace_id: project.workspace_id,
-        created_at: project.created_at,
-        updated_at: project.updated_at,
-    };
-
-    let response = ApiResponse::created(project_info, "Project created successfully");
+    let response = ApiResponse::created(project, "Project created successfully");
     (StatusCode::CREATED, Json(response)).into_response()
 }
 
 pub async fn get_projects(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Query(query): Query<ProjectListQuery>,
+    auth_info: AuthUserInfo,
+    Query(params): Query<ProjectQueryParams>,
 ) -> impl IntoResponse {
+    let _current_workspace_id = auth_info.current_workspace_id.unwrap();
+
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -207,146 +194,33 @@ pub async fn get_projects(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
+    use crate::schema::projects::dsl::*;
 
-    // 获取用户的当前工作空间
-    let user = match schema::users::table
-        .filter(schema::users::id.eq(claims.sub))
-        .filter(schema::users::is_active.eq(true))
-        .select(User::as_select())
-        .first(&mut conn)
-        .optional()
-    {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            let response = ApiResponse::<()>::unauthorized("User not found or inactive");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    // 确定要查询的工作空间ID
-    let workspace_id = query
-        .workspace_id
-        .unwrap_or_else(|| user.current_workspace_id.unwrap_or(uuid::Uuid::nil()));
-
-    // 验证用户对工作空间的访问权限
-    let user_has_access = match schema::team_members::table
-        .inner_join(schema::teams::table.on(schema::teams::id.eq(schema::team_members::team_id)))
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .filter(schema::teams::workspace_id.eq(workspace_id))
-        .select(schema::team_members::user_id)
-        .first::<uuid::Uuid>(&mut conn)
-        .optional()
-    {
-        Ok(result) => result,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    if user_has_access.is_none() {
-        let response = ApiResponse::<()>::forbidden("You don't have access to this workspace");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
-    }
-
-    // 预处理查询参数
-    let status_filter = query.status.map(|status| match status {
-        crate::db::enums::ProjectStatus::Planned => "planned",
-        crate::db::enums::ProjectStatus::Active => "active",
-        crate::db::enums::ProjectStatus::Paused => "paused",
-        crate::db::enums::ProjectStatus::Completed => "completed",
-        crate::db::enums::ProjectStatus::Canceled => "canceled",
-    });
-
-    // 构建基础查询
-    let mut base_query = schema::projects::table
-        .filter(schema::projects::workspace_id.eq(workspace_id))
-        .into_boxed();
-
-    // 添加可选的过滤条件
-    if let Some(status_str) = status_filter {
-        base_query = base_query.filter(schema::projects::status.eq(status_str));
-    }
-
-    // 获取项目列表（只取第一个）
-    let projects = match base_query
-        .order(schema::projects::created_at.desc())
+    let query = projects
+        .filter(workspace_id.eq(workspace_id))
         .select(Project::as_select())
-        .load(&mut conn)
-    {
-        Ok(projects) => projects,
+        .order(created_at.desc());
+
+    let results = if let Some(search_term) = params.search {
+        let pattern = format!("%{}%", search_term.to_lowercase());
+        query
+            .filter(name.ilike(&pattern))
+            .load::<Project>(&mut conn)
+    } else {
+        query.load::<Project>(&mut conn)
+    };
+
+    let projects_list = match results {
+        Ok(list) => list,
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
+            let response = ApiResponse::<()>::internal_error("Failed to retrieve projects");
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
         }
     };
 
-    // 获取相关的用户和团队信息
-    let mut project_infos = Vec::new();
-
-    for project in projects {
-        // 获取项目所有者信息
-        let owner = match schema::users::table
-            .filter(schema::users::id.eq(project.owner_id))
-            .select(User::as_select())
-            .first(&mut conn)
-            .optional()
-        {
-            Ok(Some(user)) => UserBasicInfo {
-                id: user.id,
-                name: user.name,
-                username: user.username,
-                email: user.email,
-                avatar_url: user.avatar_url,
-            },
-            _ => continue, // 跳过无效的项目
-        };
-
-        // 获取与项目关联的团队信息
-        let teams_info = match schema::teams::table
-            .inner_join(schema::issues::table.on(schema::teams::id.eq(schema::issues::team_id)))
-            .filter(schema::issues::project_id.eq(project.id))
-            .select(Team::as_select())
-            .distinct_on(schema::teams::id)
-            .load(&mut conn)
-        {
-            Ok(teams) => teams.into_iter().map(|team| TeamBasicInfo {
-                id: team.id,
-                name: team.name,
-                team_key: team.team_key,
-            }).collect(),
-            Err(_) => vec![], // 如果获取团队信息失败，返回空列表
-        };
-
-        project_infos.push(ProjectInfo {
-            id: project.id,
-            name: project.name,
-            project_key: project.project_key,
-            description: project.description,
-            status: project.status,
-            target_date: project.target_date,
-            owner,
-            teams: teams_info,
-            workspace_id: project.workspace_id,
-            created_at: project.created_at,
-            updated_at: project.updated_at,
-        });
-    }
-
-    // 返回项目数组，但只包含一个项目
-    let response = ApiResponse::success(project_infos, "Projects retrieved successfully");
+    let response = ApiResponse::success(
+        Some(projects_list),
+        "Projects retrieved successfully",
+    );
     (StatusCode::OK, Json(response)).into_response()
 }

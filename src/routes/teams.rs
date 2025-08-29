@@ -1,7 +1,6 @@
 use crate::db::{DbPool, models::*};
-use crate::middleware::auth::{AuthConfig, AuthService};
+use crate::middleware::auth::AuthUserInfo;
 use crate::schema;
-use axum::TypedHeader;
 use axum::{
     Json,
     extract::{Path, State},
@@ -9,11 +8,10 @@ use axum::{
     response::IntoResponse,
 };
 use diesel::prelude::*;
-use headers::Authorization;
-use headers::authorization::Bearer;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
+use crate::db::models::{ApiResponse, ErrorDetail, TeamMemberInfo, TeamInfo};
 
 // 请求体定义
 #[derive(Deserialize)]
@@ -23,22 +21,37 @@ pub struct CreateTeamRequest {
 }
 
 #[derive(Deserialize)]
+pub struct UpdateTeamRequest {
+    pub name: Option<String>,
+    pub team_key: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+pub enum TeamRole {
+    Admin,
+    Member,
+}
+
+#[derive(Deserialize)]
 pub struct AddTeamMemberRequest {
     pub user_id: Uuid,
-    pub role: String,
+    pub role: TeamRole,
 }
 
 #[derive(Deserialize)]
 pub struct UpdateTeamMemberRequest {
-    pub role: String,
+    pub role: TeamRole,
 }
 
 /// 创建团队
 pub async fn create_team(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Json(payload): Json<CreateTeamRequest>,
 ) -> impl IntoResponse {
+    let user_id = auth_info.user.id;
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
+
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -47,43 +60,7 @@ pub async fn create_team(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 获取用户当前工作空间
-    let user = match schema::users::table
-        .filter(schema::users::id.eq(claims.sub))
-        .select(User::as_select())
-        .first::<User>(&mut conn)
-        .optional()
-    {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            let response = ApiResponse::<()>::unauthorized("User not found");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    let workspace_id = match user.current_workspace_id {
-        Some(id) => id,
-        None => {
-            let response = ApiResponse::<()>::forbidden("No active workspace");
-            return (StatusCode::FORBIDDEN, Json(response)).into_response();
-        }
-    };
-
-    // 验证团队名称和键不为空
+    // 验证团队名称不为空
     if payload.name.trim().is_empty() {
         let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
             field: Some("name".to_string()),
@@ -93,6 +70,7 @@ pub async fn create_team(
         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
 
+    // 验证 team_key 不为空且格式正确
     if payload.team_key.trim().is_empty() {
         let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
             field: Some("team_key".to_string()),
@@ -102,180 +80,112 @@ pub async fn create_team(
         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
 
-    // 检查团队键在工作空间中是否唯一
-    let key_exists = match schema::teams::table
-        .filter(schema::teams::workspace_id.eq(workspace_id))
-        .filter(schema::teams::team_key.eq(payload.team_key.trim().to_uppercase()))
-        .select(schema::teams::id)
-        .first::<Uuid>(&mut conn)
-        .optional()
-    {
-        Ok(result) => result,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    if key_exists.is_some() {
-        let response = ApiResponse::<()>::conflict(
-            "Team key already exists in this workspace",
-            Some("team_key".to_string()),
-            "TEAM_KEY_EXISTS",
-        );
-        return (StatusCode::CONFLICT, Json(response)).into_response();
+    // 检查 team_key 格式
+    if !payload.team_key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+            field: Some("team_key".to_string()),
+            code: "INVALID_FORMAT".to_string(),
+            message: "Team key can only contain letters, numbers, hyphens, and underscores".to_string(),
+        }]);
+        return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
 
-    // 创建新团队
-    let new_team = NewTeam {
-        workspace_id,
-        name: payload.name.trim().to_string(),
-        team_key: payload.team_key.trim().to_uppercase(),
-    };
-
-    let team = match diesel::insert_into(schema::teams::table)
-        .values(&new_team)
-        .get_result::<Team>(&mut conn)
-    {
-        Ok(team) => team,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to create team");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    // 将创建者添加为团队成员，角色为 "admin"
-    let new_team_member = NewTeamMember {
-        user_id: claims.sub,
-        team_id: team.id,
-        role: "admin".to_string(),
-    };
-
-    if diesel::insert_into(schema::team_members::table)
-        .values(&new_team_member)
-        .execute(&mut conn)
-        .is_err()
-    {
-        let response = ApiResponse::<()>::internal_error("Failed to add team member");
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-    }
-
-    // 获取团队成员信息
-    let members = match get_team_members(&mut conn, team.id) {
-        Ok(members) => members,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to fetch team members");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    let team_detail = team::TeamDetailResponse {
-        id: team.id,
-        name: team.name,
-        team_key: team.team_key,
-        workspace_id: team.workspace_id,
-        members,
-        created_at: team.created_at,
-        updated_at: team.updated_at,
-    };
-
-    let response = ApiResponse::created(team_detail, "Team created successfully");
-    (StatusCode::CREATED, Json(response)).into_response()
-}
-
-/// 获取工作空间中的所有团队
-pub async fn get_teams(
-    State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-) -> impl IntoResponse {
-    let mut conn = match pool.get() {
-        Ok(conn) => conn,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database connection failed");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 获取用户当前工作空间
-    let user = match schema::users::table
-        .filter(schema::users::id.eq(claims.sub))
-        .select(User::as_select())
-        .first::<User>(&mut conn)
-        .optional()
-    {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            let response = ApiResponse::<()>::unauthorized("User not found");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    let workspace_id = match user.current_workspace_id {
-        Some(id) => id,
-        None => {
-            let response = ApiResponse::<()>::forbidden("No active workspace");
-            return (StatusCode::FORBIDDEN, Json(response)).into_response();
-        }
-    };
-
-    // 获取工作空间中的所有团队
-    let teams = match schema::teams::table
-        .filter(schema::teams::workspace_id.eq(workspace_id))
-        .select(Team::as_select())
-        .load::<Team>(&mut conn)
-    {
-        Ok(teams) => teams,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    // 获取每个团队的成员信息
-    let mut teams_with_members: Vec<team::TeamWithMembers> = Vec::new();
-
-    for team in teams {
-        // 获取团队成员信息
-        let members = match get_team_members(&mut conn, team.id) {
-            Ok(members) => members,
-            Err(_) => {
-                let response = ApiResponse::<()>::internal_error("Failed to fetch team members");
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-            }
+    // 开始事务
+    let result = conn.transaction::<Team, diesel::result::Error, _>(|conn| {
+        // 创建团队
+        let new_team = NewTeam {
+            name: payload.name.clone(),
+            team_key: payload.team_key.clone(),
+            workspace_id: current_workspace_id,
         };
 
-        teams_with_members.push(team::TeamWithMembers {
-            id: team.id,
-            name: team.name,
-            team_key: team.team_key,
-            members,
-        });
-    }
+        let team = diesel::insert_into(schema::teams::table)
+            .values(&new_team)
+            .get_result::<Team>(conn)?;
 
-    let response = ApiResponse::success(teams_with_members, "Teams retrieved successfully");
+        // 创建团队成员关系（创建者自动成为管理员）
+        let new_team_member = NewTeamMember {
+            user_id,
+            team_id: team.id,
+            role: "admin".to_string(),
+        };
+
+        diesel::insert_into(schema::team_members::table)
+            .values(&new_team_member)
+            .execute(conn)?;
+
+        Ok(team)
+    });
+
+    match result {
+        Ok(team) => {
+            let response = ApiResponse::success(
+                Some(team),
+                "Team created successfully",
+            );
+            (StatusCode::CREATED, Json(response)).into_response()
+        },
+        Err(e) => {
+            // 检查是否是唯一性约束违反错误
+            if e.to_string().contains("team_key") {
+                let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                    field: Some("team_key".to_string()),
+                    code: "DUPLICATE".to_string(),
+                    message: "Team with this key already exists in this workspace".to_string(),
+                }]);
+                (StatusCode::BAD_REQUEST, Json(response)).into_response()
+            } else {
+                let response = ApiResponse::<()>::internal_error("Failed to create team");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+            }
+        }
+    }
+}
+
+/// 获取团队列表
+pub async fn get_teams(
+    State(pool): State<Arc<DbPool>>,
+    auth_info: AuthUserInfo,
+) -> impl IntoResponse {
+    let _ = auth_info.current_workspace_id.unwrap();
+
+    let mut conn = match pool.get() {
+        Ok(conn) => conn,
+        Err(_) => {
+            let response = ApiResponse::<()>::internal_error("Database connection failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
+
+    use crate::schema::teams::dsl::*;
+    let teams_list = match teams
+        .filter(workspace_id.eq(workspace_id))
+        .select(Team::as_select())
+        .order(created_at.desc())
+        .load::<Team>(&mut conn)
+    {
+        Ok(list) => list,
+        Err(_) => {
+            let response = ApiResponse::<()>::internal_error("Failed to retrieve teams");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
+
+    let response = ApiResponse::success(
+        Some(teams_list),
+        "Teams retrieved successfully",
+    );
     (StatusCode::OK, Json(response)).into_response()
 }
 
-/// 获取团队详情
+/// 获取指定团队
 pub async fn get_team(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Path(team_id): Path<Uuid>,
 ) -> impl IntoResponse {
+    let _current_workspace_id = auth_info.current_workspace_id.unwrap();
+
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -284,231 +194,126 @@ pub async fn get_team(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 验证用户是否有权限访问该团队
-    let team = match schema::teams::table
-        .filter(schema::teams::id.eq(team_id))
+    use crate::schema::teams::dsl::*;
+    let team = match teams
+        .filter(id.eq(team_id))
+        .filter(workspace_id.eq(workspace_id))
         .select(Team::as_select())
         .first::<Team>(&mut conn)
-        .optional()
-    {
-        Ok(Some(team)) => team,
-        Ok(None) => {
-            let response = ApiResponse::<()>::not_found("Team not found");
-            return (StatusCode::NOT_FOUND, Json(response)).into_response();
-        }
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    // 验证用户是否是团队成员
-    let is_member = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .select(schema::team_members::user_id)
-        .first::<Uuid>(&mut conn)
-        .optional()
-    {
-        Ok(result) => result.is_some(),
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    if !is_member {
-        let response = ApiResponse::<()>::forbidden("You are not a member of this team");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
-    }
-
-    // 获取团队成员信息
-    let members = match get_team_members(&mut conn, team.id) {
-        Ok(members) => members,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to fetch team members");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    let team_detail = team::TeamDetailResponse {
-        id: team.id,
-        name: team.name,
-        team_key: team.team_key,
-        workspace_id: team.workspace_id,
-        members,
-        created_at: team.created_at,
-        updated_at: team.updated_at,
-    };
-
-    let response = ApiResponse::success(team_detail, "Team retrieved successfully");
-    (StatusCode::OK, Json(response)).into_response()
-}
-
-/// 更新团队信息
-pub async fn update_team(
-    State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path(team_id): Path<Uuid>,
-    Json(payload): Json<CreateTeamRequest>,
-) -> impl IntoResponse {
-    let mut conn = match pool.get() {
-        Ok(conn) => conn,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database connection failed");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 验证用户是否有权限更新该团队（必须是管理员）
-    let user_role = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .select(schema::team_members::role)
-        .first::<String>(&mut conn)
-        .optional()
-    {
-        Ok(Some(role)) => role,
-        Ok(None) => {
-            let response = ApiResponse::<()>::forbidden("You are not a member of this team");
-            return (StatusCode::FORBIDDEN, Json(response)).into_response();
-        }
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    if user_role != "admin" {
-        let response = ApiResponse::<()>::forbidden("Only team admins can update team information");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
-    }
-
-    // 验证团队名称和键不为空
-    if payload.name.trim().is_empty() {
-        let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
-            field: Some("name".to_string()),
-            code: "REQUIRED".to_string(),
-            message: "Team name is required".to_string(),
-        }]);
-        return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-    }
-
-    if payload.team_key.trim().is_empty() {
-        let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
-            field: Some("team_key".to_string()),
-            code: "REQUIRED".to_string(),
-            message: "Team key is required".to_string(),
-        }]);
-        return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-    }
-
-    // 获取团队信息
-    let team = match schema::teams::table
-        .filter(schema::teams::id.eq(team_id))
-        .select(Team::as_select())
-        .first::<Team>(&mut conn)
-        .optional()
-    {
-        Ok(Some(team)) => team,
-        Ok(None) => {
-            let response = ApiResponse::<()>::not_found("Team not found");
-            return (StatusCode::NOT_FOUND, Json(response)).into_response();
-        }
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    // 检查团队键在工作空间中是否唯一（排除当前团队）
-    let key_exists = match schema::teams::table
-        .filter(schema::teams::workspace_id.eq(team.workspace_id))
-        .filter(schema::teams::team_key.eq(payload.team_key.trim().to_uppercase()))
-        .filter(schema::teams::id.ne(team_id))
-        .select(schema::teams::id)
-        .first::<Uuid>(&mut conn)
-        .optional()
-    {
-        Ok(result) => result,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    if key_exists.is_some() {
-        let response = ApiResponse::<()>::conflict(
-            "Team key already exists in this workspace",
-            Some("team_key".to_string()),
-            "TEAM_KEY_EXISTS",
-        );
-        return (StatusCode::CONFLICT, Json(response)).into_response();
-    }
-
-    // 更新团队信息
-    let updated_team = match diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
-        .set((
-            schema::teams::name.eq(payload.name.trim()),
-            schema::teams::team_key.eq(payload.team_key.trim().to_uppercase()),
-            schema::teams::updated_at.eq(chrono::Utc::now()),
-        ))
-        .get_result::<Team>(&mut conn)
     {
         Ok(team) => team,
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to update team");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            let response = ApiResponse::<()>::not_found("Team not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
     };
 
-    // 获取团队成员信息
-    let members = match get_team_members(&mut conn, updated_team.id) {
-        Ok(members) => members,
+    let response = ApiResponse::success(
+        Some(team),
+        "Team retrieved successfully",
+    );
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+/// 更新团队
+pub async fn update_team(
+    State(pool): State<Arc<DbPool>>,
+    _auth_info: AuthUserInfo,
+    Path(team_id): Path<Uuid>,
+    Json(payload): Json<UpdateTeamRequest>,
+) -> impl IntoResponse {
+    // 移除了未使用的_workspace_id变量声明
+
+    let mut conn = match pool.get() {
+        Ok(conn) => conn,
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to fetch team members");
+            let response = ApiResponse::<()>::internal_error("Database connection failed");
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
         }
     };
 
-    let team_detail = team::TeamDetailResponse {
-        id: updated_team.id,
-        name: updated_team.name,
-        team_key: updated_team.team_key,
-        workspace_id: updated_team.workspace_id,
-        members,
-        created_at: updated_team.created_at,
-        updated_at: updated_team.updated_at,
+    // 检查团队是否存在且属于当前工作区
+    use crate::schema::teams::dsl::*;
+    let _existing_team = match teams
+        .filter(id.eq(team_id))
+        .filter(workspace_id.eq(workspace_id))
+        .select(Team::as_select())
+        .first::<Team>(&mut conn)
+    {
+        Ok(team) => team,
+        Err(_) => {
+            let response = ApiResponse::<()>::not_found("Team not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
+        }
     };
 
-    let response = ApiResponse::success(team_detail, "Team updated successfully");
+    // 构建更新查询
+    let updated_team = if let Some(team_name) = &payload.name {
+        if let Some(team_key_val) = &payload.team_key {
+            // 同时更新 name 和 team_key
+            match diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
+                .set((
+                    schema::teams::name.eq(team_name),
+                    schema::teams::team_key.eq(team_key_val)
+                ))
+                .get_result::<Team>(&mut conn)
+            {
+                Ok(team) => team,
+                Err(_) => {
+                    let response = ApiResponse::<()>::internal_error("Failed to update team");
+                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+                }
+            }
+        } else {
+            // 只更新 name
+            match diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
+                .set(schema::teams::name.eq(team_name))
+                .get_result::<Team>(&mut conn)
+            {
+                Ok(team) => team,
+                Err(_) => {
+                    let response = ApiResponse::<()>::internal_error("Failed to update team");
+                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+                }
+            }
+        }
+    } else if let Some(team_key_val) = &payload.team_key {
+        // 只更新 team_key
+        match diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
+            .set(schema::teams::team_key.eq(team_key_val))
+            .get_result::<Team>(&mut conn)
+        {
+            Ok(team) => team,
+            Err(_) => {
+                let response = ApiResponse::<()>::internal_error("Failed to update team");
+                return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            }
+        }
+    } else {
+        // 没有要更新的字段，返回原始团队信息
+        match schema::teams::table
+            .filter(schema::teams::id.eq(team_id))
+            .first::<Team>(&mut conn)
+        {
+            Ok(team) => team,
+            Err(_) => {
+                let response = ApiResponse::<()>::not_found("Team not found");
+                return (StatusCode::NOT_FOUND, Json(response)).into_response();
+            }
+        }
+    };
+
+    let response = ApiResponse::success(
+        Some(updated_team),
+        "Team updated successfully",
+    );
     (StatusCode::OK, Json(response)).into_response()
 }
 
 /// 删除团队
 pub async fn delete_team(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Path(team_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match pool.get() {
@@ -519,67 +324,28 @@ pub async fn delete_team(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 验证用户是否有权限删除该团队（必须是管理员）
-    let user_role = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .select(schema::team_members::role)
-        .first::<String>(&mut conn)
-        .optional()
+    // 检查团队是否存在且属于当前工作区
+    use crate::schema::teams::dsl as team_dsl;
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
+    match crate::schema::teams::dsl::teams
+        .filter(team_dsl::id.eq(team_id))
+        .filter(team_dsl::workspace_id.eq(current_workspace_id))
+        .select(Team::as_select())
+        .first::<Team>(&mut conn)
     {
-        Ok(Some(role)) => role,
-        Ok(None) => {
-            let response = ApiResponse::<()>::forbidden("You are not a member of this team");
-            return (StatusCode::FORBIDDEN, Json(response)).into_response();
-        }
+        Ok(_) => (),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            let response = ApiResponse::<()>::not_found("Team not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
-    };
-
-    if user_role != "admin" {
-        let response = ApiResponse::<()>::forbidden("Only team admins can delete the team");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
     }
 
-    // 检查团队是否存在
-    let team_exists = match schema::teams::table
-        .filter(schema::teams::id.eq(team_id))
-        .select(schema::teams::id)
-        .first::<Uuid>(&mut conn)
-        .optional()
-    {
-        Ok(result) => result.is_some(),
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
-    if !team_exists {
-        let response = ApiResponse::<()>::not_found("Team not found");
-        return (StatusCode::NOT_FOUND, Json(response)).into_response();
-    }
-
-    // 删除团队（这将级联删除团队成员）
-    match diesel::delete(schema::teams::table.filter(schema::teams::id.eq(team_id)))
-        .execute(&mut conn)
-    {
+    // 删除团队
+    match diesel::delete(crate::schema::teams::dsl::teams.filter(crate::schema::teams::dsl::id.eq(team_id))).execute(&mut conn) {
         Ok(_) => {
             let response = ApiResponse::<()>::success((), "Team deleted successfully");
             (StatusCode::OK, Json(response)).into_response()
-        }
+        },
         Err(_) => {
             let response = ApiResponse::<()>::internal_error("Failed to delete team");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
@@ -590,10 +356,12 @@ pub async fn delete_team(
 /// 添加团队成员
 pub async fn add_team_member(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Path(team_id): Path<Uuid>,
     Json(payload): Json<AddTeamMemberRequest>,
 ) -> impl IntoResponse {
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
+
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -602,88 +370,52 @@ pub async fn add_team_member(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 验证用户是否有权限添加成员（必须是管理员）
-    let user_role = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .select(schema::team_members::role)
-        .first::<String>(&mut conn)
-        .optional()
+    // 检查团队是否存在且属于当前工作区
+    match schema::teams::table
+        .filter(schema::teams::id.eq(team_id))
+        .filter(schema::teams::workspace_id.eq(current_workspace_id))
+        .select(Team::as_select())
+        .first::<Team>(&mut conn)
     {
-        Ok(Some(role)) => role,
-        Ok(None) => {
-            let response = ApiResponse::<()>::forbidden("You are not a member of this team");
-            return (StatusCode::FORBIDDEN, Json(response)).into_response();
-        }
+        Ok(_) => (),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            let response = ApiResponse::<()>::not_found("Team not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
-    };
-
-    if user_role != "admin" {
-        let response = ApiResponse::<()>::forbidden("Only team admins can add members");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
     }
 
-    // 检查要添加的用户是否存在
-    let user_exists = match schema::users::table
-        .filter(schema::users::id.eq(payload.user_id))
-        .select(schema::users::id)
-        .first::<Uuid>(&mut conn)
-        .optional()
+    // 验证用户是否是工作区成员
+    use crate::schema::workspace_members::dsl::*;
+    match workspace_members
+        .filter(user_id.eq(payload.user_id))
+        .filter(crate::schema::workspace_members::dsl::workspace_id.eq(current_workspace_id))
+        .select(WorkspaceMember::as_select())
+        .first::<WorkspaceMember>(&mut conn)
     {
-        Ok(result) => result.is_some(),
+        Ok(_) => (),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                field: Some("user_id".to_string()),
+                code: "INVALID".to_string(),
+                message: "User is not a member of this workspace".to_string(),
+            }]);
+            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
         }
-    };
-
-    if !user_exists {
-        let response = ApiResponse::<()>::not_found("User not found");
-        return (StatusCode::NOT_FOUND, Json(response)).into_response();
     }
 
-    // 检查用户是否已经是团队成员
-    let member_exists = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(payload.user_id))
-        .select(schema::team_members::user_id)
-        .first::<Uuid>(&mut conn)
-        .optional()
-    {
-        Ok(result) => result.is_some(),
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
+    // 使用枚举类型直接获取角色值
+    let other_role = payload.role;
+    // 验证角色是否有效
+    let role_str = match other_role {
+        TeamRole::Admin => "admin".to_string(),
+        TeamRole::Member => "member".to_string(),
     };
-
-    if member_exists {
-        let response = ApiResponse::<()>::conflict(
-            "User is already a member of this team",
-            Some("user_id".to_string()),
-            "USER_ALREADY_MEMBER",
-        );
-        return (StatusCode::CONFLICT, Json(response)).into_response();
-    }
 
     // 添加团队成员
     let new_team_member = NewTeamMember {
         user_id: payload.user_id,
-        team_id,
-        role: payload.role,
+        team_id: team_id,
+        role: role_str,
     };
 
     match diesel::insert_into(schema::team_members::table)
@@ -691,12 +423,22 @@ pub async fn add_team_member(
         .execute(&mut conn)
     {
         Ok(_) => {
-            let response = ApiResponse::<()>::success((), "Member added successfully");
-            (StatusCode::OK, Json(response)).into_response()
-        }
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to add member");
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+            let response = ApiResponse::<()>::success((), "Team member added successfully");
+            (StatusCode::CREATED, Json(response)).into_response()
+        },
+        Err(e) => {
+            // 检查是否是唯一性约束违反错误
+            if e.to_string().contains("team_members_user_id_team_id_key") {
+                let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                    field: Some("user_id".to_string()),
+                    code: "DUPLICATE".to_string(),
+                    message: "User is already a member of this team".to_string(),
+                }]);
+                (StatusCode::BAD_REQUEST, Json(response)).into_response()
+            } else {
+                let response = ApiResponse::<()>::internal_error("Failed to add team member");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+            }
         }
     }
 }
@@ -704,9 +446,11 @@ pub async fn add_team_member(
 /// 获取团队成员列表
 pub async fn get_team_members_list(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Path(team_id): Path<Uuid>,
 ) -> impl IntoResponse {
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
+
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -715,56 +459,65 @@ pub async fn get_team_members_list(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 验证用户是否是团队成员
-    let is_member = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .select(schema::team_members::user_id)
-        .first::<Uuid>(&mut conn)
-        .optional()
+    // 检查团队是否存在且属于当前工作区
+    use crate::schema::teams::dsl::*;
+    match teams
+        .filter(id.eq(team_id))
+        .filter(workspace_id.eq(current_workspace_id))
+        .select(Team::as_select())
+        .first::<Team>(&mut conn)
     {
-        Ok(result) => result.is_some(),
+        Ok(_) => (),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            let response = ApiResponse::<()>::not_found("Team not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
-    };
-
-    if !is_member {
-        let response = ApiResponse::<()>::forbidden("You are not a member of this team");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
     }
 
-    // 获取团队成员信息
-    let members = match get_team_members(&mut conn, team_id) {
-        Ok(members) => members,
+    // 获取团队成员列表
+    let members = match schema::team_members::table
+        .filter(schema::team_members::team_id.eq(team_id))
+        .inner_join(schema::users::table.on(schema::users::id.eq(schema::team_members::user_id)))
+        .filter(schema::team_members::team_id.eq(team_id))
+        .select((TeamMember::as_select(), User::as_select()))
+        .load::<(TeamMember, User)>(&mut conn)
+    {
+        Ok(results) => results
+            .into_iter()
+            .map(|(member, user)| TeamMemberInfo {
+                user: crate::db::models::auth::UserBasicInfo {
+                    id: user.id,
+                    name: user.name,
+                    username: user.username,
+                    email: user.email,
+                    avatar_url: user.avatar_url,
+                },
+                role: member.role,
+                joined_at: member.joined_at,
+            })
+            .collect::<Vec<TeamMemberInfo>>(),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to fetch team members");
+            let response = ApiResponse::<()>::internal_error("Failed to retrieve team members");
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
         }
     };
 
-    let response = ApiResponse::success(members, "Team members retrieved successfully");
+    let response = ApiResponse::success(
+        Some(members),
+        "Team members retrieved successfully",
+    );
     (StatusCode::OK, Json(response)).into_response()
 }
 
-/// 更新团队成员角色
+/// 更新团队成员
 pub async fn update_team_member(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path((team_id, user_id)): Path<(Uuid, Uuid)>,
+    auth_info: AuthUserInfo,
+    Path((team_id, member_user_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<UpdateTeamMemberRequest>,
 ) -> impl IntoResponse {
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
+
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -773,91 +526,70 @@ pub async fn update_team_member(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 验证用户是否有权限更新成员（必须是管理员，且不能修改自己的角色）
-    if claims.sub == user_id {
-        let response = ApiResponse::<()>::forbidden("You cannot update your own role");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
-    }
-
-    let user_role = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .select(schema::team_members::role)
-        .first::<String>(&mut conn)
-        .optional()
+    // 检查团队是否存在且属于当前工作区
+    use crate::schema::teams::dsl::*;
+    match teams
+        .filter(id.eq(team_id))
+        .filter(workspace_id.eq(current_workspace_id))
+        .select(Team::as_select())
+        .first::<Team>(&mut conn)
     {
-        Ok(Some(role)) => role,
-        Ok(None) => {
-            let response = ApiResponse::<()>::forbidden("You are not a member of this team");
-            return (StatusCode::FORBIDDEN, Json(response)).into_response();
-        }
+        Ok(_) => (),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            let response = ApiResponse::<()>::not_found("Team not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
-    };
-
-    if user_role != "admin" {
-        let response = ApiResponse::<()>::forbidden("Only team admins can update member roles");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
     }
 
-    // 检查要更新的用户是否是团队成员
-    let member_exists = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(user_id))
-        .select(schema::team_members::user_id)
-        .first::<Uuid>(&mut conn)
-        .optional()
+    // 验证团队成员是否存在
+    use crate::schema::team_members::dsl as team_member_dsl;
+    match crate::schema::team_members::dsl::team_members
+        .filter(team_member_dsl::team_id.eq(team_id))
+        .filter(team_member_dsl::user_id.eq(member_user_id))
+        .select(TeamMember::as_select())
+        .first::<TeamMember>(&mut conn)
     {
-        Ok(result) => result.is_some(),
+        Ok(_) => (),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            let response = ApiResponse::<()>::not_found("Team member not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
-    };
-
-    if !member_exists {
-        let response = ApiResponse::<()>::not_found("User is not a member of this team");
-        return (StatusCode::NOT_FOUND, Json(response)).into_response();
     }
+
+    // 使用枚举类型直接获取角色值
+    let role = payload.role;
 
     // 更新团队成员角色
     match diesel::update(
-        schema::team_members::table
-            .filter(schema::team_members::team_id.eq(team_id))
-            .filter(schema::team_members::user_id.eq(user_id)),
+        crate::schema::team_members::dsl::team_members
+            .filter(crate::schema::team_members::dsl::team_id.eq(team_id))
+            .filter(crate::schema::team_members::dsl::user_id.eq(member_user_id))
     )
-    .set(schema::team_members::role.eq(&payload.role))
+    .set(schema::team_members::role.eq(match role {
+        TeamRole::Admin => "admin".to_string(),
+        TeamRole::Member => "member".to_string(),
+    }))
     .execute(&mut conn)
     {
         Ok(_) => {
-            let response = ApiResponse::<()>::success((), "Member role updated successfully");
+            let response = ApiResponse::<()>::success((), "Team member updated successfully");
             (StatusCode::OK, Json(response)).into_response()
-        }
+        },
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to update member role");
+            let response = ApiResponse::<()>::internal_error("Failed to update team member");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }
 }
 
-/// 删除团队成员
+/// 移除团队成员
 pub async fn remove_team_member(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path((team_id, user_id)): Path<(Uuid, Uuid)>,
+    auth_info: AuthUserInfo,
+    Path((team_id, member_user_id)): Path<(Uuid, Uuid)>,
 ) -> impl IntoResponse {
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
+
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -866,89 +598,63 @@ pub async fn remove_team_member(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 验证用户是否有权限删除成员（必须是管理员，且不能删除自己）
-    if claims.sub == user_id {
-        let response = ApiResponse::<()>::forbidden("You cannot remove yourself from the team");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
-    }
-
-    let user_role = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .select(schema::team_members::role)
-        .first::<String>(&mut conn)
-        .optional()
+    // 检查团队是否存在且属于当前工作区
+    use crate::schema::teams::dsl::*;
+    match teams
+        .filter(id.eq(team_id))
+        .filter(workspace_id.eq(current_workspace_id))
+        .select(Team::as_select())
+        .first::<Team>(&mut conn)
     {
-        Ok(Some(role)) => role,
-        Ok(None) => {
-            let response = ApiResponse::<()>::forbidden("You are not a member of this team");
-            return (StatusCode::FORBIDDEN, Json(response)).into_response();
-        }
+        Ok(_) => (),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            let response = ApiResponse::<()>::not_found("Team not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
-    };
-
-    if user_role != "admin" {
-        let response = ApiResponse::<()>::forbidden("Only team admins can remove members");
-        return (StatusCode::FORBIDDEN, Json(response)).into_response();
     }
 
-    // 检查要删除的用户是否是团队成员
-    let member_exists = match schema::team_members::table
-        .filter(schema::team_members::team_id.eq(team_id))
-        .filter(schema::team_members::user_id.eq(user_id))
-        .select(schema::team_members::user_id)
-        .first::<Uuid>(&mut conn)
-        .optional()
+    // 验证团队成员是否存在
+    use crate::schema::team_members::dsl as team_member_dsl;
+    match crate::schema::team_members::dsl::team_members
+        .filter(team_member_dsl::team_id.eq(team_id))
+        .filter(team_member_dsl::user_id.eq(member_user_id))
+        .select(TeamMember::as_select())
+        .first::<TeamMember>(&mut conn)
     {
-        Ok(result) => result.is_some(),
+        Ok(_) => (),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            let response = ApiResponse::<()>::not_found("Team member not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
-    };
-
-    if !member_exists {
-        let response = ApiResponse::<()>::not_found("User is not a member of this team");
-        return (StatusCode::NOT_FOUND, Json(response)).into_response();
     }
 
-    // 删除团队成员
+    // 移除团队成员
     match diesel::delete(
-        schema::team_members::table
-            .filter(schema::team_members::team_id.eq(team_id))
-            .filter(schema::team_members::user_id.eq(user_id)),
+        crate::schema::team_members::dsl::team_members
+            .filter(crate::schema::team_members::dsl::team_id.eq(team_id))
+            .filter(crate::schema::team_members::dsl::user_id.eq(member_user_id))
     )
     .execute(&mut conn)
     {
         Ok(_) => {
-            let response = ApiResponse::<()>::success((), "Member removed successfully");
+            let response = ApiResponse::<()>::success((), "Team member removed successfully");
             (StatusCode::OK, Json(response)).into_response()
-        }
+        },
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Failed to remove member");
+            let response = ApiResponse::<()>::internal_error("Failed to remove team member");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
         }
     }
 }
 
-/// 获取用户的团队列表（包括角色信息）
+/// 获取用户所属的团队列表
 pub async fn get_user_teams(
     State(pool): State<Arc<DbPool>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
 ) -> impl IntoResponse {
+    let current_user_id = auth_info.user.id;
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
+
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -957,68 +663,34 @@ pub async fn get_user_teams(
         }
     };
 
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
+    use crate::schema::team_members::dsl::*;
+    use crate::schema::teams::dsl as team_dsl;
 
-    // 获取用户所属的所有团队及角色
-    let teams_with_roles = match schema::team_members::table
-        .inner_join(schema::teams::table)
-        .filter(schema::team_members::user_id.eq(claims.sub))
-        .select((Team::as_select(), schema::team_members::role))
-        .load::<(Team, String)>(&mut conn)
+    let user_teams = match team_members
+        .filter(user_id.eq(current_user_id))
+        .inner_join(team_dsl::teams.on(team_dsl::id.eq(team_id)))
+        .filter(team_dsl::workspace_id.eq(current_workspace_id))
+        .select((TeamMember::as_select(), Team::as_select()))
+        .load::<(TeamMember, Team)>(&mut conn)
     {
-        Ok(results) => results,
+        Ok(results) => results
+            .into_iter()
+            .map(|(member, team)| TeamInfo {
+                id: team.id,
+                name: team.name,
+                team_key: team.team_key,
+                role: member.role,
+            })
+            .collect::<Vec<TeamInfo>>(),
         Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database error");
+            let response = ApiResponse::<()>::internal_error("Failed to retrieve user teams");
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
         }
     };
 
-    let team_infos: Vec<TeamInfo> = teams_with_roles
-        .into_iter()
-        .map(|(team, role)| TeamInfo {
-            id: team.id,
-            name: team.name,
-            team_key: team.team_key,
-            role,
-        })
-        .collect();
-
-    let response = ApiResponse::success(team_infos, "User teams retrieved successfully");
+    let response = ApiResponse::success(
+        Some(user_teams),
+        "User teams retrieved successfully",
+    );
     (StatusCode::OK, Json(response)).into_response()
-}
-
-// 辅助函数：获取团队成员列表
-fn get_team_members(conn: &mut PgConnection, team_id: Uuid) -> Result<Vec<team::TeamMemberInfo>, diesel::result::Error> {
-    let members = schema::team_members::table
-        .inner_join(schema::users::table)
-        .filter(schema::team_members::team_id.eq(team_id))
-        .select((User::as_select(), TeamMember::as_select()))
-        .load::<(User, TeamMember)>(conn)?
-        .into_iter()
-        .map(|(user, team_member)| {
-            let user_info = UserBasicInfo {
-                id: user.id,
-                name: user.name,
-                username: user.username,
-                email: user.email,
-                avatar_url: user.avatar_url,
-            };
-
-            team::TeamMemberInfo {
-                user: user_info,
-                role: team_member.role,
-                joined_at: team_member.joined_at,
-            }
-        })
-        .collect();
-
-    Ok(members)
 }

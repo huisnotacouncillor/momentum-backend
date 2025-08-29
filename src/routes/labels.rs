@@ -1,20 +1,18 @@
 use crate::AppState;
 use axum::{
-    extract::{Path, Query, State, TypedHeader},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     Json
 };
 use diesel::prelude::*;
-use headers::{Authorization, authorization::Bearer};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::cache::get_user_current_workspace_id_cached;
 use crate::db::models::*;
 use crate::db::enums::LabelLevel;
-use crate::middleware::auth::{AuthService, AuthConfig};
+use crate::middleware::auth::AuthUserInfo;
 use crate::schema;
 
 #[derive(Deserialize)]
@@ -40,35 +38,10 @@ pub struct UpdateLabelRequest {
 // 获取标签列表
 pub async fn get_labels(
     State(state): State<Arc<AppState>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Query(params): Query<LabelQuery>,
 ) -> impl IntoResponse {
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 从Redis获取当前用户的workspace_id
-    let workspace_id = match get_user_current_workspace_id_cached(&state.redis, &state.db, claims.sub).await {
-        Some(id) => id,
-        None => {
-            let response = ApiResponse::<()>::error(
-                400, 
-                "No current workspace found", 
-                vec![ErrorDetail {
-                    field: None,
-                    code: "NO_WORKSPACE".to_string(),
-                    message: "No current workspace found for user".to_string(),
-                }]
-            );
-            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-        }
-    };
+    let workspace_id = auth_info.current_workspace_id.unwrap();
 
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -113,35 +86,10 @@ pub async fn get_labels(
 // 创建标签
 pub async fn create_label(
     State(state): State<Arc<AppState>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Json(payload): Json<CreateLabelRequest>,
 ) -> impl IntoResponse {
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 从Redis获取当前用户的workspace_id
-    let workspace_id = match get_user_current_workspace_id_cached(&state.redis, &state.db, claims.sub).await {
-        Some(id) => id,
-        None => {
-            let response = ApiResponse::<()>::error(
-                400, 
-                "No current workspace found", 
-                vec![ErrorDetail {
-                    field: None,
-                    code: "NO_WORKSPACE".to_string(),
-                    message: "No current workspace found for user".to_string(),
-                }]
-            );
-            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-        }
-    };
+    let workspace_id = auth_info.current_workspace_id.unwrap();
 
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -181,36 +129,11 @@ pub async fn create_label(
 // 更新标签
 pub async fn update_label(
     State(state): State<Arc<AppState>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Path(label_id): Path<Uuid>,
     Json(payload): Json<UpdateLabelRequest>,
 ) -> impl IntoResponse {
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 从Redis获取当前用户的workspace_id
-    let workspace_id = match get_user_current_workspace_id_cached(&state.redis, &state.db, claims.sub).await {
-        Some(id) => id,
-        None => {
-            let response = ApiResponse::<()>::error(
-                400, 
-                "No current workspace found", 
-                vec![ErrorDetail {
-                    field: None,
-                    code: "NO_WORKSPACE".to_string(),
-                    message: "No current workspace found for user".to_string(),
-                }]
-            );
-            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-        }
-    };
+    let workspace_id = auth_info.current_workspace_id.unwrap();
 
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -329,35 +252,10 @@ pub async fn update_label(
 // 删除标签
 pub async fn delete_label(
     State(state): State<Arc<AppState>>,
-    TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
+    auth_info: AuthUserInfo,
     Path(label_id): Path<Uuid>,
 ) -> impl IntoResponse {
-    // 验证 access_token
-    let auth_service = AuthService::new(AuthConfig::default());
-    let claims = match auth_service.verify_token(bearer.token()) {
-        Ok(claims) => claims,
-        Err(_) => {
-            let response = ApiResponse::<()>::unauthorized("Invalid or expired access token");
-            return (StatusCode::UNAUTHORIZED, Json(response)).into_response();
-        }
-    };
-
-    // 从Redis获取当前用户的workspace_id
-    let workspace_id = match get_user_current_workspace_id_cached(&state.redis, &state.db, claims.sub).await {
-        Some(id) => id,
-        None => {
-            let response = ApiResponse::<()>::error(
-                400, 
-                "No current workspace found", 
-                vec![ErrorDetail {
-                    field: None,
-                    code: "NO_WORKSPACE".to_string(),
-                    message: "No current workspace found for user".to_string(),
-                }]
-            );
-            return (StatusCode::BAD_REQUEST, Json(response)).into_response();
-        }
-    };
+    let workspace_id = auth_info.current_workspace_id.unwrap();
 
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
