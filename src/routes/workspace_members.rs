@@ -350,10 +350,11 @@ pub async fn get_workspace_members_and_invitations(
         }
     };
 
-    // 获取工作区邀请
+    // 获取工作区邀请（只获取状态为pending的邀请）
     use crate::schema::invitations::dsl as inv_dsl;
     let invitations = match inv_dsl::invitations
         .filter(inv_dsl::workspace_id.eq(current_workspace_id))
+        .filter(inv_dsl::status.eq(InvitationStatus::Pending))
         .inner_join(user_dsl::users.on(user_dsl::id.eq(inv_dsl::invited_by)))
         .select((Invitation::as_select(), User::as_select()))
         .load::<(Invitation, User)>(&mut conn)
