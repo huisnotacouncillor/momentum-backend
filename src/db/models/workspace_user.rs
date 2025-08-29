@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use std::io::Write;
 
-use crate::schema::{workspace_users, self};
+use crate::schema::{workspace_members};
 
 // WorkspaceUserRole枚举定义
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, diesel::FromSqlRow, diesel::AsExpression)]
@@ -41,7 +41,7 @@ impl diesel::deserialize::FromSql<crate::schema::sql_types::WorkspaceUserRole, d
 
 // WorkspaceUser模型定义
 #[derive(Queryable, Selectable, Serialize, Deserialize, Clone, Debug)]
-#[diesel(table_name = workspace_users)]
+#[diesel(table_name = workspace_members)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct WorkspaceUser {
     pub user_id: Uuid,
@@ -52,7 +52,7 @@ pub struct WorkspaceUser {
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = workspace_users)]
+#[diesel(table_name = workspace_members)]
 pub struct NewWorkspaceUser {
     pub user_id: Uuid,
     pub workspace_id: Uuid,
@@ -60,7 +60,7 @@ pub struct NewWorkspaceUser {
 }
 
 #[derive(AsChangeset)]
-#[diesel(table_name = workspace_users)]
+#[diesel(table_name = workspace_members)]
 pub struct UpdateWorkspaceUser {
     pub role: Option<WorkspaceUserRole>,
 }

@@ -10,6 +10,8 @@ pub mod roadmap;
 pub mod team;
 pub mod workspace;
 pub mod workspace_member;
+pub mod workspace_user;
+pub mod invitation;
 
 // Re-export all models to maintain compatibility with existing code
 // This ensures that existing imports like `use crate::db::models::User` still work
@@ -46,3 +48,5 @@ pub use workspace::*;
 
 // WorkspaceMember models
 pub use workspace_member::*;
+pub use workspace_user::*;
+pub use invitation::*;

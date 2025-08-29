@@ -2,6 +2,10 @@
 
 pub mod sql_types {
     #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+    #[diesel(postgres_type(name = "invitation_status"))]
+    pub struct InvitationStatus;
+
+    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "label_level_enum"))]
     pub struct LabelLevelEnum;
 
@@ -31,6 +35,25 @@ diesel::table! {
         end_date -> Date,
         status -> Text,
         created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+    use super::sql_types::WorkspaceUserRole;
+    use super::sql_types::InvitationStatus;
+
+    invitations (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        #[max_length = 255]
+        email -> Varchar,
+        role -> WorkspaceUserRole,
+        status -> InvitationStatus,
+        invited_by -> Uuid,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+        expires_at -> Timestamptz,
     }
 }
 
@@ -232,6 +255,8 @@ diesel::table! {
 diesel::joinable!(comments -> issues (issue_id));
 diesel::joinable!(comments -> users (author_id));
 diesel::joinable!(cycles -> teams (team_id));
+diesel::joinable!(invitations -> users (invited_by));
+diesel::joinable!(invitations -> workspaces (workspace_id));
 diesel::joinable!(issue_labels -> issues (issue_id));
 diesel::joinable!(issue_labels -> labels (label_id));
 diesel::joinable!(issues -> cycles (cycle_id));
@@ -254,6 +279,7 @@ diesel::joinable!(workspace_members -> workspaces (workspace_id));
 diesel::allow_tables_to_appear_in_same_query!(
     comments,
     cycles,
+    invitations,
     issue_labels,
     issues,
     labels,

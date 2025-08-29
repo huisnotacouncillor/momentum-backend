@@ -6,6 +6,7 @@ pub mod teams;
 pub mod users;
 pub mod workspaces;
 pub mod workspace_members;
+pub mod invitations;
 
 use crate::AppState;
 use axum::{
@@ -27,7 +28,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/workspaces/:workspace_id", put(workspaces::update_workspace))
         .route("/workspaces/:workspace_id", delete(workspaces::delete_workspace))
         .route("/workspace-members", get(workspace_members::get_current_workspace_members))
+        .route("/workspace-member-and-invitations", get(workspace_members::get_workspace_members_and_invitations))
         .route("/workspaces/:workspace_id/members", get(workspace_members::get_workspace_members))
+        .route("/invitations", post(invitations::invite_member))
+        .route("/invitations", get(invitations::get_user_invitations))
+        .route("/invitations/:invitation_id", get(invitations::get_invitation_by_id))
+        .route("/invitations/:invitation_id/accept", post(invitations::accept_invitation))
+        .route("/invitations/:invitation_id/decline", post(invitations::decline_invitation))
+        .route("/invitations/:invitation_id/revoke", post(invitations::revoke_invitation))
         .route("/issues", post(issues::create_issue))
         .route("/issues", get(issues::get_issues))
         .route("/issues/:issue_id", get(issues::get_issue_by_id))

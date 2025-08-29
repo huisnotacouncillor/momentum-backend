@@ -147,7 +147,7 @@ pub async fn get_teams(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
 ) -> impl IntoResponse {
-    let _ = auth_info.current_workspace_id.unwrap();
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
 
     let mut conn = match pool.get() {
         Ok(conn) => conn,
@@ -159,7 +159,7 @@ pub async fn get_teams(
 
     use crate::schema::teams::dsl::*;
     let teams_list = match teams
-        .filter(workspace_id.eq(workspace_id))
+        .filter(workspace_id.eq(current_workspace_id))
         .select(Team::as_select())
         .order(created_at.desc())
         .load::<Team>(&mut conn)
