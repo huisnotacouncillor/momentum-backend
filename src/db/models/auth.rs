@@ -1,7 +1,7 @@
 use axum::async_trait;
 use axum::extract::FromRequestParts;
-use axum::http::request::Parts;
 use axum::http::StatusCode;
+use axum::http::request::Parts;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -76,7 +76,10 @@ where
     type Rejection = (StatusCode, String);
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        if let Some(auth_info) = parts.extensions.get::<crate::middleware::auth::AuthUserInfo>() {
+        if let Some(auth_info) = parts
+            .extensions
+            .get::<crate::middleware::auth::AuthUserInfo>()
+        {
             Ok(auth_info.user.clone())
         } else {
             Err((StatusCode::UNAUTHORIZED, "Unauthorized".to_string()))
@@ -112,7 +115,7 @@ pub struct RefreshTokenRequest {
     pub refresh_token: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct UserBasicInfo {
     pub id: Uuid,
     pub name: String,

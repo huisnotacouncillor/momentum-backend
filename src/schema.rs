@@ -123,6 +123,22 @@ diesel::table! {
 }
 
 diesel::table! {
+    project_statuses (id) {
+        id -> Uuid,
+        #[max_length = 255]
+        name -> Varchar,
+        description -> Nullable<Text>,
+        #[max_length = 7]
+        color -> Nullable<Varchar>,
+        #[max_length = 50]
+        category -> Varchar,
+        workspace_id -> Uuid,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     projects (id) {
         id -> Uuid,
         workspace_id -> Uuid,
@@ -133,10 +149,11 @@ diesel::table! {
         #[max_length = 10]
         project_key -> Varchar,
         description -> Nullable<Text>,
-        status -> Text,
         target_date -> Nullable<Date>,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        project_status_id -> Uuid,
+        priority -> Text,
     }
 }
 
@@ -173,6 +190,9 @@ diesel::table! {
         team_key -> Varchar,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        description -> Nullable<Text>,
+        icon_url -> Nullable<Text>,
+        is_private -> Bool,
     }
 }
 
@@ -263,6 +283,8 @@ diesel::joinable!(issues -> cycles (cycle_id));
 diesel::joinable!(issues -> projects (project_id));
 diesel::joinable!(issues -> teams (team_id));
 diesel::joinable!(labels -> workspaces (workspace_id));
+diesel::joinable!(project_statuses -> workspaces (workspace_id));
+diesel::joinable!(projects -> project_statuses (project_status_id));
 diesel::joinable!(projects -> roadmaps (roadmap_id));
 diesel::joinable!(projects -> users (owner_id));
 diesel::joinable!(projects -> workspaces (workspace_id));
@@ -284,6 +306,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     issues,
     labels,
     oauth_providers,
+    project_statuses,
     projects,
     roadmaps,
     team_members,

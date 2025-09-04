@@ -7,6 +7,8 @@ pub mod users;
 pub mod workspaces;
 pub mod workspace_members;
 pub mod invitations;
+pub mod cycles;
+pub mod project_statuses;
 
 use crate::AppState;
 use axum::{
@@ -56,6 +58,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/auth/oauth/:provider/callback", get(auth::oauth_callback))
         .route("/projects", post(projects::create_project))
         .route("/projects", get(projects::get_projects))
+        .route("/projects/:project_id", put(projects::update_project))
+        .route("/projects/:project_id", delete(projects::delete_project))
         .route("/issues/priorities", get(issues::get_issue_priorities))
         .route("/teams", post(teams::create_team))
         .route("/teams", get(teams::get_teams))
@@ -67,6 +71,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/teams/:team_id/members/:user_id", put(teams::update_team_member))
         .route("/teams/:team_id/members/:user_id", delete(teams::remove_team_member))
         .route("/user/teams", get(teams::get_user_teams))
+        .route("/cycles", post(cycles::create_cycle))
+        .route("/cycles", get(cycles::get_cycles))
+        .route("/cycles/:cycle_id", get(cycles::get_cycle_by_id))
+        .route("/cycles/:cycle_id", put(cycles::update_cycle))
+        .route("/cycles/:cycle_id", delete(cycles::delete_cycle))
+        .route("/project-statuses", post(project_statuses::create_project_status))
+        .route("/project-statuses", get(project_statuses::get_project_statuses))
+        .route("/project-statuses/:status_id", get(project_statuses::get_project_status_by_id))
+        .route("/project-statuses/:status_id", put(project_statuses::update_project_status))
+        .route("/project-statuses/:status_id", delete(project_statuses::delete_project_status))
         .with_state(Arc::new(state.db.clone()));
 
     // Merge the routers

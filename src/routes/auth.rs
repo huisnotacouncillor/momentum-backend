@@ -146,6 +146,9 @@ pub async fn register(
             workspace_id: workspace.id,
             name: team_name,
             team_key,
+            description: None,
+            icon_url: None,
+            is_private: false,
         };
 
         let team: Team = diesel::insert_into(schema::teams::table)
@@ -539,6 +542,9 @@ pub async fn get_profile(
             id: team.id,
             name: team.name,
             team_key: team.team_key,
+            description: team.description,
+            icon_url: team.icon_url,
+            is_private: team.is_private,
             role,
         });
     }
@@ -699,6 +705,9 @@ pub async fn switch_workspace(
             id: team.id,
             name: team.name,
             team_key: team.team_key,
+            description: team.description,
+            icon_url: team.icon_url,
+            is_private: team.is_private,
             role,
         })
         .collect();

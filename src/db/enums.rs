@@ -1,11 +1,12 @@
+use crate::schema::sql_types::LabelLevelEnum;
 use diesel::backend::Backend;
-use diesel::deserialize::{self, FromSql, Queryable};
+use diesel::deserialize::{self, FromSql};
 use diesel::pg::Pg;
 use diesel::serialize::{self, IsNull, Output, ToSql};
 use diesel::sql_types::Text;
+use diesel::{AsExpression, FromSqlRow, Queryable};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use crate::schema::sql_types::LabelLevelEnum;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ProjectStatus {
@@ -180,8 +181,46 @@ impl Queryable<Text, Pg> for IssuePriority {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(diesel::expression::AsExpression)]
+/// Project priority enum, using the same values as IssuePriority
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AsExpression, FromSqlRow)]
+#[diesel(sql_type = Text)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectPriority {
+    None,
+    Low,
+    Medium,
+    High,
+    Urgent,
+}
+
+impl FromSql<Text, Pg> for ProjectPriority {
+    fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        match s.as_str() {
+            "none" => Ok(ProjectPriority::None),
+            "low" => Ok(ProjectPriority::Low),
+            "medium" => Ok(ProjectPriority::Medium),
+            "high" => Ok(ProjectPriority::High),
+            "urgent" => Ok(ProjectPriority::Urgent),
+            _ => Err("Unrecognized enum variant".into()),
+        }
+    }
+}
+
+impl ToSql<Text, Pg> for ProjectPriority {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        match *self {
+            ProjectPriority::None => out.write_all(b"none")?,
+            ProjectPriority::Low => out.write_all(b"low")?,
+            ProjectPriority::Medium => out.write_all(b"medium")?,
+            ProjectPriority::High => out.write_all(b"high")?,
+            ProjectPriority::Urgent => out.write_all(b"urgent")?,
+        }
+        Ok(IsNull::No)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, diesel::expression::AsExpression)]
 #[diesel(sql_type = LabelLevelEnum)]
 pub enum LabelLevel {
     Project,

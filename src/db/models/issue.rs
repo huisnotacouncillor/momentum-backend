@@ -103,7 +103,7 @@ pub struct UpdateIssueRequest {
     pub is_changelog_candidate: Option<bool>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct IssueResponse {
     pub id: Uuid,
     pub project_id: Option<Uuid>,
@@ -122,6 +122,12 @@ pub struct IssueResponse {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub team_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assignee: Option<crate::db::models::auth::UserBasicInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_issue: Option<Box<IssueResponse>>, // boxed to avoid infinite size
+    #[serde(default)]
+    pub child_issues: Vec<IssueResponse>,
 }
 
 fn serialize_status<S>(status: &IssueStatus, serializer: S) -> Result<S::Ok, S::Error>
@@ -190,6 +196,9 @@ impl From<Issue> for IssueResponse {
             created_at: issue.created_at,
             updated_at: issue.updated_at,
             team_id: issue.team_id,
+            assignee: None,
+            parent_issue: None,
+            child_issues: Vec::new(),
         }
     }
 }

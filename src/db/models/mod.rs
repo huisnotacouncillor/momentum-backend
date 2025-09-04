@@ -3,15 +3,16 @@ pub mod api;
 pub mod auth;
 pub mod comment;
 pub mod cycle;
+pub mod invitation;
 pub mod issue;
 pub mod label;
 pub mod project;
+pub mod project_status; // Added project_status module
 pub mod roadmap;
 pub mod team;
 pub mod workspace;
 pub mod workspace_member;
 pub mod workspace_user;
-pub mod invitation;
 
 // Re-export all models to maintain compatibility with existing code
 // This ensures that existing imports like `use crate::db::models::User` still work

@@ -18,12 +18,18 @@ use crate::db::models::{ApiResponse, ErrorDetail, TeamMemberInfo, TeamInfo};
 pub struct CreateTeamRequest {
     pub name: String,
     pub team_key: String,
+    pub description: Option<String>,
+    pub icon_url: Option<String>,
+    pub is_private: bool,
 }
 
 #[derive(Deserialize)]
 pub struct UpdateTeamRequest {
     pub name: Option<String>,
     pub team_key: Option<String>,
+    pub description: Option<String>,
+    pub icon_url: Option<String>,
+    pub is_private: Option<bool>,
 }
 
 #[derive(Deserialize, Clone, Copy)]
@@ -96,13 +102,15 @@ pub async fn create_team(
         let new_team = NewTeam {
             name: payload.name.clone(),
             team_key: payload.team_key.clone(),
+            description: payload.description.clone(),
+            icon_url: payload.icon_url.clone(),
+            is_private: payload.is_private,
             workspace_id: current_workspace_id,
         };
 
-        let team = diesel::insert_into(schema::teams::table)
+        let team: Team = diesel::insert_into(schema::teams::table)
             .values(&new_team)
             .get_result::<Team>(conn)?;
-
         // 创建团队成员关系（创建者自动成为管理员）
         let new_team_member = NewTeamMember {
             user_id,
@@ -184,7 +192,7 @@ pub async fn get_team(
     auth_info: AuthUserInfo,
     Path(team_id): Path<Uuid>,
 ) -> impl IntoResponse {
-    let _current_workspace_id = auth_info.current_workspace_id.unwrap();
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
 
     let mut conn = match pool.get() {
         Ok(conn) => conn,
@@ -197,7 +205,7 @@ pub async fn get_team(
     use crate::schema::teams::dsl::*;
     let team = match teams
         .filter(id.eq(team_id))
-        .filter(workspace_id.eq(workspace_id))
+        .filter(workspace_id.eq(current_workspace_id))
         .select(Team::as_select())
         .first::<Team>(&mut conn)
     {
@@ -218,12 +226,12 @@ pub async fn get_team(
 /// 更新团队
 pub async fn update_team(
     State(pool): State<Arc<DbPool>>,
-    _auth_info: AuthUserInfo,
+    auth_info: AuthUserInfo,
     Path(team_id): Path<Uuid>,
     Json(payload): Json<UpdateTeamRequest>,
 ) -> impl IntoResponse {
-    // 移除了未使用的_workspace_id变量声明
-
+    let current_workspace_id = auth_info.current_workspace_id.unwrap();
+    
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -234,9 +242,9 @@ pub async fn update_team(
 
     // 检查团队是否存在且属于当前工作区
     use crate::schema::teams::dsl::*;
-    let _existing_team = match teams
+    let existing_team = match teams
         .filter(id.eq(team_id))
-        .filter(workspace_id.eq(workspace_id))
+        .filter(workspace_id.eq(current_workspace_id))
         .select(Team::as_select())
         .first::<Team>(&mut conn)
     {
@@ -247,67 +255,55 @@ pub async fn update_team(
         }
     };
 
-    // 构建更新查询
-    let updated_team = if let Some(team_name) = &payload.name {
-        if let Some(team_key_val) = &payload.team_key {
-            // 同时更新 name 和 team_key
-            match diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
-                .set((
-                    schema::teams::name.eq(team_name),
-                    schema::teams::team_key.eq(team_key_val)
-                ))
-                .get_result::<Team>(&mut conn)
-            {
-                Ok(team) => team,
-                Err(_) => {
-                    let response = ApiResponse::<()>::internal_error("Failed to update team");
-                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-                }
-            }
-        } else {
-            // 只更新 name
-            match diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
-                .set(schema::teams::name.eq(team_name))
-                .get_result::<Team>(&mut conn)
-            {
-                Ok(team) => team,
-                Err(_) => {
-                    let response = ApiResponse::<()>::internal_error("Failed to update team");
-                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-                }
-            }
-        }
-    } else if let Some(team_key_val) = &payload.team_key {
-        // 只更新 team_key
-        match diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
-            .set(schema::teams::team_key.eq(team_key_val))
-            .get_result::<Team>(&mut conn)
-        {
-            Ok(team) => team,
-            Err(_) => {
-                let response = ApiResponse::<()>::internal_error("Failed to update team");
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-            }
-        }
-    } else {
-        // 没有要更新的字段，返回原始团队信息
-        match schema::teams::table
-            .filter(schema::teams::id.eq(team_id))
-            .first::<Team>(&mut conn)
-        {
-            Ok(team) => team,
-            Err(_) => {
-                let response = ApiResponse::<()>::not_found("Team not found");
-                return (StatusCode::NOT_FOUND, Json(response)).into_response();
-            }
-        }
-    };
+    // 如果没有要更新的字段，则返回原始团队信息
+    if payload.name.is_none() && payload.team_key.is_none() && payload.description.is_none() 
+        && payload.icon_url.is_none() && payload.is_private.is_none() {
+        let response = ApiResponse::success(
+            Some(existing_team),
+            "Team retrieved successfully",
+        );
+        return (StatusCode::OK, Json(response)).into_response();
+    }
 
-    let response = ApiResponse::success(
-        Some(updated_team),
-        "Team updated successfully",
-    );
-    (StatusCode::OK, Json(response)).into_response()
+    // 构建更新查询，使用现有值作为默认值
+    let team_name = payload.name.as_ref().unwrap_or(&existing_team.name);
+    let team_key_val = payload.team_key.as_ref().unwrap_or(&existing_team.team_key);
+    let description_val = payload.description.as_ref().or(existing_team.description.as_ref());
+    let icon_url_val = payload.icon_url.as_ref().or(existing_team.icon_url.as_ref());
+    let is_private_val = payload.is_private.unwrap_or(existing_team.is_private);
+
+    match diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
+        .set((
+            schema::teams::name.eq(team_name),
+            schema::teams::team_key.eq(team_key_val),
+            schema::teams::description.eq(description_val),
+            schema::teams::icon_url.eq(icon_url_val),
+            schema::teams::is_private.eq(is_private_val)
+        ))
+        .get_result::<Team>(&mut conn)
+    {
+        Ok(updated_team) => {
+            let response = ApiResponse::success(
+                Some(updated_team),
+                "Team updated successfully",
+            );
+            (StatusCode::OK, Json(response)).into_response()
+        },
+        Err(e) => {
+            // 检查是否是唯一性约束违反错误
+            if e.to_string().contains("team_key") {
+                let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
+                    field: Some("team_key".to_string()),
+                    code: "DUPLICATE".to_string(),
+                    message: "Team with this key already exists in this workspace".to_string(),
+                }]);
+                (StatusCode::BAD_REQUEST, Json(response)).into_response()
+            } else {
+                let response = ApiResponse::<()>::internal_error("Failed to update team");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
+            }
+        }
+    }
 }
 
 /// 删除团队
@@ -679,6 +675,9 @@ pub async fn get_user_teams(
                 id: team.id,
                 name: team.name,
                 team_key: team.team_key,
+                description: team.description,
+                icon_url: team.icon_url,
+                is_private: team.is_private,
                 role: member.role,
             })
             .collect::<Vec<TeamInfo>>(),
