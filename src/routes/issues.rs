@@ -29,14 +29,15 @@ pub struct IssueQueryParams {
 pub struct CreateIssueRequest {
     pub title: String,
     pub description: Option<String>,
-    pub project_id: Uuid,
-    pub team_id: Option<Uuid>,
+    pub project_id: Option<Uuid>,
+    pub team_id: Uuid,
     pub priority: Option<IssuePriority>,
     pub assignee_id: Option<Uuid>,
     pub reporter_id: Option<Uuid>,
     pub workflow_id: Option<Uuid>,
     pub workflow_state_id: Option<Uuid>,
     pub label_ids: Option<Vec<Uuid>>,
+    pub cycle_id: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
@@ -121,23 +122,27 @@ pub async fn create_issue(
 
     // Begin a transaction for this query
     let transaction_result = conn.transaction::<_, diesel::result::Error, _>(|conn| {
-        // 检查项目是否存在且属于当前工作区
-        use crate::schema::projects::dsl::*;
-        let project = projects
-            .filter(id.eq(payload.project_id))
-            .filter(workspace_id.eq(current_workspace_id))
-            .select(Project::as_select())
-            .first::<Project>(conn)?;
+        // 如果指定了项目，检查项目是否存在且属于当前工作区
+        let _project = if let Some(project_id) = payload.project_id {
+            use crate::schema::projects::dsl::*;
+            Some(
+                projects
+                    .filter(id.eq(project_id))
+                    .filter(workspace_id.eq(current_workspace_id))
+                    .select(Project::as_select())
+                    .first::<Project>(conn)?,
+            )
+        } else {
+            None
+        };
 
-        // 如果指定了团队，验证团队是否存在且属于当前工作区
-        if let Some(team_id) = payload.team_id {
-            use crate::schema::teams::dsl::*;
-            teams
-                .filter(id.eq(team_id))
-                .filter(workspace_id.eq(current_workspace_id))
-                .select(Team::as_select())
-                .first::<Team>(conn)?;
-        }
+        // 验证团队是否存在且属于当前工作区
+        use crate::schema::teams::dsl::*;
+        teams
+            .filter(id.eq(payload.team_id))
+            .filter(workspace_id.eq(current_workspace_id))
+            .select(Team::as_select())
+            .first::<Team>(conn)?;
 
         // 如果指定了负责人，验证用户是否是工作区成员
         if let Some(assignee_id) = payload.assignee_id {
@@ -160,13 +165,45 @@ pub async fn create_issue(
                 .first::<WorkspaceMember>(conn)?;
         }
 
+        // 如果指定了周期，验证周期是否存在且属于当前工作区
+        if let Some(cycle_id) = payload.cycle_id {
+            use crate::schema::cycles::dsl as cycles_dsl;
+            use crate::schema::teams::dsl as teams_dsl;
+            cycles_dsl::cycles
+                .inner_join(teams_dsl::teams.on(cycles_dsl::team_id.eq(teams_dsl::id)))
+                .filter(cycles_dsl::id.eq(cycle_id))
+                .filter(teams_dsl::workspace_id.eq(current_workspace_id))
+                .select(Cycle::as_select())
+                .first::<Cycle>(conn)?;
+        }
+
+        // 如果只传了 workflow_state_id，需要倒查 workflow_id
+        let (final_workflow_id, final_workflow_state_id) =
+            match (payload.workflow_id, payload.workflow_state_id) {
+                (Some(wf_id), Some(wf_state_id)) => (Some(wf_id), Some(wf_state_id)),
+                (None, Some(wf_state_id)) => {
+                    // 根据 workflow_state_id 查询 workflow_id
+                    use crate::schema::workflow_states::dsl::*;
+                    match workflow_states
+                        .filter(id.eq(wf_state_id))
+                        .select(workflow_id)
+                        .first::<uuid::Uuid>(conn)
+                    {
+                        Ok(wf_id) => (Some(wf_id), Some(wf_state_id)),
+                        Err(_) => return Err(diesel::result::Error::NotFound), // workflow_state_id 不存在
+                    }
+                }
+                (Some(wf_id), None) => (Some(wf_id), None),
+                (None, None) => (None, None),
+            };
+
         // 创建问题
         let new_issue = NewIssue {
             title: payload.title,
             description: payload.description,
-            project_id: Some(payload.project_id),
-            cycle_id: None,
-            team_id: payload.team_id.unwrap_or(project.id), // 使用project.id作为默认team_id
+            project_id: payload.project_id,
+            cycle_id: payload.cycle_id,
+            team_id: payload.team_id,
             priority: Some(match payload.priority.unwrap_or(IssuePriority::None) {
                 IssuePriority::None => "none".to_string(),
                 IssuePriority::Low => "low".to_string(),
@@ -178,8 +215,8 @@ pub async fn create_issue(
             assignee_id: payload.assignee_id,
             parent_issue_id: None,
             is_changelog_candidate: Some(false),
-            workflow_id: payload.workflow_id,
-            workflow_state_id: payload.workflow_state_id,
+            workflow_id: final_workflow_id,
+            workflow_state_id: final_workflow_state_id,
         };
 
         let issue = diesel::insert_into(crate::schema::issues::table)
