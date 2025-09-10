@@ -10,6 +10,7 @@ pub mod project;
 pub mod project_status; // Added project_status module
 pub mod roadmap;
 pub mod team;
+pub mod workflow; // Added workflow module
 pub mod workspace;
 pub mod workspace_member;
 pub mod workspace_user;
@@ -48,6 +49,9 @@ pub use team::*;
 pub use workspace::*;
 
 // WorkspaceMember models
+pub use invitation::*;
 pub use workspace_member::*;
 pub use workspace_user::*;
-pub use invitation::*;
+
+// Workflow models
+pub use workflow::*;

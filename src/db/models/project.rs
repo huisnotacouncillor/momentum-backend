@@ -97,7 +97,7 @@ pub struct CreateProjectRequest {
     pub priority: Option<ProjectPriority>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ProjectInfo {
     pub id: Uuid,
     pub name: String,

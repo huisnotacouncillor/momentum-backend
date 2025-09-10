@@ -1,13 +1,12 @@
-use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use diesel::serialize::{self, Output, ToSql};
 use diesel::deserialize::{self, FromSql};
 use diesel::pg::Pg;
+use diesel::prelude::*;
+use diesel::serialize::{self, Output, ToSql};
+use serde::{Deserialize, Serialize};
 use std::io::Write;
+use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(diesel::AsExpression, diesel::FromSqlRow)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, diesel::AsExpression, diesel::FromSqlRow)]
 #[diesel(sql_type = diesel::sql_types::Text)]
 pub enum ProjectStatusCategory {
     Backlog,
@@ -27,7 +26,7 @@ impl ProjectStatusCategory {
             ProjectStatusCategory::Canceled => "canceled",
         }
     }
-    
+
     pub fn from_str(s: &str) -> Self {
         match s {
             "backlog" => ProjectStatusCategory::Backlog,
@@ -137,7 +136,7 @@ pub struct CreateProjectStatusRequest {
     pub category: ProjectStatusCategory,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ProjectStatusInfo {
     pub id: Uuid,
     pub name: String,

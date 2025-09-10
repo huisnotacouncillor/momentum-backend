@@ -60,7 +60,7 @@ pub struct TeamInfo {
     pub role: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct TeamBasicInfo {
     pub id: Uuid,
     pub name: String,

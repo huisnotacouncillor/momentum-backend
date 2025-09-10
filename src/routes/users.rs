@@ -54,7 +54,7 @@ pub async fn update_profile(
                     .set((
                         schema::users::name.eq(name),
                         schema::users::username.eq(username),
-                        schema::users::email.eq(email)
+                        schema::users::email.eq(email),
                     ))
                     .returning(User::as_returning())
                     .get_result(&mut conn)
@@ -63,7 +63,7 @@ pub async fn update_profile(
                 diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
                     .set((
                         schema::users::name.eq(name),
-                        schema::users::username.eq(username)
+                        schema::users::username.eq(username),
                     ))
                     .returning(User::as_returning())
                     .get_result(&mut conn)
@@ -71,10 +71,7 @@ pub async fn update_profile(
         } else if let Some(email) = payload.email {
             // 更新 name 和 email
             diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
-                .set((
-                    schema::users::name.eq(name),
-                    schema::users::email.eq(email)
-                ))
+                .set((schema::users::name.eq(name), schema::users::email.eq(email)))
                 .returning(User::as_returning())
                 .get_result(&mut conn)
         } else {
@@ -90,7 +87,7 @@ pub async fn update_profile(
             diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
                 .set((
                     schema::users::username.eq(username),
-                    schema::users::email.eq(email)
+                    schema::users::email.eq(email),
                 ))
                 .returning(User::as_returning())
                 .get_result(&mut conn)
@@ -120,11 +117,14 @@ pub async fn update_profile(
     // 处理更新结果
     let updated_user: User = match result {
         Ok(user) => user,
-        Err(diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)) => {
+        Err(diesel::result::Error::DatabaseError(
+            diesel::result::DatabaseErrorKind::UniqueViolation,
+            _,
+        )) => {
             let response = ApiResponse::<()>::conflict(
-                "Username or email already exists", 
-                None, 
-                "DUPLICATE_FIELD"
+                "Username or email already exists",
+                None,
+                "DUPLICATE_FIELD",
             );
             return (StatusCode::CONFLICT, Json(response)).into_response();
         }
@@ -214,9 +214,6 @@ pub async fn get_users(
         }
     };
 
-    let response = ApiResponse::success(
-        Some(users_list),
-        "Users retrieved successfully",
-    );
+    let response = ApiResponse::success(Some(users_list), "Users retrieved successfully");
     (StatusCode::OK, Json(response)).into_response()
 }

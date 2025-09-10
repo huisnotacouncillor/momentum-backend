@@ -1,17 +1,17 @@
+use crate::db::models::{ApiResponse, ErrorDetail, User};
 use crate::db::{DbPool, models::AuthUser};
 use axum::{
+    Json,
     extract::{FromRequestParts, State},
     http::{Request, StatusCode, header::AUTHORIZATION},
     middleware::Next,
-    response::{Response, IntoResponse},
-    Json,
+    response::{IntoResponse, Response},
 };
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
-use crate::db::models::{ApiResponse, ErrorDetail, User};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -55,6 +55,30 @@ pub struct AuthService {
 impl AuthService {
     pub fn new(config: AuthConfig) -> Self {
         Self { config }
+    }
+
+    /// 检查token是否需要续期
+    pub fn should_refresh_token(&self, claims: &Claims) -> bool {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let time_until_expiry = claims.exp.saturating_sub(now);
+        // 距离过期还有15分钟时续期
+        time_until_expiry <= 15 * 60
+    }
+
+    /// 检查token是否即将过期（用于客户端提示）
+    pub fn is_token_expiring_soon(&self, claims: &Claims) -> bool {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let time_until_expiry = claims.exp.saturating_sub(now);
+        // 距离过期还有5分钟时提示
+        time_until_expiry <= 5 * 60
     }
 
     pub fn generate_access_token(
@@ -138,7 +162,11 @@ pub async fn auth_middleware(
         .headers()
         .get(AUTHORIZATION)
         .and_then(|auth_header| auth_header.to_str().ok())
-        .and_then(|auth_str| auth_str.strip_prefix("Bearer ").map(|stripped| stripped.to_string()));
+        .and_then(|auth_str| {
+            auth_str
+                .strip_prefix("Bearer ")
+                .map(|stripped| stripped.to_string())
+        });
 
     let token = match auth_header {
         Some(token) => token,
@@ -172,31 +200,60 @@ pub async fn auth_middleware(
     // 检查用户是否有当前工作区
     if user.current_workspace_id.is_none() {
         let response = ApiResponse::<()>::error(
-            400, 
-            "No current workspace found", 
+            400,
+            "No current workspace found",
             vec![ErrorDetail {
                 field: None,
                 code: "NO_WORKSPACE".to_string(),
                 message: "No current workspace found for user".to_string(),
-            }]
+            }],
         );
         return Err((StatusCode::BAD_REQUEST, Json(response)).into_response());
     }
+
+    // 检查token是否需要续期（距离过期还有15分钟时续期）
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let time_until_expiry = claims.exp.saturating_sub(now);
+    let should_refresh = time_until_expiry <= 15 * 60; // 15分钟
 
     // 构建认证用户信息
     let auth_user_info = AuthUserInfo {
         user: AuthUser {
             id: user.id,
-            email: user.email,
-            username: user.username,
-            name: user.name,
-            avatar_url: user.avatar_url,
+            email: user.email.clone(),
+            username: user.username.clone(),
+            name: user.name.clone(),
+            avatar_url: user.avatar_url.clone(),
         },
         current_workspace_id: user.current_workspace_id,
     };
 
     // 将用户信息添加到请求扩展中
     request.extensions_mut().insert(auth_user_info);
+
+    if should_refresh {
+        // 生成新的access token
+        let auth_user = AuthUser {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            name: user.name,
+            avatar_url: user.avatar_url,
+        };
+
+        if let Ok(new_access_token) = auth_service.generate_access_token(&auth_user) {
+            // 将新token添加到响应头中
+            let mut response = next.run(request).await;
+            response
+                .headers_mut()
+                .insert("X-New-Access-Token", new_access_token.parse().unwrap());
+            return Ok(response);
+        }
+    }
 
     Ok(next.run(request).await)
 }
@@ -210,7 +267,11 @@ pub async fn optional_auth_middleware(
         .headers()
         .get(AUTHORIZATION)
         .and_then(|auth_header| auth_header.to_str().ok())
-        .and_then(|auth_str| auth_str.strip_prefix("Bearer ").map(|stripped| stripped.to_string()));
+        .and_then(|auth_str| {
+            auth_str
+                .strip_prefix("Bearer ")
+                .map(|stripped| stripped.to_string())
+        });
 
     if let Some(token) = &auth_header {
         let auth_service = AuthService::new(AuthConfig::default());

@@ -492,6 +492,9 @@ mod user_tests {
             id: Uuid::new_v4(),
             name: "Test Team".to_string(),
             team_key: "TEST".to_string(),
+            description: Some("Test team description".to_string()),
+            icon_url: None,
+            is_private: false,
             role: "admin".to_string(),
         };
 
@@ -554,6 +557,9 @@ mod user_tests {
             id: team_id,
             name: "Test Team".to_string(),
             team_key: "TEST".to_string(),
+            description: Some("Test team description".to_string()),
+            icon_url: None,
+            is_private: false,
             role: "admin".to_string(),
         };
 
@@ -575,5 +581,101 @@ mod user_tests {
         println!("✅ Workspace switching DTOs test passed");
         println!("   - Request structure: ✓");
         println!("   - New WorkspaceSwitchResult structure: ✓");
+    }
+
+    #[tokio::test]
+    async fn test_default_workflow_states_creation() {
+        // This test verifies that the default workflow states are correctly defined
+        use rust_backend::db::models::workflow::{DefaultWorkflowState, WorkflowStateCategory};
+
+        let default_states = DefaultWorkflowState::get_default_states();
+
+        // Verify we have the expected number of states
+        assert_eq!(
+            default_states.len(),
+            7,
+            "Should have 7 default workflow states"
+        );
+
+        // Verify specific states exist with correct properties
+        let backlog_state = default_states.iter().find(|s| s.name == "Backlog").unwrap();
+        assert_eq!(
+            backlog_state.description,
+            "Issues that are not yet prioritized"
+        );
+        assert_eq!(backlog_state.color, "#999999");
+        assert_eq!(backlog_state.category, WorkflowStateCategory::Backlog);
+        assert_eq!(backlog_state.position, 1);
+        assert!(backlog_state.is_default);
+
+        let todo_state = default_states.iter().find(|s| s.name == "Todo").unwrap();
+        assert_eq!(
+            todo_state.description,
+            "Issues that are ready to be worked on"
+        );
+        assert_eq!(todo_state.color, "#999999");
+        assert_eq!(todo_state.category, WorkflowStateCategory::Unstarted);
+        assert_eq!(todo_state.position, 1);
+        assert!(!todo_state.is_default);
+
+        let in_progress_state = default_states
+            .iter()
+            .find(|s| s.name == "In Progress")
+            .unwrap();
+        assert_eq!(
+            in_progress_state.description,
+            "Issues currently being worked on"
+        );
+        assert_eq!(in_progress_state.color, "#F1BF00");
+        assert_eq!(in_progress_state.category, WorkflowStateCategory::Started);
+        assert_eq!(in_progress_state.position, 1);
+        assert!(!in_progress_state.is_default);
+
+        let in_review_state = default_states
+            .iter()
+            .find(|s| s.name == "In Review")
+            .unwrap();
+        assert_eq!(in_review_state.description, "Issues ready for review");
+        assert_eq!(in_review_state.color, "#82E0AA");
+        assert_eq!(in_review_state.category, WorkflowStateCategory::Started);
+        assert_eq!(in_review_state.position, 2);
+        assert!(!in_review_state.is_default);
+
+        let done_state = default_states.iter().find(|s| s.name == "Done").unwrap();
+        assert_eq!(done_state.description, "Completed issues");
+        assert_eq!(done_state.color, "#0082FF");
+        assert_eq!(done_state.category, WorkflowStateCategory::Completed);
+        assert_eq!(done_state.position, 1);
+        assert!(!done_state.is_default);
+
+        let canceled_state = default_states
+            .iter()
+            .find(|s| s.name == "Canceled")
+            .unwrap();
+        assert_eq!(canceled_state.description, "Canceled or invalid issues");
+        assert_eq!(canceled_state.color, "#333333");
+        assert_eq!(canceled_state.category, WorkflowStateCategory::Canceled);
+        assert_eq!(canceled_state.position, 1);
+        assert!(!canceled_state.is_default);
+
+        let duplicated_state = default_states
+            .iter()
+            .find(|s| s.name == "Duplicated")
+            .unwrap();
+        assert_eq!(duplicated_state.description, "Duplicated Issue");
+        assert_eq!(duplicated_state.color, "#333333");
+        assert_eq!(duplicated_state.category, WorkflowStateCategory::Canceled);
+        assert_eq!(duplicated_state.position, 0);
+        assert!(!duplicated_state.is_default);
+
+        println!("✅ Default workflow states creation test passed");
+        println!("   - Total states: {}", default_states.len());
+        println!("   - Backlog state: ✓ (default)");
+        println!("   - Todo state: ✓");
+        println!("   - In Progress state: ✓");
+        println!("   - In Review state: ✓");
+        println!("   - Done state: ✓");
+        println!("   - Canceled state: ✓");
+        println!("   - Duplicated state: ✓");
     }
 }

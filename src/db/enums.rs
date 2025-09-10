@@ -53,6 +53,7 @@ impl Queryable<Text, Pg> for ProjectStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum CycleStatus {
     Planned,
     Active,
@@ -91,53 +92,7 @@ impl Queryable<Text, Pg> for CycleStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum IssueStatus {
-    Backlog,
-    Todo,
-    InProgress,
-    InReview,
-    Done,
-    Canceled,
-}
-
-impl FromSql<Text, Pg> for IssueStatus {
-    fn from_sql(bytes: <Pg as Backend>::RawValue<'_>) -> deserialize::Result<Self> {
-        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
-        match s.as_str() {
-            "backlog" => Ok(IssueStatus::Backlog),
-            "todo" => Ok(IssueStatus::Todo),
-            "in_progress" => Ok(IssueStatus::InProgress),
-            "in_review" => Ok(IssueStatus::InReview),
-            "done" => Ok(IssueStatus::Done),
-            "canceled" => Ok(IssueStatus::Canceled),
-            _ => Err("Unrecognized enum variant".into()),
-        }
-    }
-}
-
-impl ToSql<Text, Pg> for IssueStatus {
-    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
-        match *self {
-            IssueStatus::Backlog => out.write_all(b"backlog")?,
-            IssueStatus::Todo => out.write_all(b"todo")?,
-            IssueStatus::InProgress => out.write_all(b"in_progress")?,
-            IssueStatus::InReview => out.write_all(b"in_review")?,
-            IssueStatus::Done => out.write_all(b"done")?,
-            IssueStatus::Canceled => out.write_all(b"canceled")?,
-        }
-        Ok(IsNull::No)
-    }
-}
-
-impl Queryable<Text, Pg> for IssueStatus {
-    type Row = Self;
-
-    fn build(row: Self::Row) -> deserialize::Result<Self> {
-        Ok(row)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum IssuePriority {
     None,
     Low,

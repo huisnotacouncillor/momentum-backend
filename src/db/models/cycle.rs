@@ -15,6 +15,9 @@ pub struct Cycle {
     pub end_date: chrono::NaiveDate,
     pub status: CycleStatus,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    pub description: Option<String>,
+    pub goal: Option<String>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Insertable)]
@@ -24,4 +27,6 @@ pub struct NewCycle {
     pub name: String,
     pub start_date: chrono::NaiveDate,
     pub end_date: chrono::NaiveDate,
+    pub description: Option<String>,
+    pub goal: Option<String>,
 }

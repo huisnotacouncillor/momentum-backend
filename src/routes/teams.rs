@@ -1,5 +1,7 @@
+use crate::db::models::{ApiResponse, ErrorDetail, TeamInfo, TeamMemberInfo};
 use crate::db::{DbPool, models::*};
 use crate::middleware::auth::AuthUserInfo;
+use crate::routes::workflows::create_default_workflow_for_team;
 use crate::schema;
 use axum::{
     Json,
@@ -11,7 +13,6 @@ use diesel::prelude::*;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::db::models::{ApiResponse, ErrorDetail, TeamMemberInfo, TeamInfo};
 
 // 请求体定义
 #[derive(Deserialize)]
@@ -87,11 +88,16 @@ pub async fn create_team(
     }
 
     // 检查 team_key 格式
-    if !payload.team_key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if !payload
+        .team_key
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
             field: Some("team_key".to_string()),
             code: "INVALID_FORMAT".to_string(),
-            message: "Team key can only contain letters, numbers, hyphens, and underscores".to_string(),
+            message: "Team key can only contain letters, numbers, hyphens, and underscores"
+                .to_string(),
         }]);
         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
@@ -111,6 +117,7 @@ pub async fn create_team(
         let team: Team = diesel::insert_into(schema::teams::table)
             .values(&new_team)
             .get_result::<Team>(conn)?;
+
         // 创建团队成员关系（创建者自动成为管理员）
         let new_team_member = NewTeamMember {
             user_id,
@@ -122,17 +129,17 @@ pub async fn create_team(
             .values(&new_team_member)
             .execute(conn)?;
 
+        // 创建默认工作流和状态
+        create_default_workflow_for_team(conn, team.id)?;
+
         Ok(team)
     });
 
     match result {
         Ok(team) => {
-            let response = ApiResponse::success(
-                Some(team),
-                "Team created successfully",
-            );
+            let response = ApiResponse::success(Some(team), "Team created successfully");
             (StatusCode::CREATED, Json(response)).into_response()
-        },
+        }
         Err(e) => {
             // 检查是否是唯一性约束违反错误
             if e.to_string().contains("team_key") {
@@ -179,10 +186,7 @@ pub async fn get_teams(
         }
     };
 
-    let response = ApiResponse::success(
-        Some(teams_list),
-        "Teams retrieved successfully",
-    );
+    let response = ApiResponse::success(Some(teams_list), "Teams retrieved successfully");
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -216,10 +220,7 @@ pub async fn get_team(
         }
     };
 
-    let response = ApiResponse::success(
-        Some(team),
-        "Team retrieved successfully",
-    );
+    let response = ApiResponse::success(Some(team), "Team retrieved successfully");
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -231,7 +232,7 @@ pub async fn update_team(
     Json(payload): Json<UpdateTeamRequest>,
 ) -> impl IntoResponse {
     let current_workspace_id = auth_info.current_workspace_id.unwrap();
-    
+
     let mut conn = match pool.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -256,20 +257,27 @@ pub async fn update_team(
     };
 
     // 如果没有要更新的字段，则返回原始团队信息
-    if payload.name.is_none() && payload.team_key.is_none() && payload.description.is_none() 
-        && payload.icon_url.is_none() && payload.is_private.is_none() {
-        let response = ApiResponse::success(
-            Some(existing_team),
-            "Team retrieved successfully",
-        );
+    if payload.name.is_none()
+        && payload.team_key.is_none()
+        && payload.description.is_none()
+        && payload.icon_url.is_none()
+        && payload.is_private.is_none()
+    {
+        let response = ApiResponse::success(Some(existing_team), "Team retrieved successfully");
         return (StatusCode::OK, Json(response)).into_response();
     }
 
     // 构建更新查询，使用现有值作为默认值
     let team_name = payload.name.as_ref().unwrap_or(&existing_team.name);
     let team_key_val = payload.team_key.as_ref().unwrap_or(&existing_team.team_key);
-    let description_val = payload.description.as_ref().or(existing_team.description.as_ref());
-    let icon_url_val = payload.icon_url.as_ref().or(existing_team.icon_url.as_ref());
+    let description_val = payload
+        .description
+        .as_ref()
+        .or(existing_team.description.as_ref());
+    let icon_url_val = payload
+        .icon_url
+        .as_ref()
+        .or(existing_team.icon_url.as_ref());
     let is_private_val = payload.is_private.unwrap_or(existing_team.is_private);
 
     match diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
@@ -278,17 +286,14 @@ pub async fn update_team(
             schema::teams::team_key.eq(team_key_val),
             schema::teams::description.eq(description_val),
             schema::teams::icon_url.eq(icon_url_val),
-            schema::teams::is_private.eq(is_private_val)
+            schema::teams::is_private.eq(is_private_val),
         ))
         .get_result::<Team>(&mut conn)
     {
         Ok(updated_team) => {
-            let response = ApiResponse::success(
-                Some(updated_team),
-                "Team updated successfully",
-            );
+            let response = ApiResponse::success(Some(updated_team), "Team updated successfully");
             (StatusCode::OK, Json(response)).into_response()
-        },
+        }
         Err(e) => {
             // 检查是否是唯一性约束违反错误
             if e.to_string().contains("team_key") {
@@ -337,11 +342,15 @@ pub async fn delete_team(
     }
 
     // 删除团队
-    match diesel::delete(crate::schema::teams::dsl::teams.filter(crate::schema::teams::dsl::id.eq(team_id))).execute(&mut conn) {
+    match diesel::delete(
+        crate::schema::teams::dsl::teams.filter(crate::schema::teams::dsl::id.eq(team_id)),
+    )
+    .execute(&mut conn)
+    {
         Ok(_) => {
             let response = ApiResponse::<()>::success((), "Team deleted successfully");
             (StatusCode::OK, Json(response)).into_response()
-        },
+        }
         Err(_) => {
             let response = ApiResponse::<()>::internal_error("Failed to delete team");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
@@ -421,7 +430,7 @@ pub async fn add_team_member(
         Ok(_) => {
             let response = ApiResponse::<()>::success((), "Team member added successfully");
             (StatusCode::CREATED, Json(response)).into_response()
-        },
+        }
         Err(e) => {
             // 检查是否是唯一性约束违反错误
             if e.to_string().contains("team_members_user_id_team_id_key") {
@@ -498,10 +507,7 @@ pub async fn get_team_members_list(
         }
     };
 
-    let response = ApiResponse::success(
-        Some(members),
-        "Team members retrieved successfully",
-    );
+    let response = ApiResponse::success(Some(members), "Team members retrieved successfully");
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -559,7 +565,7 @@ pub async fn update_team_member(
     match diesel::update(
         crate::schema::team_members::dsl::team_members
             .filter(crate::schema::team_members::dsl::team_id.eq(team_id))
-            .filter(crate::schema::team_members::dsl::user_id.eq(member_user_id))
+            .filter(crate::schema::team_members::dsl::user_id.eq(member_user_id)),
     )
     .set(schema::team_members::role.eq(match role {
         TeamRole::Admin => "admin".to_string(),
@@ -570,7 +576,7 @@ pub async fn update_team_member(
         Ok(_) => {
             let response = ApiResponse::<()>::success((), "Team member updated successfully");
             (StatusCode::OK, Json(response)).into_response()
-        },
+        }
         Err(_) => {
             let response = ApiResponse::<()>::internal_error("Failed to update team member");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
@@ -628,14 +634,14 @@ pub async fn remove_team_member(
     match diesel::delete(
         crate::schema::team_members::dsl::team_members
             .filter(crate::schema::team_members::dsl::team_id.eq(team_id))
-            .filter(crate::schema::team_members::dsl::user_id.eq(member_user_id))
+            .filter(crate::schema::team_members::dsl::user_id.eq(member_user_id)),
     )
     .execute(&mut conn)
     {
         Ok(_) => {
             let response = ApiResponse::<()>::success((), "Team member removed successfully");
             (StatusCode::OK, Json(response)).into_response()
-        },
+        }
         Err(_) => {
             let response = ApiResponse::<()>::internal_error("Failed to remove team member");
             (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response()
@@ -687,9 +693,6 @@ pub async fn get_user_teams(
         }
     };
 
-    let response = ApiResponse::success(
-        Some(user_teams),
-        "User teams retrieved successfully",
-    );
+    let response = ApiResponse::success(Some(user_teams), "User teams retrieved successfully");
     (StatusCode::OK, Json(response)).into_response()
 }

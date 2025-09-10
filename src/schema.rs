@@ -35,6 +35,9 @@ diesel::table! {
         end_date -> Date,
         status -> Text,
         created_at -> Timestamptz,
+        description -> Nullable<Text>,
+        goal -> Nullable<Text>,
+        updated_at -> Timestamptz,
     }
 }
 
@@ -76,12 +79,13 @@ diesel::table! {
         #[max_length = 512]
         title -> Varchar,
         description -> Nullable<Text>,
-        status -> Text,
         priority -> Text,
         is_changelog_candidate -> Bool,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
         team_id -> Uuid,
+        workflow_id -> Nullable<Uuid>,
+        workflow_state_id -> Nullable<Uuid>,
     }
 }
 
@@ -248,6 +252,50 @@ diesel::table! {
 }
 
 diesel::table! {
+    workflow_states (id) {
+        id -> Uuid,
+        workflow_id -> Uuid,
+        #[max_length = 255]
+        name -> Varchar,
+        description -> Nullable<Text>,
+        #[max_length = 7]
+        color -> Nullable<Varchar>,
+        #[max_length = 50]
+        category -> Varchar,
+        position -> Int4,
+        is_default -> Bool,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    workflow_transitions (id) {
+        id -> Uuid,
+        workflow_id -> Uuid,
+        from_state_id -> Nullable<Uuid>,
+        to_state_id -> Uuid,
+        #[max_length = 255]
+        name -> Nullable<Varchar>,
+        description -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    workflows (id) {
+        id -> Uuid,
+        #[max_length = 255]
+        name -> Varchar,
+        description -> Nullable<Text>,
+        team_id -> Uuid,
+        is_default -> Bool,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     use diesel::sql_types::*;
     use super::sql_types::WorkspaceUserRole;
 
@@ -282,6 +330,8 @@ diesel::joinable!(issue_labels -> labels (label_id));
 diesel::joinable!(issues -> cycles (cycle_id));
 diesel::joinable!(issues -> projects (project_id));
 diesel::joinable!(issues -> teams (team_id));
+diesel::joinable!(issues -> workflow_states (workflow_state_id));
+diesel::joinable!(issues -> workflows (workflow_id));
 diesel::joinable!(labels -> workspaces (workspace_id));
 diesel::joinable!(project_statuses -> workspaces (workspace_id));
 diesel::joinable!(projects -> project_statuses (project_status_id));
@@ -295,6 +345,9 @@ diesel::joinable!(teams -> workspaces (workspace_id));
 diesel::joinable!(user_credentials -> users (user_id));
 diesel::joinable!(user_sessions -> users (user_id));
 diesel::joinable!(users -> workspaces (current_workspace_id));
+diesel::joinable!(workflow_states -> workflows (workflow_id));
+diesel::joinable!(workflow_transitions -> workflows (workflow_id));
+diesel::joinable!(workflows -> teams (team_id));
 diesel::joinable!(workspace_members -> users (user_id));
 diesel::joinable!(workspace_members -> workspaces (workspace_id));
 
@@ -314,6 +367,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     user_credentials,
     user_sessions,
     users,
+    workflow_states,
+    workflow_transitions,
+    workflows,
     workspace_members,
     workspaces,
 );
