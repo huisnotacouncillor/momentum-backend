@@ -5,6 +5,8 @@ use axum::http::request::Parts;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use validator::Validate;
+use crate::validation::rules::{validate_password_strength, validate_username_format};
 
 // User models
 #[derive(Queryable, Selectable, Serialize, Deserialize, Clone, Debug)]
@@ -59,7 +61,7 @@ pub struct NewUserCredential {
 }
 
 // Authentication DTOs
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AuthUser {
     pub id: Uuid,
     pub email: String,
@@ -87,17 +89,27 @@ where
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct RegisterRequest {
+    #[validate(email(message = "Invalid email format"))]
     pub email: String,
+
+    #[validate(custom(function = "validate_username_format"))]
     pub username: String,
+
+    #[validate(length(min = 1, max = 100, message = "Name must be between 1 and 100 characters"))]
     pub name: String,
+
+    #[validate(custom(function = "validate_password_strength"))]
     pub password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct LoginRequest {
+    #[validate(email(message = "Invalid email format"))]
     pub email: String,
+
+    #[validate(length(min = 1, message = "Password is required"))]
     pub password: String,
 }
 
@@ -115,7 +127,7 @@ pub struct RefreshTokenRequest {
     pub refresh_token: String,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct UserBasicInfo {
     pub id: Uuid,
     pub name: String,
@@ -124,7 +136,7 @@ pub struct UserBasicInfo {
     pub avatar_url: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct UserProfile {
     pub id: Uuid,
     pub email: String,

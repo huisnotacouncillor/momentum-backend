@@ -1,33 +1,48 @@
 use axum::{Router, Server, middleware::from_fn};
-use diesel::{PgConnection, r2d2::{self, ConnectionManager as DbConnectionManager}};
-use rust_backend::{AppState, db::DbPool, websocket};
+use rust_backend::{AppState, db, websocket, init_tracing};
+use rust_backend::middleware::{request_tracking_middleware, performance_monitoring_middleware};
 use tower_http::cors::{Any, CorsLayer};
 use std::sync::Arc;
-use tracing_subscriber;
 
 #[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
-    dotenv::dotenv().ok();
-    let config = rust_backend::config::Config::from_env();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load configuration
+    let config = rust_backend::config::Config::from_env()?;
+
+    // Initialize tracing
+    init_tracing(&config);
+
+    tracing::info!("Starting server with config: {:?}", config);
 
     // Initialize database
-    let manager = DbConnectionManager::<PgConnection>::new(&config.db_url);
-    let db: DbPool = r2d2::Pool::builder()
-        .build(manager)
-        .expect("Failed to create database connection pool");
+    let db_pool = db::create_pool(&config.database())?;
+
+    // Test database connection
+    db::pool_health_check(&db_pool).await?;
 
     // Initialize Redis
-    let redis = redis::Client::open(config.redis_url).expect("Failed to create Redis client");
+    let redis = redis::Client::open(config.redis_url.clone())?;
 
     // Application state
-    let state = Arc::new(AppState { db, redis });
+    let state = Arc::new(AppState::new(db_pool, redis, config.clone()));
 
     // CORS configuration
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    let cors = if config.cors_origins.contains(&"*".to_string()) {
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        let origins: Result<Vec<_>, _> = config.cors_origins
+            .iter()
+            .map(|origin| origin.parse())
+            .collect();
+
+        CorsLayer::new()
+            .allow_origin(origins?)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    };
 
     // Create WebSocket state and start cleanup task
     let ws_state = websocket::create_websocket_state(Arc::new(state.db.clone()));
@@ -57,16 +72,20 @@ async fn main() {
         .merge(protected_routes)
         .merge(websocket::create_websocket_routes().with_state(ws_state))
         .layer(cors)
+        .layer(from_fn(request_tracking_middleware))
+        .layer(from_fn(performance_monitoring_middleware))
         .layer(from_fn(
             rust_backend::middleware::logger::logger,
         ));
 
     // Start server
-    let addr = "127.0.0.1:8000".parse().unwrap();
-    println!("Server running at http://{}", addr);
-    println!("WebSocket endpoint available at ws://{}/ws", addr);
+    let addr = config.server_address().parse()?;
+    tracing::info!("Server running at http://{}", addr);
+    tracing::info!("WebSocket endpoint available at ws://{}/ws", addr);
+
     Server::bind(&addr)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
+
+    Ok(())
 }

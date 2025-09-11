@@ -49,7 +49,7 @@ pub struct NewTeamMember {
 }
 
 // Team API DTOs
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct TeamInfo {
     pub id: Uuid,
     pub name: String,

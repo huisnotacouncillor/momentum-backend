@@ -198,6 +198,22 @@ impl<T> ApiResponse<T> {
         }
     }
 
+    pub fn bad_request(message: &str) -> Self {
+        Self {
+            success: false,
+            code: 400,
+            message: message.to_string(),
+            data: None,
+            meta: None,
+            errors: Some(vec![ErrorDetail {
+                field: None,
+                code: "BAD_REQUEST".to_string(),
+                message: message.to_string(),
+            }]),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
     pub fn internal_error(message: &str) -> Self {
         Self {
             success: false,

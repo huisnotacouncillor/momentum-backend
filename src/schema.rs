@@ -15,13 +15,52 @@ pub mod sql_types {
 }
 
 diesel::table! {
+    comment_attachments (id) {
+        id -> Uuid,
+        comment_id -> Uuid,
+        #[max_length = 255]
+        file_name -> Varchar,
+        file_url -> Text,
+        file_size -> Nullable<Int8>,
+        #[max_length = 100]
+        mime_type -> Nullable<Varchar>,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    comment_mentions (id) {
+        id -> Uuid,
+        comment_id -> Uuid,
+        mentioned_user_id -> Uuid,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    comment_reactions (id) {
+        id -> Uuid,
+        comment_id -> Uuid,
+        user_id -> Uuid,
+        #[max_length = 50]
+        reaction_type -> Varchar,
+        created_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
     comments (id) {
         id -> Uuid,
         issue_id -> Uuid,
         author_id -> Uuid,
-        body -> Text,
+        content -> Text,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        #[max_length = 20]
+        content_type -> Nullable<Varchar>,
+        parent_comment_id -> Nullable<Uuid>,
+        is_edited -> Nullable<Bool>,
+        is_deleted -> Nullable<Bool>,
     }
 }
 
@@ -320,6 +359,11 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(comment_attachments -> comments (comment_id));
+diesel::joinable!(comment_mentions -> comments (comment_id));
+diesel::joinable!(comment_mentions -> users (mentioned_user_id));
+diesel::joinable!(comment_reactions -> comments (comment_id));
+diesel::joinable!(comment_reactions -> users (user_id));
 diesel::joinable!(comments -> issues (issue_id));
 diesel::joinable!(comments -> users (author_id));
 diesel::joinable!(cycles -> teams (team_id));
@@ -352,6 +396,9 @@ diesel::joinable!(workspace_members -> users (user_id));
 diesel::joinable!(workspace_members -> workspaces (workspace_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    comment_attachments,
+    comment_mentions,
+    comment_reactions,
     comments,
     cycles,
     invitations,

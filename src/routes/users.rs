@@ -1,4 +1,4 @@
-use crate::cache;
+
 use crate::db::{DbPool, models::*};
 use crate::middleware::auth::AuthUserInfo;
 use crate::schema;
@@ -135,8 +135,11 @@ pub async fn update_profile(
     };
 
     // 更新缓存中的用户信息
-    let cache_key = format!("user:{}", user_id);
-    cache::redis::set_cache(&state.redis, &cache_key, &updated_user, 60).await;
+    // 使用我们的缓存系统更新用户信息
+    let redis_url = state.config.redis_url.as_str();
+    if let Ok(user_cache) = crate::cache::UserCache::new(redis_url) {
+        let _ = user_cache.invalidate_user_cache(user_id).await;
+    }
 
     let response = ApiResponse::success(updated_user, "Profile updated successfully");
     (StatusCode::OK, Json(response)).into_response()
@@ -146,13 +149,14 @@ pub async fn get_user(
     State(state): State<std::sync::Arc<crate::AppState>>,
     Path(user_id): Path<uuid::Uuid>,
 ) -> impl IntoResponse {
-    let cache_key = format!("user:{}", user_id);
-    let redis = &state.redis;
 
     // Check cache
-    if let Some(user) = cache::redis::get_cache::<User>(redis, &cache_key).await {
-        let response = ApiResponse::success(user, "User retrieved from cache");
-        return (StatusCode::OK, Json(response)).into_response();
+    let redis_url = state.config.redis_url.as_str();
+    if let Ok(user_cache) = crate::cache::UserCache::new(redis_url) {
+        if let Ok(Some(cached_user)) = user_cache.get_user(user_id).await {
+            let response = ApiResponse::success(cached_user, "User retrieved from cache");
+            return (StatusCode::OK, Json(response)).into_response();
+        }
     }
 
     // Query database
@@ -174,7 +178,18 @@ pub async fn get_user(
     };
 
     // Store in cache
-    cache::redis::set_cache(redis, &cache_key, &user, 60).await;
+    let redis_url = state.config.redis_url.as_str();
+    if let Ok(user_cache) = crate::cache::UserCache::new(redis_url) {
+        // 将 User 转换为 AuthUser 进行缓存
+        let auth_user = AuthUser {
+            id: user.id,
+            email: user.email.clone(),
+            username: user.username.clone(),
+            name: user.name.clone(),
+            avatar_url: user.avatar_url.clone(),
+        };
+        let _ = user_cache.cache_user(&auth_user).await;
+    }
 
     let response = ApiResponse::success(user, "User retrieved successfully");
     (StatusCode::OK, Json(response)).into_response()

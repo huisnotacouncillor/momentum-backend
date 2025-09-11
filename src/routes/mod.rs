@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod comments;
 pub mod cycles;
 pub mod invitations;
 pub mod issues;
@@ -74,6 +75,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/issues/:issue_id", get(issues::get_issue_by_id))
         .route("/issues/:issue_id", put(issues::update_issue))
         .route("/issues/:issue_id", delete(issues::delete_issue))
+        .route("/issues/:issue_id/comments", get(comments::get_comments))
+        .route("/issues/:issue_id/comments", post(comments::create_comment))
+        .route("/comments/:comment_id", get(comments::get_comment_by_id))
+        .route("/comments/:comment_id", put(comments::update_comment))
+        .route("/comments/:comment_id", delete(comments::delete_comment))
+        .route(
+            "/comments/:comment_id/reactions",
+            post(comments::add_reaction),
+        )
+        .route(
+            "/comments/:comment_id/reactions/:reaction_type",
+            delete(comments::remove_reaction),
+        )
         .route("/users/profile", put(users::update_profile))
         .with_state(state.clone());
 

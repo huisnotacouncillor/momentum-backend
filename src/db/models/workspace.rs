@@ -22,7 +22,7 @@ pub struct NewWorkspace {
 }
 
 // Workspace API DTOs
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct WorkspaceInfo {
     pub id: Uuid,
     pub name: String,

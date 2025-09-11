@@ -21,6 +21,7 @@ use crate::{
         },
     },
     middleware::auth::{AuthConfig, AuthService},
+    validation::ValidatedJson,
     schema,
     db::enums::LabelLevel,
 };
@@ -38,7 +39,7 @@ mod error_codes {
 
 pub async fn register(
     State(pool): State<Arc<DbPool>>,
-    Json(payload): Json<RegisterRequest>,
+    ValidatedJson(payload): ValidatedJson<RegisterRequest>,
 ) -> impl IntoResponse {
     let mut conn = match pool.get() {
         Ok(conn) => conn,
@@ -270,7 +271,7 @@ pub async fn register(
 
 pub async fn login(
     State(pool): State<Arc<DbPool>>,
-    Json(payload): Json<LoginRequest>,
+    ValidatedJson(payload): ValidatedJson<LoginRequest>,
 ) -> impl IntoResponse {
     let mut conn = match pool.get() {
         Ok(conn) => conn,
