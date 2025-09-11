@@ -1,10 +1,10 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Json,
+    response::{IntoResponse, Json},
 };
 use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -12,20 +12,11 @@ use crate::AppState;
 use crate::db::models::auth::User;
 use crate::db::models::comment::*;
 use crate::middleware::auth::AuthUserInfo;
+use crate::db::models::api::ApiResponse;
 
 #[derive(Deserialize)]
 pub struct CommentQueryParams {
-    pub page: Option<i64>,
-    pub limit: Option<i64>,
     pub include_deleted: Option<bool>,
-}
-
-#[derive(Serialize)]
-pub struct CommentsResponse {
-    pub comments: Vec<CommentWithDetails>,
-    pub total: i64,
-    pub page: i64,
-    pub limit: i64,
 }
 
 // 获取issue的评论列表
@@ -34,17 +25,17 @@ pub async fn get_comments(
     Path(issue_id): Path<Uuid>,
     Query(params): Query<CommentQueryParams>,
     _auth_info: AuthUserInfo,
-) -> Result<Json<CommentsResponse>, StatusCode> {
+) -> impl IntoResponse {
     use crate::schema::comments;
 
-    let mut conn = state
-        .db
-        .get()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut conn = match state.db.get() {
+        Ok(conn) => conn,
+        Err(_) => {
+            let response = ApiResponse::<()>::internal_error("Database connection failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
 
-    let page = params.page.unwrap_or(1);
-    let limit = params.limit.unwrap_or(20);
-    let offset = (page - 1) * limit;
     let include_deleted = params.include_deleted.unwrap_or(false);
 
     // 构建查询
@@ -60,37 +51,35 @@ pub async fn get_comments(
         );
     }
 
-    // 获取顶级评论（非回复）
-    let top_level_comments: Vec<Comment> = query
+    // 获取顶级评论（非回复），不分页
+    let top_level_comments_result: Result<Vec<Comment>, diesel::result::Error> = query
         .filter(comments::parent_comment_id.is_null())
         .order(comments::created_at.asc())
-        .limit(limit)
-        .offset(offset)
-        .load(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .load(&mut conn);
 
-    // 获取总数
-    let total: i64 = comments::table
-        .filter(comments::issue_id.eq(issue_id))
-        .filter(comments::parent_comment_id.is_null())
-        .count()
-        .get_result(&mut conn)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let top_level_comments = match top_level_comments_result {
+        Ok(list) => list,
+        Err(_) => {
+            let response = ApiResponse::<()>::internal_error("Failed to retrieve comments");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
 
     // 为每个评论获取详细信息
     let mut comments_with_details = Vec::new();
 
     for comment in top_level_comments {
-        let comment_with_details = build_comment_with_details(&mut conn, comment)?;
-        comments_with_details.push(comment_with_details);
+        match build_comment_with_details(&mut conn, comment) {
+            Ok(c) => comments_with_details.push(c),
+            Err(_) => {
+                let response = ApiResponse::<()>::internal_error("Failed to build comment details");
+                return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+            }
+        }
     }
 
-    Ok(Json(CommentsResponse {
-        comments: comments_with_details,
-        total,
-        page,
-        limit,
-    }))
+    let response = ApiResponse::success(comments_with_details, "Comments retrieved successfully");
+    (StatusCode::OK, Json(response)).into_response()
 }
 
 // 创建新评论
