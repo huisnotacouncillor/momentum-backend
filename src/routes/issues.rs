@@ -38,6 +38,7 @@ pub struct CreateIssueRequest {
     pub workflow_state_id: Option<Uuid>,
     pub label_ids: Option<Vec<Uuid>>,
     pub cycle_id: Option<Uuid>,
+    pub parent_issue_id: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
@@ -154,27 +155,21 @@ pub async fn create_issue(
                 .first::<WorkspaceMember>(conn)?;
         }
 
-        // 如果指定了报告人，验证用户是否是工作区成员
-        let reporter_id = payload.reporter_id.unwrap_or(user_id);
-        if reporter_id != user_id {
-            use crate::schema::workspace_members::dsl::*;
-            workspace_members
-                .filter(user_id.eq(reporter_id))
-                .filter(workspace_id.eq(current_workspace_id))
-                .select(WorkspaceMember::as_select())
-                .first::<WorkspaceMember>(conn)?;
-        }
+        // 如果指定了父任务，验证其属于当前工作区
+        if let Some(parent_id) = payload.parent_issue_id {
+            // 加载父任务
+            let parent_issue = crate::schema::issues::table
+                .filter(crate::schema::issues::id.eq(parent_id))
+                .select(Issue::as_select())
+                .first::<Issue>(conn)?;
 
-        // 如果指定了周期，验证周期是否存在且属于当前工作区
-        if let Some(cycle_id) = payload.cycle_id {
-            use crate::schema::cycles::dsl as cycles_dsl;
-            use crate::schema::teams::dsl as teams_dsl;
-            cycles_dsl::cycles
-                .inner_join(teams_dsl::teams.on(cycles_dsl::team_id.eq(teams_dsl::id)))
-                .filter(cycles_dsl::id.eq(cycle_id))
-                .filter(teams_dsl::workspace_id.eq(current_workspace_id))
-                .select(Cycle::as_select())
-                .first::<Cycle>(conn)?;
+            // 确认父任务所在团队属于当前工作区
+            use crate::schema::teams::dsl as teams_dsl2;
+            teams_dsl2::teams
+                .filter(teams_dsl2::id.eq(parent_issue.team_id))
+                .filter(teams_dsl2::workspace_id.eq(current_workspace_id))
+                .select(Team::as_select())
+                .first::<Team>(conn)?;
         }
 
         // 如果只传了 workflow_state_id，需要倒查 workflow_id
@@ -213,7 +208,7 @@ pub async fn create_issue(
             }),
             creator_id: user_id,
             assignee_id: payload.assignee_id,
-            parent_issue_id: None,
+            parent_issue_id: payload.parent_issue_id,
             is_changelog_candidate: Some(false),
             workflow_id: final_workflow_id,
             workflow_state_id: final_workflow_state_id,
