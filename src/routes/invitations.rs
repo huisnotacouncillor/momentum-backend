@@ -22,7 +22,7 @@ pub struct InviteMemberRequest {
 }
 
 /// 邀请用户加入当前工作区
-/// 
+///
 /// 权限要求: 当前用户必须是工作区的Owner或Admin
 pub async fn invite_member(
     State(state): State<Arc<AppState>>,
@@ -147,7 +147,7 @@ pub async fn invite_member(
             Some(created_invitations),
             "Some invitations were created successfully",
         );
-        
+
         // 将错误信息添加到响应meta中
         let response_with_errors = ApiResponse {
             errors: Some(errors),
@@ -175,6 +175,9 @@ pub async fn get_user_invitations(
     auth_info: AuthUserInfo,
 ) -> impl IntoResponse {
     let user_email = auth_info.user.email;
+
+    // 创建资源 URL 处理工具
+    let asset_helper = &state.asset_helper;
 
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -206,12 +209,15 @@ pub async fn get_user_invitations(
                 email: invitation.email,
                 role: invitation.role,
                 status: invitation.status,
-                invited_by: UserBasicInfo {
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    avatar_url: user.avatar_url,
+                invited_by: {
+                    let processed_avatar_url = user.get_processed_avatar_url(&asset_helper);
+                    UserBasicInfo {
+                        id: user.id,
+                        name: user.name,
+                        username: user.username,
+                        email: user.email,
+                        avatar_url: processed_avatar_url,
+                    }
                 },
                 created_at: invitation.created_at,
                 updated_at: invitation.updated_at,
@@ -515,7 +521,7 @@ pub async fn decline_invitation(
 }
 
 /// 撤销邀请（由邀请人操作）
-/// 
+///
 /// 权限要求: 当前用户必须是邀请人或工作区的Owner/Admin
 pub async fn revoke_invitation(
     State(state): State<Arc<AppState>>,

@@ -255,6 +255,9 @@ pub async fn get_workspace_members(
 ) -> impl IntoResponse {
     let current_workspace_id = auth_info.current_workspace_id.unwrap();
 
+    // 创建资源 URL 处理工具
+    let asset_helper = &state.asset_helper;
+
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -274,19 +277,22 @@ pub async fn get_workspace_members(
     {
         Ok(results) => results
             .into_iter()
-            .map(|(member, user)| WorkspaceMemberInfo {
-                user_id: member.user_id,
-                workspace_id: member.workspace_id,
-                role: member.role,
-                user: UserBasicInfo {
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    avatar_url: user.avatar_url,
-                },
-                created_at: member.created_at,
-                updated_at: member.updated_at,
+            .map(|(member, user)| {
+                let processed_avatar_url = user.get_processed_avatar_url(&asset_helper);
+                WorkspaceMemberInfo {
+                    user_id: member.user_id,
+                    workspace_id: member.workspace_id,
+                    role: member.role,
+                    user: UserBasicInfo {
+                        id: user.id,
+                        name: user.name,
+                        username: user.username,
+                        email: user.email,
+                        avatar_url: processed_avatar_url,
+                    },
+                    created_at: member.created_at,
+                    updated_at: member.updated_at,
+                }
             })
             .collect::<Vec<WorkspaceMemberInfo>>(),
         Err(_) => {
@@ -309,6 +315,9 @@ pub async fn get_workspace_members_and_invitations(
 ) -> impl IntoResponse {
     let current_workspace_id = auth_info.current_workspace_id.unwrap();
 
+    // 创建资源 URL 处理工具
+    let asset_helper = &state.asset_helper;
+
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -320,7 +329,7 @@ pub async fn get_workspace_members_and_invitations(
     // 获取工作区成员
     use crate::schema::workspace_members::dsl as wm_dsl;
     use crate::schema::users::dsl as user_dsl;
-    
+
     let members = match wm_dsl::workspace_members
         .filter(wm_dsl::workspace_id.eq(current_workspace_id))
         .inner_join(user_dsl::users.on(user_dsl::id.eq(wm_dsl::user_id)))
@@ -329,19 +338,22 @@ pub async fn get_workspace_members_and_invitations(
     {
         Ok(results) => results
             .into_iter()
-            .map(|(member, user)| WorkspaceMemberInfo {
-                user_id: member.user_id,
-                workspace_id: member.workspace_id,
-                role: member.role,
-                user: UserBasicInfo {
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    avatar_url: user.avatar_url,
-                },
-                created_at: member.created_at,
-                updated_at: member.updated_at,
+            .map(|(member, user)| {
+                let processed_avatar_url = user.get_processed_avatar_url(&asset_helper);
+                WorkspaceMemberInfo {
+                    user_id: member.user_id,
+                    workspace_id: member.workspace_id,
+                    role: member.role,
+                    user: UserBasicInfo {
+                        id: user.id,
+                        name: user.name,
+                        username: user.username,
+                        email: user.email,
+                        avatar_url: processed_avatar_url,
+                    },
+                    created_at: member.created_at,
+                    updated_at: member.updated_at,
+                }
             })
             .collect::<Vec<WorkspaceMemberInfo>>(),
         Err(_) => {
@@ -367,12 +379,15 @@ pub async fn get_workspace_members_and_invitations(
                 email: invitation.email,
                 role: invitation.role,
                 status: invitation.status,
-                invited_by: UserBasicInfo {
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    avatar_url: user.avatar_url,
+                invited_by: {
+                    let processed_avatar_url = user.get_processed_avatar_url(&asset_helper);
+                    UserBasicInfo {
+                        id: user.id,
+                        name: user.name,
+                        username: user.username,
+                        email: user.email,
+                        avatar_url: processed_avatar_url,
+                    }
                 },
                 created_at: invitation.created_at,
                 updated_at: invitation.updated_at,
@@ -404,6 +419,9 @@ pub async fn get_current_workspace_members(
 ) -> impl IntoResponse {
     let current_workspace_id = auth_info.current_workspace_id.unwrap();
 
+    // 创建资源 URL 处理工具
+    let asset_helper = &state.asset_helper;
+
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -415,7 +433,7 @@ pub async fn get_current_workspace_members(
     // 获取工作区成员
     use crate::schema::workspace_members::dsl as wm_dsl;
     use crate::schema::users::dsl as user_dsl;
-    
+
     let members = match wm_dsl::workspace_members
         .filter(wm_dsl::workspace_id.eq(current_workspace_id))
         .inner_join(user_dsl::users.on(user_dsl::id.eq(wm_dsl::user_id)))
@@ -424,19 +442,22 @@ pub async fn get_current_workspace_members(
     {
         Ok(results) => results
             .into_iter()
-            .map(|(member, user)| WorkspaceMemberInfo {
-                user_id: member.user_id,
-                workspace_id: member.workspace_id,
-                role: member.role,
-                user: UserBasicInfo {
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    avatar_url: user.avatar_url,
-                },
-                created_at: member.created_at,
-                updated_at: member.updated_at,
+            .map(|(member, user)| {
+                let processed_avatar_url = user.get_processed_avatar_url(&asset_helper);
+                WorkspaceMemberInfo {
+                    user_id: member.user_id,
+                    workspace_id: member.workspace_id,
+                    role: member.role,
+                    user: UserBasicInfo {
+                        id: user.id,
+                        name: user.name,
+                        username: user.username,
+                        email: user.email,
+                        avatar_url: processed_avatar_url,
+                    },
+                    created_at: member.created_at,
+                    updated_at: member.updated_at,
+                }
             })
             .collect::<Vec<WorkspaceMemberInfo>>(),
         Err(_) => {
@@ -461,12 +482,15 @@ pub async fn get_current_workspace_members(
                 email: invitation.email,
                 role: invitation.role,
                 status: invitation.status,
-                invited_by: UserBasicInfo {
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    avatar_url: user.avatar_url,
+                invited_by: {
+                    let processed_avatar_url = user.get_processed_avatar_url(&asset_helper);
+                    UserBasicInfo {
+                        id: user.id,
+                        name: user.name,
+                        username: user.username,
+                        email: user.email,
+                        avatar_url: processed_avatar_url,
+                    }
                 },
                 created_at: invitation.created_at,
                 updated_at: invitation.updated_at,

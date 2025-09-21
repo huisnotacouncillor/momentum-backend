@@ -26,6 +26,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/labels", post(labels::create_label))
         .route("/labels/:label_id", put(labels::update_label))
         .route("/labels/:label_id", delete(labels::delete_label))
+        .route("/auth/profile", get(auth::get_profile))
         .route("/auth/switch-workspace", post(auth::switch_workspace))
         .route("/workspaces", post(workspaces::create_workspace))
         .route(
@@ -89,21 +90,20 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             delete(comments::remove_reaction),
         )
         .route("/users/profile", put(users::update_profile))
+        .route("/projects", get(projects::get_projects))
+        .route("/projects/:project_id", put(projects::update_project))
         .with_state(state.clone());
 
     // Create a router for routes that only need the database pool
     // Note: Auth routes are handled in main.rs to avoid middleware conflicts
     let db_routes = Router::new()
         .route("/users", get(crate::routes::users::get_users))
-        .route("/auth/profile", get(auth::get_profile))
         .route(
             "/auth/oauth/:provider/authorize",
             get(auth::oauth_authorize),
         )
         .route("/auth/oauth/:provider/callback", get(auth::oauth_callback))
         .route("/projects", post(projects::create_project))
-        .route("/projects", get(projects::get_projects))
-        .route("/projects/:project_id", put(projects::update_project))
         .route("/projects/:project_id", delete(projects::delete_project))
         .route("/issues/priorities", get(issues::get_issue_priorities))
         .route("/teams", post(teams::create_team))

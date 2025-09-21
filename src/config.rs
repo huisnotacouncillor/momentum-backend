@@ -33,6 +33,12 @@ pub struct Config {
     pub log_level: String,
     #[serde(default = "default_log_format")]
     pub log_format: String,
+
+    #[serde(default = "default_assets_url")]
+    pub assets_url: String,
+
+    #[serde(default = "default_bcrypt_cost")]
+    pub bcrypt_cost: u32,
 }
 
 // 为了向后兼容，创建嵌套结构的访问器
@@ -70,11 +76,16 @@ pub struct LoggingConfig {
     pub format: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct AssetsConfig {
+    pub base_url: String,
+}
+
 // Default value functions
-fn default_max_connections() -> u32 { 10 }
-fn default_min_connections() -> u32 { 1 }
+fn default_max_connections() -> u32 { 20 }
+fn default_min_connections() -> u32 { 5 }
 fn default_connection_timeout() -> u64 { 30 }
-fn default_redis_pool_size() -> u32 { 10 }
+fn default_redis_pool_size() -> u32 { 20 }
 fn default_host() -> String { "127.0.0.1".to_string() }
 fn default_port() -> u16 { 8000 }
 fn default_cors_origins() -> Vec<String> { vec!["*".to_string()] }
@@ -83,6 +94,8 @@ fn default_access_token_expires() -> u64 { 3600 } // 1 hour
 fn default_refresh_token_expires() -> u64 { 604800 } // 7 days
 fn default_log_level() -> String { "info".to_string() }
 fn default_log_format() -> String { "json".to_string() }
+fn default_assets_url() -> String { "http://localhost:8000/assets".to_string() }
+fn default_bcrypt_cost() -> u32 { 4 } // Further reduce cost for better performance, use 12+ for production
 
 impl Config {
     pub fn from_env() -> AppResult<Self> {
@@ -160,6 +173,12 @@ impl Config {
         LoggingConfig {
             level: self.log_level.clone(),
             format: self.log_format.clone(),
+        }
+    }
+
+    pub fn assets(&self) -> AssetsConfig {
+        AssetsConfig {
+            base_url: self.assets_url.clone(),
         }
     }
 }

@@ -356,6 +356,7 @@ diesel::table! {
         url_key -> Varchar,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        logo_url -> Nullable<Text>,
     }
 }
 

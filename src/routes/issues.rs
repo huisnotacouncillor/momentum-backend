@@ -271,6 +271,9 @@ pub async fn get_issues(
 ) -> impl IntoResponse {
     let current_workspace_id = auth_info.current_workspace_id.unwrap();
 
+    // 创建资源 URL 处理工具
+    let asset_helper = &state.asset_helper;
+
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -354,6 +357,8 @@ pub async fn get_issues(
                 Ok(rows) => rows
                     .into_iter()
                     .map(|(id, name, username, email, avatar_url)| {
+                        let processed_avatar_url = avatar_url.as_ref()
+                            .map(|url| asset_helper.process_url(url));
                         (
                             id,
                             crate::db::models::auth::UserBasicInfo {
@@ -361,7 +366,7 @@ pub async fn get_issues(
                                 name,
                                 username,
                                 email,
-                                avatar_url,
+                                avatar_url: processed_avatar_url,
                             },
                         )
                     })
@@ -642,6 +647,9 @@ pub async fn get_issue_by_id(
 ) -> impl IntoResponse {
     let current_workspace_id = auth_info.current_workspace_id.unwrap();
 
+    // 创建资源 URL 处理工具
+    let asset_helper = &state.asset_helper;
+
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -688,12 +696,14 @@ pub async fn get_issue_by_id(
             ))
             .first::<(Uuid, String, String, String, Option<String>)>(&mut conn)
         {
+            let processed_avatar_url = avatar_url.as_ref()
+                .map(|url| asset_helper.process_url(url));
             issue_resp.assignee = Some(crate::db::models::auth::UserBasicInfo {
                 id,
                 name,
                 username,
                 email,
-                avatar_url,
+                avatar_url: processed_avatar_url,
             });
         }
     }

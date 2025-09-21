@@ -209,13 +209,16 @@ pub async fn create_project(
 }
 
 pub async fn get_projects(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<crate::AppState>>,
     auth_info: AuthUserInfo,
     Query(params): Query<ProjectQueryParams>,
 ) -> impl IntoResponse {
     let _current_workspace_id = auth_info.current_workspace_id.unwrap();
 
-    let mut conn = match pool.get() {
+    // 使用 AppState 中的资源 URL 处理工具
+    let asset_helper = &state.asset_helper;
+
+    let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
             let response = ApiResponse::<()>::internal_error("Database connection failed");
@@ -297,12 +300,14 @@ pub async fn get_projects(
                 return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
             }
         };
+        let processed_avatar_url = owner.avatar_url.as_ref()
+            .map(|url| asset_helper.process_url(url));
         let owner_basic = crate::db::models::auth::UserBasicInfo {
             id: owner.id,
             name: owner.name,
             username: owner.username,
             email: owner.email,
-            avatar_url: owner.avatar_url,
+            avatar_url: processed_avatar_url,
         };
 
         let project_info = crate::db::models::project::ProjectInfo {
@@ -329,12 +334,15 @@ pub async fn get_projects(
 }
 
 pub async fn update_project(
-    State(pool): State<Arc<DbPool>>,
+    State(state): State<Arc<crate::AppState>>,
     auth_info: AuthUserInfo,
     Path(project_id): Path<uuid::Uuid>,
     Json(payload): Json<UpdateProjectRequest>,
 ) -> impl IntoResponse {
-    let mut conn = match pool.get() {
+    // 使用 AppState 中的资源 URL 处理工具
+    let asset_helper = &state.asset_helper;
+
+    let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
             let response = ApiResponse::<()>::internal_error("Database connection failed");
@@ -556,12 +564,14 @@ pub async fn update_project(
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
         }
     };
+    let processed_avatar_url = owner.avatar_url.as_ref()
+        .map(|url| asset_helper.process_url(url));
     let owner_basic = crate::db::models::auth::UserBasicInfo {
         id: owner.id,
         name: owner.name,
         username: owner.username,
         email: owner.email,
-        avatar_url: owner.avatar_url,
+        avatar_url: processed_avatar_url,
     };
 
     let project_info = crate::db::models::project::ProjectInfo {

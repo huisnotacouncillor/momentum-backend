@@ -6,11 +6,14 @@ pub mod middleware;
 pub mod routes;
 pub mod schema;
 pub mod services;
+pub mod utils;
 pub mod validation;
 pub mod websocket;
 
 use crate::db::DbPool;
 use crate::config::Config;
+use crate::utils::AssetUrlHelper;
+use crate::middleware::auth::{AuthService, AuthConfig};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -18,14 +21,20 @@ pub struct AppState {
     pub db: DbPool,
     pub redis: redis::Client,
     pub config: Arc<Config>,
+    pub asset_helper: AssetUrlHelper,
+    pub auth_service: AuthService,
 }
 
 impl AppState {
     pub fn new(db: DbPool, redis: redis::Client, config: Config) -> Self {
+        let asset_helper = AssetUrlHelper::new(&config.assets());
+        let auth_service = AuthService::new(AuthConfig::default());
         Self {
             db,
             redis,
             config: Arc::new(config),
+            asset_helper,
+            auth_service,
         }
     }
 }

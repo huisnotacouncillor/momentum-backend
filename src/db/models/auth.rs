@@ -147,3 +147,41 @@ pub struct UserProfile {
     pub workspaces: Vec<super::workspace::WorkspaceInfo>,
     pub teams: Vec<super::team::TeamInfo>,
 }
+
+// 为用户模型添加资源 URL 处理方法
+impl User {
+    /// 获取处理后的头像 URL
+    /// 如果 avatar_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
+    pub fn get_processed_avatar_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
+        self.avatar_url.as_ref().map(|url| asset_helper.process_url(url))
+    }
+
+    /// 优化的头像 URL 处理方法，避免不必要的字符串分配
+    pub fn get_processed_avatar_url_ref<'a>(&'a self, asset_helper: &'a crate::utils::AssetUrlHelper) -> Option<std::borrow::Cow<'a, str>> {
+        self.avatar_url.as_ref().map(|url| asset_helper.process_url_ref(url))
+    }
+}
+
+impl AuthUser {
+    /// 获取处理后的头像 URL
+    /// 如果 avatar_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
+    pub fn get_processed_avatar_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
+        self.avatar_url.as_ref().map(|url| asset_helper.process_url(url))
+    }
+}
+
+impl UserBasicInfo {
+    /// 获取处理后的头像 URL
+    /// 如果 avatar_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
+    pub fn get_processed_avatar_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
+        self.avatar_url.as_ref().map(|url| asset_helper.process_url(url))
+    }
+}
+
+impl UserProfile {
+    /// 获取处理后的头像 URL
+    /// 如果 avatar_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
+    pub fn get_processed_avatar_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
+        self.avatar_url.as_ref().map(|url| asset_helper.process_url(url))
+    }
+}

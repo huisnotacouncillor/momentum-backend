@@ -158,6 +158,7 @@ impl AuthService {
             let new_workspace = NewWorkspace {
                 name: workspace_name,
                 url_key: workspace_url_key,
+                logo_url: None,
             };
 
             let workspace: Workspace = diesel::insert_into(schema::workspaces::table)

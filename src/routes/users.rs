@@ -17,6 +17,7 @@ pub struct UpdateProfileRequest {
     pub name: Option<String>,
     pub username: Option<String>,
     pub email: Option<String>,
+    pub avatar_url: Option<String>,
 }
 
 pub async fn update_profile(
@@ -36,7 +37,7 @@ pub async fn update_profile(
     let user_id = auth_info.user.id;
 
     // 检查是否提供了更新数据
-    if payload.name.is_none() && payload.username.is_none() && payload.email.is_none() {
+    if payload.name.is_none() && payload.username.is_none() && payload.email.is_none() && payload.avatar_url.is_none() {
         let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
             field: None,
             code: "NO_UPDATE_DATA".to_string(),
@@ -45,74 +46,29 @@ pub async fn update_profile(
         return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     }
 
-    // 构建更新查询 - 需要根据提供的字段分别处理
-    let result = if let Some(name) = payload.name {
-        if let Some(username) = payload.username {
-            if let Some(email) = payload.email {
-                // 更新所有三个字段
-                diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
-                    .set((
-                        schema::users::name.eq(name),
-                        schema::users::username.eq(username),
-                        schema::users::email.eq(email),
-                    ))
-                    .returning(User::as_returning())
-                    .get_result(&mut conn)
-            } else {
-                // 更新 name 和 username
-                diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
-                    .set((
-                        schema::users::name.eq(name),
-                        schema::users::username.eq(username),
-                    ))
-                    .returning(User::as_returning())
-                    .get_result(&mut conn)
-            }
-        } else if let Some(email) = payload.email {
-            // 更新 name 和 email
-            diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
-                .set((schema::users::name.eq(name), schema::users::email.eq(email)))
-                .returning(User::as_returning())
-                .get_result(&mut conn)
-        } else {
-            // 只更新 name
-            diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
-                .set(schema::users::name.eq(name))
-                .returning(User::as_returning())
-                .get_result(&mut conn)
+    // 首先获取现有用户数据
+    let existing_user: User = match schema::users::table
+        .filter(schema::users::id.eq(user_id))
+        .select(User::as_select())
+        .first(&mut conn)
+    {
+        Ok(user) => user,
+        Err(_) => {
+            let response = ApiResponse::<()>::not_found("User not found");
+            return (StatusCode::NOT_FOUND, Json(response)).into_response();
         }
-    } else if let Some(username) = payload.username {
-        if let Some(email) = payload.email {
-            // 更新 username 和 email
-            diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
-                .set((
-                    schema::users::username.eq(username),
-                    schema::users::email.eq(email),
-                ))
-                .returning(User::as_returning())
-                .get_result(&mut conn)
-        } else {
-            // 只更新 username
-            diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
-                .set(schema::users::username.eq(username))
-                .returning(User::as_returning())
-                .get_result(&mut conn)
-        }
-    } else if let Some(email) = payload.email {
-        // 只更新 email
-        diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
-            .set(schema::users::email.eq(email))
-            .returning(User::as_returning())
-            .get_result(&mut conn)
-    } else {
-        // 不应该到达这里，但为了安全起见
-        let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
-            field: None,
-            code: "NO_UPDATE_DATA".to_string(),
-            message: "No update data provided".to_string(),
-        }]);
-        return (StatusCode::BAD_REQUEST, Json(response)).into_response();
     };
+
+    // 构建更新查询 - 使用提供的值或保持现有值
+    let result = diesel::update(schema::users::table.filter(schema::users::id.eq(user_id)))
+        .set((
+            schema::users::name.eq(payload.name.unwrap_or(existing_user.name)),
+            schema::users::username.eq(payload.username.unwrap_or(existing_user.username)),
+            schema::users::email.eq(payload.email.unwrap_or(existing_user.email)),
+            schema::users::avatar_url.eq(payload.avatar_url.or(existing_user.avatar_url)),
+        ))
+        .returning(User::as_returning())
+        .get_result(&mut conn);
 
     // 处理更新结果
     let updated_user: User = match result {
@@ -149,6 +105,8 @@ pub async fn get_user(
     State(state): State<std::sync::Arc<crate::AppState>>,
     Path(user_id): Path<uuid::Uuid>,
 ) -> impl IntoResponse {
+    // 使用 AppState 中的资源 URL 处理工具
+    let asset_helper = &state.asset_helper;
 
     // Check cache
     let redis_url = state.config.redis_url.as_str();
@@ -181,17 +139,28 @@ pub async fn get_user(
     let redis_url = state.config.redis_url.as_str();
     if let Ok(user_cache) = crate::cache::UserCache::new(redis_url) {
         // 将 User 转换为 AuthUser 进行缓存
+        let processed_avatar_url = user.get_processed_avatar_url(&asset_helper);
         let auth_user = AuthUser {
             id: user.id,
             email: user.email.clone(),
             username: user.username.clone(),
             name: user.name.clone(),
-            avatar_url: user.avatar_url.clone(),
+            avatar_url: processed_avatar_url,
         };
         let _ = user_cache.cache_user(&auth_user).await;
     }
 
-    let response = ApiResponse::success(user, "User retrieved successfully");
+    // 创建处理后的用户信息
+    let processed_avatar_url = user.get_processed_avatar_url(&asset_helper);
+    let user_response = AuthUser {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        name: user.name,
+        avatar_url: processed_avatar_url,
+    };
+
+    let response = ApiResponse::success(user_response, "User retrieved successfully");
     (StatusCode::OK, Json(response)).into_response()
 }
 

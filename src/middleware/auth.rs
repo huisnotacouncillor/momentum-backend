@@ -31,6 +31,7 @@ pub struct RefreshClaims {
     pub jti: String,     // JWT ID
 }
 
+#[derive(Clone)]
 pub struct AuthConfig {
     pub jwt_secret: String,
     pub jwt_expiration: Duration,
@@ -48,6 +49,7 @@ impl Default for AuthConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct AuthService {
     config: AuthConfig,
 }

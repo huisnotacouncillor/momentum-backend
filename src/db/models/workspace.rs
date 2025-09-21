@@ -12,6 +12,14 @@ pub struct Workspace {
     pub url_key: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub logo_url: Option<String>,
+}
+
+impl Workspace {
+    /// 如果 logo_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
+    pub fn get_processed_logo_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
+        self.logo_url.as_ref().map(|url| asset_helper.process_url(url))
+    }
 }
 
 #[derive(Insertable)]
@@ -19,6 +27,7 @@ pub struct Workspace {
 pub struct NewWorkspace {
     pub name: String,
     pub url_key: String,
+    pub logo_url: Option<String>,
 }
 
 // Workspace API DTOs
@@ -27,6 +36,7 @@ pub struct WorkspaceInfo {
     pub id: Uuid,
     pub name: String,
     pub url_key: String,
+    pub logo_url: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/auth/register", axum::routing::post(rust_backend::routes::auth::register))
         .route("/auth/login", axum::routing::post(rust_backend::routes::auth::login))
         .route("/auth/refresh", axum::routing::post(rust_backend::routes::auth::refresh_token))
-        .with_state(Arc::new(state.db.clone()));
+        .with_state(state.clone());
 
     // Build router - apply auth middleware only to routes that need it
     let protected_routes = rust_backend::routes::create_router(state.clone())
