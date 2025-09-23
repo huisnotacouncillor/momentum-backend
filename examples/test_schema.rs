@@ -67,8 +67,8 @@ async fn main() {
             println!("✅ Successfully queried {} projects", projects_list.len());
             for project in projects_list {
                 println!(
-                    "  - {} ({}) - Status: {:?}",
-                    project.name, project.project_key, project.status
+                    "  - {} ({}) - StatusId: {:?} Priority: {:?}",
+                    project.name, project.project_key, project.project_status_id, project.priority
                 );
             }
         }
@@ -101,11 +101,7 @@ async fn main() {
         Ok(labels_list) => {
             println!("✅ Successfully queried {} labels", labels_list.len());
             for label in labels_list {
-                println!(
-                    "  - {} ({})",
-                    label.name,
-                    label.color.unwrap_or_else(|| "no color".to_string())
-                );
+                println!("  - {} ({})", label.name, label.color);
             }
         }
         Err(e) => {

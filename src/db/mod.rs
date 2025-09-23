@@ -1,5 +1,6 @@
 pub mod enums;
 pub mod models;
+pub mod repositories;
 
 use diesel::PgConnection;
 use diesel::r2d2::{self, ConnectionManager as DbConnectionManager};

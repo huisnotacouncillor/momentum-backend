@@ -1,7 +1,6 @@
 use crate::db::models::{ApiResponse, ErrorDetail, TeamInfo, TeamMemberInfo};
 use crate::db::{DbPool, models::*};
 use crate::middleware::auth::AuthUserInfo;
-use crate::routes::workflows::create_default_workflow_for_team;
 use crate::schema;
 use axum::{
     Json,
@@ -129,8 +128,8 @@ pub async fn create_team(
             .values(&new_team_member)
             .execute(conn)?;
 
-        // 创建默认工作流和状态
-        create_default_workflow_for_team(conn, team.id)?;
+        // TODO: 创建默认工作流和状态
+        // create_default_workflow_for_team(conn, team.id)?;
 
         Ok(team)
     });

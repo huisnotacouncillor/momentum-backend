@@ -73,39 +73,50 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/issues", post(issues::create_issue))
         .route("/issues", get(issues::get_issues))
-        .route("/issues/:issue_id", get(issues::get_issue_by_id))
+        .route("/issues/:issue_id", get(issues::get_issue))
         .route("/issues/:issue_id", put(issues::update_issue))
         .route("/issues/:issue_id", delete(issues::delete_issue))
         .route("/issues/:issue_id/comments", get(comments::get_comments))
         .route("/issues/:issue_id/comments", post(comments::create_comment))
-        .route("/comments/:comment_id", get(comments::get_comment_by_id))
+        .route("/comments/:comment_id", get(comments::get_comment))
         .route("/comments/:comment_id", put(comments::update_comment))
         .route("/comments/:comment_id", delete(comments::delete_comment))
-        .route(
-            "/comments/:comment_id/reactions",
-            post(comments::add_reaction),
-        )
-        .route(
-            "/comments/:comment_id/reactions/:reaction_type",
-            delete(comments::remove_reaction),
-        )
         .route("/users/profile", put(users::update_profile))
         .route("/projects", get(projects::get_projects))
+        .route("/projects", post(projects::create_project))
         .route("/projects/:project_id", put(projects::update_project))
+        .route("/projects/:project_id", delete(projects::delete_project))
+        .route("/cycles", post(cycles::create_cycle))
+        .route("/cycles", get(cycles::get_cycles))
+        .route("/cycles/:cycle_id", get(cycles::get_cycle_by_id))
+        .route("/cycles/:cycle_id", put(cycles::update_cycle))
+        .route("/cycles/:cycle_id", delete(cycles::delete_cycle))
+        .route("/cycles/:cycle_id/stats", get(cycles::get_cycle_stats))
+        .route("/cycles/:cycle_id/issues", get(cycles::get_cycle_issues))
+        .route("/cycles/:cycle_id/issues", post(cycles::assign_issues_to_cycle))
+        .route("/cycles/:cycle_id/issues", delete(cycles::remove_issues_from_cycle))
+        .route("/cycles/auto-update-status", post(cycles::update_cycle_status_auto))
+        .route("/project-statuses", post(project_statuses::create_project_status))
+        .route("/project-statuses", get(project_statuses::get_project_statuses))
+        .route("/project-statuses/:status_id", get(project_statuses::get_project_status_by_id))
+        .route("/project-statuses/:status_id", put(project_statuses::update_project_status))
+        .route("/project-statuses/:status_id", delete(project_statuses::delete_project_status))
+        .route("/teams/:team_id/workflows", get(workflows::get_workflows))
+        .route("/teams/:team_id/workflows", post(workflows::create_workflow))
+        .route("/teams/:team_id/workflows/default/states", get(workflows::get_team_default_workflow_states))
+        .route("/teams/:team_id/workflows/default/states", post(workflows::create_team_default_workflow_state))
+        .route("/teams/:team_id/workflows/default/states/:state_id", put(workflows::update_team_default_workflow_state))
+        .route("/workflows/:workflow_id", get(workflows::get_workflow_by_id))
+        .route("/workflows/:workflow_id", put(workflows::update_workflow))
+        .route("/workflows/:workflow_id", delete(workflows::delete_workflow))
+        .route("/workflows/:workflow_id/states", get(workflows::get_workflow_states))
+        .route("/workflows/:workflow_id/states", post(workflows::create_workflow_state))
+        .route("/issues/:issue_id/transitions", get(workflows::get_issue_transitions))
         .with_state(state.clone());
 
     // Create a router for routes that only need the database pool
     // Note: Auth routes are handled in main.rs to avoid middleware conflicts
     let db_routes = Router::new()
-        .route("/users", get(crate::routes::users::get_users))
-        .route(
-            "/auth/oauth/:provider/authorize",
-            get(auth::oauth_authorize),
-        )
-        .route("/auth/oauth/:provider/callback", get(auth::oauth_callback))
-        .route("/projects", post(projects::create_project))
-        .route("/projects/:project_id", delete(projects::delete_project))
-        .route("/issues/priorities", get(issues::get_issue_priorities))
         .route("/teams", post(teams::create_team))
         .route("/teams", get(teams::get_teams))
         .route("/teams/:team_id", get(teams::get_team))
@@ -122,83 +133,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             delete(teams::remove_team_member),
         )
         .route("/user/teams", get(teams::get_user_teams))
-        .route("/cycles", post(cycles::create_cycle))
-        .route("/cycles", get(cycles::get_cycles))
-        .route("/cycles/:cycle_id", get(cycles::get_cycle_by_id))
-        .route("/cycles/:cycle_id", put(cycles::update_cycle))
-        .route("/cycles/:cycle_id", delete(cycles::delete_cycle))
-        .route("/cycles/:cycle_id/stats", get(cycles::get_cycle_stats))
-        .route("/cycles/:cycle_id/issues", get(cycles::get_cycle_issues))
-        .route(
-            "/cycles/:cycle_id/issues",
-            post(cycles::assign_issues_to_cycle),
-        )
-        .route(
-            "/cycles/:cycle_id/issues",
-            delete(cycles::remove_issues_from_cycle),
-        )
-        .route(
-            "/cycles/auto-update-status",
-            post(cycles::update_cycle_status_auto),
-        )
-        .route(
-            "/project-statuses",
-            post(project_statuses::create_project_status),
-        )
-        .route(
-            "/project-statuses",
-            get(project_statuses::get_project_statuses),
-        )
-        .route(
-            "/project-statuses/:status_id",
-            get(project_statuses::get_project_status_by_id),
-        )
-        .route(
-            "/project-statuses/:status_id",
-            put(project_statuses::update_project_status),
-        )
-        .route(
-            "/project-statuses/:status_id",
-            delete(project_statuses::delete_project_status),
-        )
-        .route("/teams/:team_id/workflows", get(workflows::get_workflows))
-        .route(
-            "/teams/:team_id/workflows",
-            post(workflows::create_workflow),
-        )
-        .route(
-            "/teams/:team_id/workflows/default/states",
-            get(workflows::get_team_default_workflow_states),
-        )
-        .route(
-            "/teams/:team_id/workflows/default/states",
-            post(workflows::create_team_default_workflow_state),
-        )
-        .route(
-            "/teams/:team_id/workflows/default/states/:state_id",
-            put(workflows::update_team_default_workflow_state),
-        )
-        .route(
-            "/workflows/:workflow_id",
-            get(workflows::get_workflow_by_id),
-        )
-        .route("/workflows/:workflow_id", put(workflows::update_workflow))
-        .route(
-            "/workflows/:workflow_id",
-            delete(workflows::delete_workflow),
-        )
-        .route(
-            "/workflows/:workflow_id/states",
-            get(workflows::get_workflow_states),
-        )
-        .route(
-            "/workflows/:workflow_id/states",
-            post(workflows::create_workflow_state),
-        )
-        .route(
-            "/issues/:issue_id/transitions",
-            get(workflows::get_issue_transitions),
-        )
         .with_state(Arc::new(state.db.clone()));
 
     // Merge the routers

@@ -486,6 +486,7 @@ mod user_tests {
             id: Uuid::new_v4(),
             name: "Test Workspace".to_string(),
             url_key: "test-workspace".to_string(),
+            logo_url: None,
         };
 
         let mock_team = TeamInfo {
@@ -551,6 +552,7 @@ mod user_tests {
             id: workspace_id,
             name: "Test Workspace".to_string(),
             url_key: "test-workspace".to_string(),
+            logo_url: None,
         };
 
         let team_info = TeamInfo {

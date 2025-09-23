@@ -46,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         id: Uuid::new_v4(),
         name: "示例工作空间".to_string(),
         url_key: "example-workspace".to_string(),
+        logo_url: None,
     };
 
     // 模拟 UserProfile 响应（就像 GET /profile 接口返回的那样）

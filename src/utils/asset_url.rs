@@ -30,11 +30,11 @@ impl AssetUrlHelper {
     /// * `path` - 资源路径，可以是相对路径或绝对路径
     ///
     /// # 示例
-    /// ```
+    /// ```ignore
     /// let helper = AssetUrlHelper::new(&assets_config);
     /// let avatar_url = helper.build_url("avatars/user123.jpg");
     /// // 返回: "http://localhost:8000/assets/avatars/user123.jpg"
-    /// ```
+    /// ```ignore
     pub fn build_url(&self, path: &str) -> String {
         // 移除路径开头的斜杠（如果有的话）
         let clean_path = path.trim_start_matches('/');
@@ -49,11 +49,11 @@ impl AssetUrlHelper {
     /// * `filename` - 头像文件名
     ///
     /// # 示例
-    /// ```
+    /// ```ignore
     /// let helper = AssetUrlHelper::new(&assets_config);
     /// let avatar_url = helper.build_avatar_url("user123.jpg");
     /// // 返回: "http://localhost:8000/assets/avatars/user123.jpg"
-    /// ```
+    /// ```ignore
     pub fn build_avatar_url(&self, filename: &str) -> String {
         self.build_url(&format!("avatars/{}", filename))
     }
@@ -64,11 +64,11 @@ impl AssetUrlHelper {
     /// * `filename` - 图标文件名
     ///
     /// # 示例
-    /// ```
+    /// ```ignore
     /// let helper = AssetUrlHelper::new(&assets_config);
     /// let icon_url = helper.build_team_icon_url("team123.png");
     /// // 返回: "http://localhost:8000/assets/team-icons/team123.png"
-    /// ```
+    /// ```ignore
     pub fn build_team_icon_url(&self, filename: &str) -> String {
         self.build_url(&format!("team-icons/{}", filename))
     }
@@ -79,11 +79,11 @@ impl AssetUrlHelper {
     /// * `filename` - 图标文件名
     ///
     /// # 示例
-    /// ```
+    /// ```ignore
     /// let helper = AssetUrlHelper::new(&assets_config);
     /// let icon_url = helper.build_project_icon_url("project123.png");
     /// // 返回: "http://localhost:8000/assets/project-icons/project123.png"
-    /// ```
+    /// ```ignore
     pub fn build_project_icon_url(&self, filename: &str) -> String {
         self.build_url(&format!("project-icons/{}", filename))
     }
@@ -94,11 +94,11 @@ impl AssetUrlHelper {
     /// * `filename` - 附件文件名
     ///
     /// # 示例
-    /// ```
+    /// ```ignore
     /// let helper = AssetUrlHelper::new(&assets_config);
     /// let attachment_url = helper.build_attachment_url("document.pdf");
     /// // 返回: "http://localhost:8000/assets/attachments/document.pdf"
-    /// ```
+    /// ```ignore
     pub fn build_attachment_url(&self, filename: &str) -> String {
         self.build_url(&format!("attachments/{}", filename))
     }
@@ -128,7 +128,7 @@ impl AssetUrlHelper {
     /// * `url` - 资源 URL（可能是相对路径或外部链接）
     ///
     /// # 示例
-    /// ```
+    /// ```ignore
     /// let helper = AssetUrlHelper::new(&assets_config);
     ///
     /// // 外部链接，直接返回

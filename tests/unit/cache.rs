@@ -1,4 +1,5 @@
 use rust_backend::cache::redis::{get_cache, set_cache};
+use rust_backend as _; // ensure crate is linked
 
 #[tokio::test]
 async fn test_cache() {

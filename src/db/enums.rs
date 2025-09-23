@@ -137,10 +137,11 @@ impl Queryable<Text, Pg> for IssuePriority {
 }
 
 /// Project priority enum, using the same values as IssuePriority
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AsExpression, FromSqlRow)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, AsExpression, FromSqlRow, Default)]
 #[diesel(sql_type = Text)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectPriority {
+    #[default]
     None,
     Low,
     Medium,

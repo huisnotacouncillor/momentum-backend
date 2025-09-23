@@ -7,6 +7,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 /// Common test configuration
+#[allow(dead_code)]
 pub struct TestConfig {
     pub websocket_url: String,
     pub jwt_secret: String,

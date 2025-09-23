@@ -1,8 +1,9 @@
 pub mod user_cache;
+pub mod redis;
 
 pub use user_cache::{UserCache, CacheStats, CacheConfig};
 
-use redis::{AsyncCommands, RedisResult};
+use ::redis::{AsyncCommands, RedisResult, Client, cmd};
 use uuid::Uuid;
 use crate::error::AppError;
 
@@ -11,11 +12,11 @@ use crate::error::AppError;
 
 /// 设置用户当前工作空间ID到缓存
 pub async fn set_user_current_workspace_id(
-    redis: &redis::Client,
+    redis_client: &Client,
     user_id: Uuid,
     workspace_id: Uuid,
 ) -> Result<(), AppError> {
-    let mut conn = redis
+    let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
         .map_err(|e| AppError::Internal(format!("Failed to get Redis connection: {}", e)))?;
@@ -33,10 +34,10 @@ pub async fn set_user_current_workspace_id(
 
 /// 从缓存获取用户当前工作空间ID
 pub async fn get_user_current_workspace_id(
-    redis: &redis::Client,
+    redis_client: &Client,
     user_id: Uuid,
 ) -> Result<Option<Uuid>, AppError> {
-    let mut conn = redis
+    let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
         .map_err(|e| AppError::Internal(format!("Failed to get Redis connection: {}", e)))?;
@@ -59,10 +60,10 @@ pub async fn get_user_current_workspace_id(
 
 /// 删除用户工作空间缓存
 pub async fn delete_user_workspace_cache(
-    redis: &redis::Client,
+    redis_client: &Client,
     user_id: Uuid,
 ) -> Result<(), AppError> {
-    let mut conn = redis
+    let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
         .map_err(|e| AppError::Internal(format!("Failed to get Redis connection: {}", e)))?;
@@ -75,12 +76,12 @@ pub async fn delete_user_workspace_cache(
 
 /// 缓存会话信息
 pub async fn cache_session(
-    redis: &redis::Client,
+    redis_client: &Client,
     session_id: &str,
     user_id: Uuid,
     ttl: u64,
 ) -> Result<(), AppError> {
-    let mut conn = redis
+    let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
         .map_err(|e| AppError::Internal(format!("Failed to get Redis connection: {}", e)))?;
@@ -98,10 +99,10 @@ pub async fn cache_session(
 
 /// 获取会话信息
 pub async fn get_session(
-    redis: &redis::Client,
+    redis_client: &Client,
     session_id: &str,
 ) -> Result<Option<Uuid>, AppError> {
-    let mut conn = redis
+    let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
         .map_err(|e| AppError::Internal(format!("Failed to get Redis connection: {}", e)))?;
@@ -124,10 +125,10 @@ pub async fn get_session(
 
 /// 删除会话缓存
 pub async fn delete_session(
-    redis: &redis::Client,
+    redis_client: &Client,
     session_id: &str,
 ) -> Result<(), AppError> {
-    let mut conn = redis
+    let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
         .map_err(|e| AppError::Internal(format!("Failed to get Redis connection: {}", e)))?;
@@ -139,13 +140,13 @@ pub async fn delete_session(
 }
 
 /// Redis健康检查
-pub async fn redis_health_check(redis: &redis::Client) -> Result<bool, AppError> {
-    let mut conn = redis
+pub async fn redis_health_check(redis_client: &Client) -> Result<bool, AppError> {
+    let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await
         .map_err(|e| AppError::Internal(format!("Failed to get Redis connection: {}", e)))?;
 
-    let pong: String = redis::cmd("PING")
+    let pong: String = cmd("PING")
         .query_async(&mut conn)
         .await
         .map_err(|e| AppError::Internal(format!("Redis health check failed: {}", e)))?;
