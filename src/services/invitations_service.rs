@@ -105,6 +105,7 @@ impl InvitationsService {
                 .as_ref()
                 .map(|url| asset_helper.process_url(url));
 
+            let processed_workspace_logo_url = workspace.logo_url.as_ref().map(|url| asset_helper.process_url(url));
             invitation_infos.push(crate::routes::invitations::InvitationInfo {
                 id: invitation.id,
                 email: invitation.email,
@@ -115,7 +116,7 @@ impl InvitationsService {
                 inviter_avatar_url: processed_avatar_url,
                 workspace_id: invitation.workspace_id,
                 workspace_name: workspace.name.clone(),
-                workspace_logo_url: workspace.logo_url.clone(),
+                workspace_logo_url: processed_workspace_logo_url,
                 expires_at: invitation.expires_at.naive_utc(),
                 created_at: invitation.created_at.naive_utc(),
                 updated_at: invitation.updated_at.naive_utc(),
@@ -157,6 +158,7 @@ impl InvitationsService {
 
         let processed_avatar_url = inviter.avatar_url.as_ref().map(|url| asset_helper.process_url(url));
 
+        let processed_workspace_logo_url = workspace.logo_url.as_ref().map(|url| asset_helper.process_url(url));
         Ok(crate::routes::invitations::InvitationInfo {
             id: invitation.id,
             email: invitation.email,
@@ -167,7 +169,7 @@ impl InvitationsService {
             inviter_avatar_url: processed_avatar_url,
             workspace_id: invitation.workspace_id,
             workspace_name: workspace.name,
-            workspace_logo_url: workspace.logo_url,
+            workspace_logo_url: processed_workspace_logo_url,
             expires_at: invitation.expires_at.naive_utc(),
             created_at: invitation.created_at.naive_utc(),
             updated_at: invitation.updated_at.naive_utc(),

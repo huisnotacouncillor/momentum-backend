@@ -20,6 +20,12 @@ use crate::{
 pub struct WebSocketState {
     pub db: Arc<DbPool>,
     pub ws_manager: WebSocketManager,
+    pub command_handler: crate::websocket::WebSocketCommandHandler,
+    pub rate_limiter: crate::websocket::WebSocketRateLimiter,
+    pub error_handler: crate::websocket::WebSocketErrorHandler,
+    pub retry_timeout_manager: crate::websocket::RetryTimeoutManager,
+    pub monitor: crate::websocket::WebSocketMonitor,
+    pub message_signer: crate::websocket::MessageSigner,
 }
 
 pub struct WebSocketHandler;
@@ -50,7 +56,7 @@ impl WebSocketHandler {
 
         // 升级到WebSocket连接
         Ok(ws.on_upgrade(move |socket| {
-            Self::handle_websocket_connection(socket, authenticated_user, state.ws_manager)
+            Self::handle_websocket_connection(socket, authenticated_user, state.ws_manager, state.command_handler.clone(), state.monitor.clone())
         }))
     }
 
@@ -59,6 +65,8 @@ impl WebSocketHandler {
         socket: WebSocket,
         authenticated_user: crate::websocket::auth::AuthenticatedUser,
         ws_manager: WebSocketManager,
+        command_handler: crate::websocket::WebSocketCommandHandler,
+        monitor: crate::websocket::WebSocketMonitor,
     ) {
         let connection_id = Uuid::new_v4().to_string();
         let connected_user = ConnectedUser {
@@ -66,6 +74,11 @@ impl WebSocketHandler {
             username: authenticated_user.username.clone(),
             connected_at: chrono::Utc::now(),
             last_ping: chrono::Utc::now(),
+            state: crate::websocket::manager::ConnectionState::Connected,
+            subscriptions: std::collections::HashSet::new(),
+            message_queue: std::collections::VecDeque::new(),
+            recovery_token: None,
+            metadata: std::collections::HashMap::new(),
         };
 
         tracing::info!(
@@ -76,7 +89,7 @@ impl WebSocketHandler {
 
         // 将连接处理委托给WebSocket管理器
         ws_manager
-            .handle_socket(socket, connection_id, connected_user)
+            .handle_socket(socket, connection_id, connected_user, Some(command_handler), Some(monitor))
             .await;
     }
 
@@ -136,6 +149,7 @@ impl WebSocketHandler {
             timestamp: chrono::Utc::now(),
             from_user_id: payload.from_user_id,
             to_user_id: Some(payload.to_user_id),
+            secure_message: None,
         };
 
         state
@@ -168,6 +182,7 @@ impl WebSocketHandler {
             timestamp: chrono::Utc::now(),
             from_user_id: payload.from_user_id,
             to_user_id: None, // 广播消息不指定目标用户
+            secure_message: None,
         };
 
         state.ws_manager.broadcast_message(message).await;

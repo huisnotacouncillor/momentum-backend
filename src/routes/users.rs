@@ -45,7 +45,7 @@ pub async fn update_profile(
         username: payload.username.clone(),
         email: payload.email.clone(),
         avatar_url: payload.avatar_url.clone(),
-    }) {
+    }, &state.asset_helper) {
         Ok(profile) => {
             let response = ApiResponse::success(profile, "Profile updated successfully");
             (StatusCode::OK, Json(response)).into_response()

@@ -51,6 +51,7 @@ pub struct UpdateIssueRequest {
     pub workflow_id: Option<Uuid>,
     pub workflow_state_id: Option<Uuid>,
     pub cycle_id: Option<Uuid>,
+    pub label_ids: Option<Vec<Uuid>>,
 }
 
 // 获取问题列表

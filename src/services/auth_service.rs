@@ -5,11 +5,14 @@ use uuid::Uuid;
 
 use crate::{
     db::models::auth::{User, NewUser, NewUserCredential, RegisterRequest, LoginRequest, LoginResponse, UserProfile, AuthUser},
+    db::models::{workspace::WorkspaceInfo, team::TeamInfo},
     db::repositories::auth::AuthRepo,
     error::AppError,
     services::context::RequestContext,
     validation::auth::{validate_register_request, validate_login_request, validate_update_profile, UpdateProfileChanges},
+    middleware::auth::{AuthService as JwtAuthService, AuthConfig},
 };
+use crate::utils::AssetUrlHelper;
 
 pub struct AuthService;
 
@@ -72,6 +75,7 @@ impl AuthService {
     pub fn login(
         conn: &mut PgConnection,
         req: &LoginRequest,
+        asset_helper: &AssetUrlHelper,
     ) -> Result<LoginResponse, AppError> {
         validate_login_request(&req.email, &req.password)?;
 
@@ -88,40 +92,57 @@ impl AuthService {
             return Err(AppError::auth("Invalid email or password"));
         }
 
-        // Generate JWT token (simplified - in real app you'd use proper JWT library)
-        let token = format!("token_{}", user.id);
+        // Generate JWT tokens using the proper JWT service
+        let auth_config = AuthConfig::default();
+        let jwt_service = JwtAuthService::new(auth_config);
+
+        let auth_user = AuthUser {
+            id: user.id,
+            email: user.email.clone(),
+            username: user.username.clone(),
+            name: user.name.clone(),
+            avatar_url: user.get_processed_avatar_url(asset_helper),
+        };
+
+        let access_token = jwt_service.generate_access_token(&auth_user)
+            .map_err(|_| AppError::internal("Failed to generate access token"))?;
+
+        let refresh_token = jwt_service.generate_refresh_token(user.id)
+            .map_err(|_| AppError::internal("Failed to generate refresh token"))?;
 
         Ok(LoginResponse {
-            access_token: token,
-            refresh_token: "refresh_token".to_string(),
+            access_token,
+            refresh_token,
             token_type: "Bearer".to_string(),
             expires_in: 3600,
-            user: AuthUser {
-                id: user.id,
-                email: user.email.clone(),
-                username: user.username.clone(),
-                name: user.name.clone(),
-                avatar_url: user.avatar_url.clone(),
-            },
+            user: auth_user,
         })
     }
 
     pub fn get_profile(
         conn: &mut PgConnection,
         ctx: &RequestContext,
+        asset_helper: &AssetUrlHelper,
     ) -> Result<UserProfile, AppError> {
         let user = AuthRepo::find_by_id(conn, ctx.user_id)?
             .ok_or_else(|| AppError::not_found("user"))?;
 
+        // Get user workspaces
+        let workspaces = Self::get_user_workspaces(conn, ctx.user_id, asset_helper)?;
+
+        // Get user teams
+        let teams = Self::get_user_teams(conn, ctx.user_id)?;
+
+        let processed_avatar_url = user.get_processed_avatar_url(asset_helper);
         Ok(UserProfile {
             id: user.id,
             name: user.name,
             username: user.username,
             email: user.email,
-            avatar_url: user.avatar_url,
+            avatar_url: processed_avatar_url,
             current_workspace_id: user.current_workspace_id,
-            workspaces: vec![],
-            teams: vec![],
+            workspaces,
+            teams,
         })
     }
 
@@ -129,6 +150,7 @@ impl AuthService {
         conn: &mut PgConnection,
         ctx: &RequestContext,
         changes: &crate::routes::auth::UpdateProfileRequest,
+        asset_helper: &AssetUrlHelper,
     ) -> Result<UserProfile, AppError> {
         // Validate changes
         let update_changes = UpdateProfileChanges {
@@ -176,12 +198,13 @@ impl AuthService {
             ),
         )?;
 
+        let processed_avatar_url = updated_user.get_processed_avatar_url(asset_helper);
         Ok(UserProfile {
             id: updated_user.id,
             name: updated_user.name,
             username: updated_user.username,
             email: updated_user.email,
-            avatar_url: updated_user.avatar_url,
+            avatar_url: processed_avatar_url,
             current_workspace_id: updated_user.current_workspace_id,
             workspaces: vec![],
             teams: vec![],
@@ -197,5 +220,75 @@ impl AuthService {
         // For now, just update the current workspace
         let updated_user = AuthRepo::update_current_workspace(conn, ctx.user_id, workspace_id)?;
         Ok(updated_user)
+    }
+
+    /// Get all workspaces that the user has access to
+    fn get_user_workspaces(
+        conn: &mut PgConnection,
+        user_id: Uuid,
+        asset_helper: &AssetUrlHelper,
+    ) -> Result<Vec<WorkspaceInfo>, AppError> {
+        use crate::schema::{workspace_members, workspaces};
+
+        let results = workspace_members::table
+            .inner_join(workspaces::table.on(workspace_members::workspace_id.eq(workspaces::id)))
+            .filter(workspace_members::user_id.eq(user_id))
+            .select((
+                workspaces::id,
+                workspaces::name,
+                workspaces::url_key,
+                workspaces::logo_url,
+            ))
+            .load::<(Uuid, String, String, Option<String>)>(conn)
+            .map_err(|_| AppError::internal("Failed to retrieve user workspaces"))?;
+
+        Ok(results
+            .into_iter()
+            .map(|(id, name, url_key, logo_url)| {
+                let processed_logo_url = logo_url.map(|url| asset_helper.process_url(&url));
+                WorkspaceInfo {
+                    id,
+                    name,
+                    url_key,
+                    logo_url: processed_logo_url,
+                }
+            })
+            .collect())
+    }
+
+    /// Get all teams that the user belongs to
+    fn get_user_teams(
+        conn: &mut PgConnection,
+        user_id: Uuid,
+    ) -> Result<Vec<TeamInfo>, AppError> {
+        use crate::schema::{team_members, teams};
+
+        let results = team_members::table
+            .inner_join(teams::table.on(team_members::team_id.eq(teams::id)))
+            .filter(team_members::user_id.eq(user_id))
+            .select((
+                teams::id,
+                teams::name,
+                teams::team_key,
+                teams::description,
+                teams::icon_url,
+                teams::is_private,
+                team_members::role,
+            ))
+            .load::<(Uuid, String, String, Option<String>, Option<String>, bool, String)>(conn)
+            .map_err(|_| AppError::internal("Failed to retrieve user teams"))?;
+
+        Ok(results
+            .into_iter()
+            .map(|(id, name, team_key, description, icon_url, is_private, role)| TeamInfo {
+                id,
+                name,
+                team_key,
+                description,
+                icon_url,
+                is_private,
+                role,
+            })
+            .collect())
     }
 }

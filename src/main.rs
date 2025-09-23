@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create WebSocket state and start cleanup task
-    let ws_state = websocket::create_websocket_state(Arc::new(state.db.clone()));
+    let ws_state = websocket::create_websocket_state(Arc::new(state.db.clone()), &config);
     let ws_manager = ws_state.ws_manager.clone();
 
     // Start WebSocket cleanup task

@@ -68,7 +68,7 @@ pub async fn login(
         }
     };
 
-    match AuthService::login(&mut conn, &payload) {
+    match AuthService::login(&mut conn, &payload, &state.asset_helper) {
         Ok(login_response) => {
             let response = ApiResponse::success(login_response, "Login successful");
             (StatusCode::OK, Json(response)).into_response()
@@ -96,7 +96,7 @@ pub async fn get_profile(
         idempotency_key: None,
     };
 
-    match AuthService::get_profile(&mut conn, &ctx) {
+    match AuthService::get_profile(&mut conn, &ctx, &state.asset_helper) {
         Ok(profile) => {
             let response = ApiResponse::success(profile, "Profile retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()
@@ -125,7 +125,7 @@ pub async fn update_profile(
         idempotency_key: None,
     };
 
-    match AuthService::update_profile(&mut conn, &ctx, &payload) {
+    match AuthService::update_profile(&mut conn, &ctx, &payload, &state.asset_helper) {
         Ok(profile) => {
             let response = ApiResponse::success(profile, "Profile updated successfully");
             (StatusCode::OK, Json(response)).into_response()

@@ -155,7 +155,7 @@ impl WorkflowsService {
         conn: &mut PgConnection,
         _ctx: &RequestContext,
         issue_id: uuid::Uuid,
-    ) -> Result<Vec<crate::routes::workflows::IssueTransition>, AppError> {
+    ) -> Result<Vec<crate::db::models::workflow::IssueTransitionResponse>, AppError> {
         // This would typically involve complex logic to determine valid transitions
         // For now, return a simple implementation
         use crate::schema::{issues, workflows, workflow_states};
@@ -172,17 +172,33 @@ impl WorkflowsService {
             .filter(workflows::team_id.eq(issue.team_id))
             .load::<(WorkflowState, Workflow)>(conn)?;
 
-        let transitions: Vec<crate::routes::workflows::IssueTransition> = states
-            .into_iter()
-            .map(|(state, _workflow)| crate::routes::workflows::IssueTransition {
+        // Enrich with from/to state objects
+        let mut result = Vec::new();
+        for (state, _workflow) in states {
+            let from_state = match issue.workflow_state_id {
+                Some(sid) => workflow_states::table
+                    .filter(workflow_states::id.eq(sid))
+                    .first::<WorkflowState>(conn)
+                    .optional()
+                    .map_err(|e| AppError::internal(&format!("Failed to load from_state: {}", e)))?
+                    .map(|s| crate::db::models::workflow::WorkflowStateResponse::from(s)),
+                None => None,
+            };
+
+            result.push(crate::db::models::workflow::IssueTransitionResponse {
+                id: uuid::Uuid::new_v4(),
+                workflow_id: state.workflow_id,
                 from_state_id: issue.workflow_state_id,
                 to_state_id: state.id,
-                to_state_name: state.name,
-                to_state_color: state.color,
-            })
-            .collect();
+                name: None,
+                description: None,
+                created_at: chrono::Utc::now(),
+                from_state,
+                to_state: crate::db::models::workflow::WorkflowStateResponse::from(state),
+            });
+        }
 
-        Ok(transitions)
+        Ok(result)
     }
 }
 

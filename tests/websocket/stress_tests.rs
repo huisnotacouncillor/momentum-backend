@@ -67,6 +67,11 @@ async fn stress_test_websocket_manager_concurrent_connections() {
                 username: format!("stress_user_{}", i),
                 connected_at: chrono::Utc::now(),
                 last_ping: chrono::Utc::now(),
+                state: rust_backend::websocket::manager::ConnectionState::Connected,
+                subscriptions: std::collections::HashSet::new(),
+                message_queue: std::collections::VecDeque::new(),
+                recovery_token: None,
+                metadata: std::collections::HashMap::new(),
             };
 
             // Wait for all tasks to be ready
@@ -127,6 +132,11 @@ async fn stress_test_websocket_manager_message_broadcasting() {
             username: format!("broadcast_user_{}", i),
             connected_at: chrono::Utc::now(),
             last_ping: chrono::Utc::now(),
+            state: rust_backend::websocket::manager::ConnectionState::Connected,
+            subscriptions: std::collections::HashSet::new(),
+            message_queue: std::collections::VecDeque::new(),
+            recovery_token: None,
+            metadata: std::collections::HashMap::new(),
         };
 
         manager.add_connection(connection_id, user).await;
@@ -154,6 +164,7 @@ async fn stress_test_websocket_manager_message_broadcasting() {
                 timestamp: chrono::Utc::now(),
                 from_user_id: Some(Uuid::new_v4()),
                 to_user_id: None,
+                secure_message: None,
             };
 
             manager_clone.broadcast_message(message).await;
@@ -217,6 +228,11 @@ async fn stress_test_websocket_manager_rapid_connect_disconnect() {
                     username: format!("rapid_user_{}_{}", cycle, i),
                     connected_at: chrono::Utc::now(),
                     last_ping: chrono::Utc::now(),
+                    state: rust_backend::websocket::manager::ConnectionState::Connected,
+                    subscriptions: std::collections::HashSet::new(),
+                    message_queue: std::collections::VecDeque::new(),
+                    recovery_token: None,
+                    metadata: std::collections::HashMap::new(),
                 };
 
                 manager_clone
@@ -277,6 +293,11 @@ async fn stress_test_websocket_manager_memory_usage() {
             username: large_username,
             connected_at: chrono::Utc::now(),
             last_ping: chrono::Utc::now(),
+            state: rust_backend::websocket::manager::ConnectionState::Connected,
+            subscriptions: std::collections::HashSet::new(),
+            message_queue: std::collections::VecDeque::new(),
+            recovery_token: None,
+            metadata: std::collections::HashMap::new(),
         };
 
         manager.add_connection(connection_id, user).await;
@@ -300,7 +321,7 @@ async fn stress_test_websocket_manager_memory_usage() {
         }),
         timestamp: chrono::Utc::now(),
         from_user_id: Some(Uuid::new_v4()),
-        to_user_id: None,
+        to_user_id: None, secure_message: None,
     };
 
     let broadcast_start = Instant::now();
@@ -343,6 +364,11 @@ async fn stress_test_websocket_manager_ping_updates() {
             username: format!("ping_user_{}", i),
             connected_at: chrono::Utc::now(),
             last_ping: chrono::Utc::now(),
+            state: rust_backend::websocket::manager::ConnectionState::Connected,
+            subscriptions: std::collections::HashSet::new(),
+            message_queue: std::collections::VecDeque::new(),
+            recovery_token: None,
+            metadata: std::collections::HashMap::new(),
         };
 
         manager.add_connection(connection_id, user).await;
@@ -425,6 +451,11 @@ async fn stress_test_websocket_manager_concurrent_operations() {
                         username: format!("concurrent_user_{}", i),
                         connected_at: chrono::Utc::now(),
                         last_ping: chrono::Utc::now(),
+                        state: rust_backend::websocket::manager::ConnectionState::Connected,
+                        subscriptions: std::collections::HashSet::new(),
+                        message_queue: std::collections::VecDeque::new(),
+                        recovery_token: None,
+                        metadata: std::collections::HashMap::new(),
                     };
                     manager_clone.add_connection(connection_id, user).await;
                 }
@@ -445,6 +476,7 @@ async fn stress_test_websocket_manager_concurrent_operations() {
                         timestamp: chrono::Utc::now(),
                         from_user_id: Some(user_id),
                         to_user_id: None,
+                secure_message: None,
                     };
                     manager_clone.broadcast_message(message).await;
                 }
@@ -486,7 +518,7 @@ async fn stress_test_websocket_manager_subscription_performance() {
 
     // Create multiple subscribers
     for _i in 0..num_subscribers {
-        let mut rx = manager.subscribe();
+        let mut rx = manager.get_broadcast_receiver();
         let received_count_clone = Arc::clone(&received_count);
 
         let handle = tokio::spawn(async move {
@@ -521,7 +553,7 @@ async fn stress_test_websocket_manager_subscription_performance() {
             }),
             timestamp: chrono::Utc::now(),
             from_user_id: Some(Uuid::new_v4()),
-            to_user_id: None,
+            to_user_id: None, secure_message: None,
         };
 
         manager.broadcast_message(message).await;

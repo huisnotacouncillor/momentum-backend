@@ -69,6 +69,7 @@ pub fn create_test_message(
         timestamp: chrono::Utc::now(),
         from_user_id,
         to_user_id,
+        secure_message: None,
     }
 }
 
@@ -79,6 +80,11 @@ pub fn create_test_connected_user(username: &str) -> rust_backend::websocket::Co
         username: username.to_string(),
         connected_at: chrono::Utc::now(),
         last_ping: chrono::Utc::now(),
+        state: rust_backend::websocket::manager::ConnectionState::Connected,
+        subscriptions: std::collections::HashSet::new(),
+        message_queue: std::collections::VecDeque::new(),
+        recovery_token: None,
+        metadata: std::collections::HashMap::new(),
     }
 }
 

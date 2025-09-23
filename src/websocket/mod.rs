@@ -1,24 +1,61 @@
 pub mod auth;
+pub mod commands;
+pub mod error_mapper;
 pub mod handler;
 pub mod manager;
+pub mod rate_limiter;
+pub mod retry_timeout;
+pub mod monitoring;
+pub mod security;
+pub mod tests;
 
 // Re-export commonly used types for convenience
 pub use auth::{AuthenticatedUser, WebSocketAuth, WebSocketAuthError, WebSocketAuthQuery};
+pub use commands::{WebSocketCommand, WebSocketCommandHandler, WebSocketCommandResponse, WebSocketCommandError};
+pub use error_mapper::{WebSocketErrorMapper, WebSocketErrorHandler, WebSocketError, WebSocketErrorCode};
 pub use handler::{
     BroadcastMessageRequest, BroadcastMessageResponse, CleanupResponse, OnlineUserInfo,
     OnlineUsersResponse, SendMessageRequest, SendMessageResponse, WebSocketHandler, WebSocketState,
     WebSocketStats,
 };
 pub use manager::{ConnectedUser, MessageType, WebSocketManager, WebSocketMessage};
+pub use rate_limiter::{WebSocketRateLimiter, RateLimitConfig, RateLimitError};
+pub use retry_timeout::{RetryTimeoutManager, RetryConfig, TimeoutConfig, RetryTimeoutError, ConnectionHealthChecker};
+pub use monitoring::{WebSocketMonitor, MonitoringConfig, PerformanceMetrics, ConnectionQuality, HealthStatus, HealthCheck, MonitoringData};
+pub use security::{SecureMessage, MessageSigner, SecurityError, SecureMessageBuilder};
 
 use crate::db::DbPool;
 use std::sync::Arc;
 
 /// Initialize WebSocket services
-pub fn create_websocket_state(db: Arc<DbPool>) -> WebSocketState {
+pub fn create_websocket_state(db: Arc<DbPool>, config: &crate::config::Config) -> WebSocketState {
     let ws_manager = WebSocketManager::new();
+    let message_signer = Arc::new(MessageSigner::new(config));
+    let command_handler = WebSocketCommandHandler::new(db.clone())
+        .with_message_signer(message_signer.clone());
+    let rate_limiter = WebSocketRateLimiter::new(RateLimitConfig::default());
+    let error_handler = WebSocketErrorHandler::new();
+    let retry_timeout_manager = RetryTimeoutManager::new(RetryConfig::default(), TimeoutConfig::default());
+    let monitor = WebSocketMonitor::new(MonitoringConfig::default());
 
-    WebSocketState { db, ws_manager }
+    // 启动清理任务
+    tokio::spawn({
+        let signer = message_signer.clone();
+        async move {
+            signer.start_cleanup_task().await;
+        }
+    });
+
+    WebSocketState {
+        db,
+        ws_manager,
+        command_handler,
+        rate_limiter,
+        error_handler,
+        retry_timeout_manager,
+        monitor,
+        message_signer: (*message_signer).clone(),
+    }
 }
 
 /// Create WebSocket routes
@@ -47,15 +84,4 @@ pub async fn start_connection_cleanup_task(ws_manager: WebSocketManager) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_module_exports() {
-        // Test that all re-exports are accessible
-        let _: Option<WebSocketManager> = None;
-        let _: Option<WebSocketHandler> = None;
-        let _: Option<WebSocketAuth> = None;
-    }
-}
+// tests are in separate module `tests.rs`

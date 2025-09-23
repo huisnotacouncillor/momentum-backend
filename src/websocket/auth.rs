@@ -26,6 +26,7 @@ pub struct AuthenticatedUser {
     pub email: String,
     pub name: String,
     pub avatar_url: Option<String>,
+    pub current_workspace_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,12 +58,18 @@ impl WebSocketAuth {
             .await
             .map_err(|_| WebSocketAuthError::UserNotFound)?;
 
+        // 获取用户的当前工作区
+        let current_workspace_id = get_user_current_workspace(&pool, user_id)
+            .await
+            .ok();
+
         Ok(AuthenticatedUser {
             user_id: auth_user.id,
             username: auth_user.username,
             email: auth_user.email,
             name: auth_user.name,
             avatar_url: auth_user.avatar_url,
+            current_workspace_id,
         })
     }
 
@@ -176,6 +183,24 @@ async fn get_user_by_id(
         name: user.name,
         avatar_url: user.avatar_url,
     })
+}
+
+async fn get_user_current_workspace(
+    pool: &Arc<DbPool>,
+    user_id: Uuid,
+) -> Result<Uuid, diesel::result::Error> {
+    use crate::schema::users::dsl::*;
+
+    let mut conn = pool.get().expect("Failed to get DB connection");
+
+    let workspace_id = users
+        .filter(id.eq(user_id))
+        .filter(is_active.eq(true))
+        .select(current_workspace_id)
+        .first::<Option<Uuid>>(&mut conn)?
+        .ok_or_else(|| diesel::result::Error::NotFound)?;
+
+    Ok(workspace_id)
 }
 
 #[cfg(test)]

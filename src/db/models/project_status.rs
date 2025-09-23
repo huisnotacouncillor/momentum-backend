@@ -148,3 +148,17 @@ pub struct ProjectStatusInfo {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
+
+impl From<ProjectStatus> for ProjectStatusInfo {
+    fn from(s: ProjectStatus) -> Self {
+        ProjectStatusInfo {
+            id: s.id,
+            name: s.name,
+            description: s.description,
+            color: s.color,
+            category: s.category,
+            created_at: s.created_at,
+            updated_at: s.updated_at,
+        }
+    }
+}

@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use rust_backend::websocket::{
     auth::WebSocketAuth,
-    manager::{MessageType, WebSocketManager, WebSocketMessage},
+    manager::{MessageType, WebSocketManager, WebSocketMessage, ConnectionState},
 };
 
 const TEST_JWT_SECRET: &str = "test_jwt_secret_key";
@@ -33,6 +33,7 @@ async fn test_websocket_message_serialization() {
         timestamp: chrono::Utc::now(),
         from_user_id: Some(Uuid::new_v4()),
         to_user_id: None,
+        secure_message: None,
     };
 
     let serialized = serde_json::to_string(&message).unwrap();
@@ -66,7 +67,7 @@ async fn test_websocket_auth_token_validation() {
 #[tokio::test]
 async fn test_websocket_manager_broadcast() {
     let manager = WebSocketManager::new();
-    let mut rx = manager.subscribe();
+    let mut rx = manager.get_broadcast_receiver();
 
     let test_message = WebSocketMessage {
         id: Uuid::new_v4().to_string(),
@@ -75,6 +76,7 @@ async fn test_websocket_manager_broadcast() {
         timestamp: chrono::Utc::now(),
         from_user_id: Some(Uuid::new_v4()),
         to_user_id: None,
+        secure_message: None,
     };
 
     // Broadcast the message
@@ -105,6 +107,11 @@ async fn test_websocket_manager_connection_lifecycle() {
         username: "test_user".to_string(),
         connected_at: chrono::Utc::now(),
         last_ping: chrono::Utc::now(),
+        state: ConnectionState::Connected,
+        subscriptions: std::collections::HashSet::new(),
+        message_queue: std::collections::VecDeque::new(),
+        recovery_token: None,
+        metadata: std::collections::HashMap::new(),
     };
 
     // Initially no connections
@@ -149,6 +156,11 @@ async fn test_websocket_manager_cleanup_stale_connections() {
         username: "stale_user".to_string(),
         connected_at: old_time,
         last_ping: old_time,
+        state: ConnectionState::Connected,
+        subscriptions: std::collections::HashSet::new(),
+        message_queue: std::collections::VecDeque::new(),
+        recovery_token: None,
+        metadata: std::collections::HashMap::new(),
     };
 
     manager
@@ -182,6 +194,7 @@ async fn test_websocket_message_types() {
             timestamp: chrono::Utc::now(),
             from_user_id: None,
             to_user_id: None,
+        secure_message: None,
         };
 
         let serialized = serde_json::to_string(&message).unwrap();
@@ -208,6 +221,11 @@ async fn test_websocket_manager_send_to_user() {
         username: "target_user".to_string(),
         connected_at: chrono::Utc::now(),
         last_ping: chrono::Utc::now(),
+        state: ConnectionState::Connected,
+        subscriptions: std::collections::HashSet::new(),
+        message_queue: std::collections::VecDeque::new(),
+        recovery_token: None,
+        metadata: std::collections::HashMap::new(),
     };
 
     manager.add_connection(connection_id, user).await;
@@ -219,6 +237,7 @@ async fn test_websocket_manager_send_to_user() {
         timestamp: chrono::Utc::now(),
         from_user_id: Some(Uuid::new_v4()),
         to_user_id: Some(user_id),
+        secure_message: None,
     };
 
     // This should not fail (we're just testing the API)
@@ -241,6 +260,11 @@ async fn test_websocket_manager_multiple_users() {
             username: format!("user_{}", i),
             connected_at: chrono::Utc::now(),
             last_ping: chrono::Utc::now(),
+            state: ConnectionState::Connected,
+            subscriptions: std::collections::HashSet::new(),
+            message_queue: std::collections::VecDeque::new(),
+            recovery_token: None,
+            metadata: std::collections::HashMap::new(),
         };
 
         users.push((connection_id.clone(), user_id));
@@ -337,6 +361,11 @@ async fn test_websocket_manager_performance() {
             username: format!("perf_user_{}", i),
             connected_at: chrono::Utc::now(),
             last_ping: chrono::Utc::now(),
+            state: ConnectionState::Connected,
+            subscriptions: std::collections::HashSet::new(),
+            message_queue: std::collections::VecDeque::new(),
+            recovery_token: None,
+            metadata: std::collections::HashMap::new(),
         };
 
         manager.add_connection(connection_id, user).await;
@@ -356,6 +385,7 @@ async fn test_websocket_manager_performance() {
         timestamp: chrono::Utc::now(),
         from_user_id: Some(Uuid::new_v4()),
         to_user_id: None,
+        secure_message: None,
     };
 
     manager.broadcast_message(test_message).await;
