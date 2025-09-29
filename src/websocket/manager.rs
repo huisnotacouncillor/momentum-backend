@@ -3,21 +3,19 @@ use futures_util::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
-use tokio::sync::{RwLock, broadcast};
-use tracing::{error, info, warn, debug};
-use uuid::Uuid;
 use std::time::Duration;
+use tokio::sync::{RwLock, broadcast};
+use tracing::{error, info, warn};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebSocketMessage {
-    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub message_type: MessageType,
     pub data: serde_json::Value,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-    pub from_user_id: Option<Uuid>,
-    pub to_user_id: Option<Uuid>,
-    /// 安全消息（如果存在）
-    pub secure_message: Option<crate::websocket::SecureMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -31,7 +29,7 @@ pub enum MessageType {
     Ping,
     Pong,
     Error,
-    Command, // 新增命令类型
+    Command,         // 新增命令类型
     CommandResponse, // 新增命令响应类型
 }
 
@@ -39,10 +37,10 @@ pub enum MessageType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ConnectionState {
-    Connected,     // 正常连接
-    Reconnecting,  // 重连中
-    Disconnected,  // 已断开
-    Suspended,     // 暂停（临时断开）
+    Connected,    // 正常连接
+    Reconnecting, // 重连中
+    Disconnected, // 已断开
+    Suspended,    // 暂停（临时断开）
 }
 
 /// 连接信息
@@ -53,10 +51,11 @@ pub struct ConnectedUser {
     pub connected_at: chrono::DateTime<chrono::Utc>,
     pub last_ping: chrono::DateTime<chrono::Utc>,
     pub state: ConnectionState,
-    pub subscriptions: HashSet<String>, // 订阅的主题
+    pub subscriptions: HashSet<String>,            // 订阅的主题
     pub message_queue: VecDeque<WebSocketMessage>, // 离线消息队列
-    pub recovery_token: Option<String>, // 恢复令牌
-    pub metadata: HashMap<String, String>, // 连接元数据
+    pub recovery_token: Option<String>,            // 恢复令牌
+    pub metadata: HashMap<String, String>,         // 连接元数据
+    pub current_workspace_id: Option<Uuid>,
 }
 
 /// 连接恢复信息
@@ -97,6 +96,17 @@ impl WebSocketManager {
         }
     }
 
+    /// 完善消息 - 自动生成ID和timestamp
+    fn complete_message(&self, mut message: WebSocketMessage) -> WebSocketMessage {
+        if message.id.is_none() {
+            message.id = Some(Uuid::new_v4().to_string());
+        }
+        if message.timestamp.is_none() {
+            message.timestamp = Some(chrono::Utc::now());
+        }
+        message
+    }
+
     // 添加新连接
     pub async fn add_connection(&self, connection_id: String, user: ConnectedUser) {
         let mut connections = self.connections.write().await;
@@ -105,24 +115,27 @@ impl WebSocketManager {
         // 更新订阅信息
         let mut subscriptions = self.subscriptions.write().await;
         for topic in &user.subscriptions {
-            subscriptions.entry(topic.clone()).or_insert_with(HashSet::new).insert(user.user_id);
+            subscriptions
+                .entry(topic.clone())
+                .or_insert_with(HashSet::new)
+                .insert(user.user_id);
         }
 
-        info!("User {} connected with connection ID {}", user.username, connection_id);
+        info!(
+            "🔌 WebSocket User {} connected with connection ID {}",
+            user.username, connection_id
+        );
 
         // 发送用户加入消息
         let join_message = WebSocketMessage {
-            id: Uuid::new_v4().to_string(),
+            id: Some(Uuid::new_v4().to_string()),
             message_type: MessageType::UserJoined,
             data: serde_json::json!({
                 "user_id": user.user_id,
                 "username": user.username,
                 "connected_at": user.connected_at
             }),
-            timestamp: chrono::Utc::now(),
-            from_user_id: Some(user.user_id),
-            to_user_id: None,
-            secure_message: None,
+            timestamp: Some(chrono::Utc::now()),
         };
 
         let _ = self.broadcast_tx.send(join_message);
@@ -133,36 +146,34 @@ impl WebSocketManager {
         let mut connections = self.connections.write().await;
         if let Some(user) = connections.remove(connection_id) {
             info!(
-                "User {} disconnected with connection_id: {}",
+                "🔌 WebSocket User {} disconnected with connection_id: {}",
                 user.username, connection_id
             );
 
             // 发送用户离开消息
             let leave_message = WebSocketMessage {
-                id: Uuid::new_v4().to_string(),
+                id: Some(Uuid::new_v4().to_string()),
                 message_type: MessageType::UserLeft,
                 data: serde_json::json!({
                     "user_id": user.user_id,
                     "username": user.username,
                     "message": format!("{} left the chat", user.username)
                 }),
-                timestamp: chrono::Utc::now(),
-                from_user_id: Some(user.user_id),
-                to_user_id: None,
-                secure_message: None,
+                timestamp: Some(chrono::Utc::now()),
             };
 
-        let _ = self.broadcast_tx.send(leave_message);
+            let _ = self.broadcast_tx.send(leave_message);
 
-        // 创建恢复信息
-        self.create_recovery_info(&user).await;
+            // 创建恢复信息
+            self.create_recovery_info(&user).await;
         }
     }
 
     /// 创建连接恢复信息
     async fn create_recovery_info(&self, user: &ConnectedUser) {
         let recovery_token = Uuid::new_v4().to_string();
-        let expires_at = chrono::Utc::now() + chrono::Duration::from_std(self.recovery_token_ttl).unwrap();
+        let expires_at =
+            chrono::Utc::now() + chrono::Duration::from_std(self.recovery_token_ttl).unwrap();
 
         let recovery_info = ConnectionRecoveryInfo {
             user_id: user.user_id,
@@ -175,15 +186,24 @@ impl WebSocketManager {
         let mut recovery_map = self.recovery_info.write().await;
         recovery_map.insert(user.user_id, recovery_info);
 
-        debug!("Created recovery info for user {} with token {}", user.username, recovery_token);
+        info!(
+            "🔄 WebSocket Created recovery info for user {} with token {}",
+            user.username, recovery_token
+        );
     }
 
     /// 恢复连接
-    pub async fn recover_connection(&self, user_id: Uuid, recovery_token: &str) -> Option<ConnectedUser> {
+    pub async fn recover_connection(
+        &self,
+        user_id: Uuid,
+        recovery_token: &str,
+    ) -> Option<ConnectedUser> {
         let recovery_map = self.recovery_info.write().await;
 
         if let Some(recovery_info) = recovery_map.get(&user_id) {
-            if recovery_info.recovery_token == recovery_token && recovery_info.expires_at > chrono::Utc::now() {
+            if recovery_info.recovery_token == recovery_token
+                && recovery_info.expires_at > chrono::Utc::now()
+            {
                 // 恢复连接信息
                 let mut connections = self.connections.write().await;
                 if let Some(user) = connections.get_mut(&user_id.to_string()) {
@@ -195,10 +215,16 @@ impl WebSocketManager {
                     // 更新订阅信息
                     let mut subscriptions = self.subscriptions.write().await;
                     for topic in &user.subscriptions {
-                        subscriptions.entry(topic.clone()).or_insert_with(HashSet::new).insert(user_id);
+                        subscriptions
+                            .entry(topic.clone())
+                            .or_insert_with(HashSet::new)
+                            .insert(user_id);
                     }
 
-                    info!("Recovered connection for user {}", user.username);
+                    info!(
+                        "🔄 WebSocket Recovered connection for user {}",
+                        user.username
+                    );
                     return Some(user.clone());
                 }
             }
@@ -212,7 +238,10 @@ impl WebSocketManager {
         let mut connections = self.connections.write().await;
         if let Some(user) = connections.get_mut(connection_id) {
             user.state = ConnectionState::Suspended;
-            debug!("Suspended connection for user {}", user.username);
+            info!(
+                "⏸️ WebSocket Suspended connection for user {}",
+                user.username
+            );
         }
     }
 
@@ -221,7 +250,7 @@ impl WebSocketManager {
         let mut connections = self.connections.write().await;
         if let Some(user) = connections.get_mut(connection_id) {
             user.state = ConnectionState::Connected;
-            debug!("Resumed connection for user {}", user.username);
+            info!("▶️ WebSocket Resumed connection for user {}", user.username);
         }
     }
 
@@ -240,7 +269,10 @@ impl WebSocketManager {
                 user.message_queue.pop_front();
             }
 
-            debug!("Added offline message for user {}", user.username);
+            info!(
+                "📨 WebSocket Added offline message for user {}",
+                user.username
+            );
         }
     }
 
@@ -264,7 +296,10 @@ impl WebSocketManager {
         }
 
         let mut subscriptions = self.subscriptions.write().await;
-        subscriptions.entry(topic).or_insert_with(HashSet::new).insert(user_id);
+        subscriptions
+            .entry(topic)
+            .or_insert_with(HashSet::new)
+            .insert(user_id);
     }
 
     /// 取消订阅主题
@@ -312,7 +347,33 @@ impl WebSocketManager {
     // 广播消息给所有连接
     pub async fn broadcast_message(&self, message: WebSocketMessage) {
         if let Err(e) = self.broadcast_tx.send(message) {
-            error!("Failed to broadcast message: {}", e);
+            error!("📢 WebSocket Failed to broadcast message: {}", e);
+        }
+    }
+
+    // 基于workspace广播消息
+    pub async fn broadcast_to_workspace(&self, workspace_id: Uuid, message: WebSocketMessage) {
+        let connections = self.connections.read().await;
+        let workspace_users: Vec<_> = connections
+            .iter()
+            .filter(|(_, user)| user.current_workspace_id == Some(workspace_id))
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        if !workspace_users.is_empty() {
+            info!(
+                "📢 WebSocket Broadcasting to workspace {} ({} users)",
+                workspace_id,
+                workspace_users.len()
+            );
+            if let Err(e) = self.broadcast_tx.send(message) {
+                error!(
+                    "📢 WebSocket Failed to broadcast to workspace {}: {}",
+                    workspace_id, e
+                );
+            }
+        } else {
+            warn!("⚠️ WebSocket No users found in workspace {}", workspace_id);
         }
     }
 
@@ -327,10 +388,13 @@ impl WebSocketManager {
 
         if !user_connections.is_empty() {
             if let Err(e) = self.broadcast_tx.send(message) {
-                error!("Failed to send message to user {}: {}", user_id, e);
+                error!(
+                    "📤 WebSocket Failed to send message to user {}: {}",
+                    user_id, e
+                );
             }
         } else {
-            warn!("User {} is not connected", user_id);
+            warn!("⚠️ WebSocket User {} is not connected", user_id);
         }
     }
 
@@ -352,7 +416,10 @@ impl WebSocketManager {
 
         for connection_id in stale_connections {
             if let Some(user) = connections.remove(&connection_id) {
-                warn!("Removed stale connection for user: {}", user.username);
+                warn!(
+                    "🧹 WebSocket Removed stale connection for user: {}",
+                    user.username
+                );
             }
         }
     }
@@ -372,26 +439,26 @@ impl WebSocketManager {
         let username = user.username.clone();
 
         // 添加连接
-        self.add_connection(connection_id.clone(), user).await;
+        self.add_connection(connection_id.clone(), user.clone())
+            .await;
 
         // 记录连接监控
         if let Some(ref monitor) = monitor {
-            monitor.record_connection(user_id, connection_id.clone()).await;
+            monitor
+                .record_connection(user_id, connection_id.clone())
+                .await;
         }
 
         // 发送连接成功消息
         let welcome_message = WebSocketMessage {
-            id: Uuid::new_v4().to_string(),
+            id: Some(Uuid::new_v4().to_string()),
             message_type: MessageType::SystemMessage,
             data: serde_json::json!({
                 "message": "Connected successfully",
                 "connection_id": connection_id,
                 "online_users": self.get_online_users().await.len()
             }),
-            timestamp: chrono::Utc::now(),
-            from_user_id: None,
-            to_user_id: Some(user_id),
-            secure_message: None,
+            timestamp: Some(chrono::Utc::now()),
         };
 
         if let Ok(msg_text) = serde_json::to_string(&welcome_message) {
@@ -414,87 +481,154 @@ impl WebSocketManager {
                     match msg {
                         Ok(Message::Text(text)) => {
                             // 记录消息接收
+                            info!(
+                                "📨 WebSocket received message from connection_id: {}, length: {}",
+                                connection_id,
+                                text.len()
+                            );
                             if let Some(ref monitor) = monitor {
-                                monitor.record_message_received(&connection_id, text.len()).await;
+                                monitor
+                                    .record_message_received(&connection_id, text.len())
+                                    .await;
                             }
 
                             if let Ok(ws_message) = serde_json::from_str::<WebSocketMessage>(&text)
                             {
-                                match ws_message.message_type {
+                                // 完善消息 - 自动生成ID和timestamp
+                                let complete_message = manager.complete_message(ws_message.clone());
+                                info!("--------------------------------");
+                                info!("ws_message: {:?}", complete_message);
+                                info!("--------------------------------");
+                                match complete_message.message_type {
                                     MessageType::Ping => {
+                                        info!(
+                                            "🏓 WebSocket Ping received from connection_id: {}",
+                                            connection_id
+                                        );
                                         manager.update_ping(&connection_id).await;
                                         let pong = WebSocketMessage {
-                                            id: Uuid::new_v4().to_string(),
+                                            id: Some(Uuid::new_v4().to_string()),
                                             message_type: MessageType::Pong,
                                             data: serde_json::json!({"timestamp": chrono::Utc::now()}),
-                                            timestamp: chrono::Utc::now(),
-                                            from_user_id: None,
-                                            to_user_id: Some(user_id),
-                                            secure_message: None,
+                                            timestamp: Some(chrono::Utc::now()),
                                         };
                                         manager.broadcast_message(pong).await;
                                     }
                                     MessageType::Command => {
                                         // 处理命令
+                                        info!(
+                                            "⚡ WebSocket Command received from connection_id: {}",
+                                            connection_id
+                                        );
                                         if let Some(ref handler) = command_handler {
-                                            if let Ok(command) = serde_json::from_value::<crate::websocket::WebSocketCommand>(ws_message.data.clone()) {
-                                                let authenticated_user = crate::websocket::auth::AuthenticatedUser {
-                                                    user_id: user_id,
-                                                    username: username.clone(),
-                                                    email: "".to_string(), // 这里需要从数据库获取
-                                                    name: username.clone(),
-                                                    avatar_url: None,
-                                                    current_workspace_id: None, // 这里需要从数据库获取
-                                                };
+                                            match serde_json::from_value::<
+                                                crate::websocket::WebSocketCommand,
+                                            >(
+                                                ws_message.data.clone()
+                                            ) {
+                                                Ok(command) => {
+                                                    let authenticated_user =
+                                                        crate::websocket::auth::AuthenticatedUser {
+                                                            user_id: user_id,
+                                                            username: username.clone(),
+                                                            email: "".to_string(), // 这里需要从数据库获取
+                                                            name: username.clone(),
+                                                            avatar_url: None,
+                                                            current_workspace_id: user
+                                                                .current_workspace_id, // 来自握手时的认证信息
+                                                        };
 
-                                                let start_time = std::time::Instant::now();
-                                                let response = handler.handle_command(command, &authenticated_user).await;
-                                                let response_time = start_time.elapsed();
+                                                    let start_time = std::time::Instant::now();
+                                                    let response = handler
+                                                        .handle_command(
+                                                            command,
+                                                            &authenticated_user,
+                                                        )
+                                                        .await;
+                                                    let response_time = start_time.elapsed();
 
-                                                // 记录命令处理监控
-                                                if let Some(ref monitor) = monitor {
-                                                    monitor.record_command_processed(response_time, response.success).await;
+                                                    // 记录命令处理监控
+                                                    if let Some(ref monitor) = monitor {
+                                                        monitor
+                                                            .record_command_processed(
+                                                                response_time,
+                                                                response.success,
+                                                            )
+                                                            .await;
+                                                    }
+
+                                                    let response_message = WebSocketMessage {
+                                                        id: Some(Uuid::new_v4().to_string()),
+                                                        message_type: MessageType::CommandResponse,
+                                                        data: serde_json::to_value(&response)
+                                                            .unwrap(),
+                                                        timestamp: Some(chrono::Utc::now()),
+                                                    };
+                                                    manager
+                                                        .broadcast_message(response_message)
+                                                        .await;
                                                 }
+                                                Err(e) => {
+                                                    error!(
+                                                        "❌ Failed to parse WebSocket command: {}, data: {}",
+                                                        e, ws_message.data
+                                                    );
+                                                    // 发送错误响应
+                                                    let error_response = crate::websocket::WebSocketCommandResponse::error(
+                                                        "unknown",
+                                                        "unknown",
+                                                        None, // 解析失败时没有request_id
+                                                        crate::websocket::WebSocketCommandError::system_error(&format!("Failed to parse command: {}", e)),
+                                                    );
 
-                                                let response_message = WebSocketMessage {
-                                                    id: Uuid::new_v4().to_string(),
-                                                    message_type: MessageType::CommandResponse,
-                                                    data: serde_json::to_value(&response).unwrap(),
-                                                    timestamp: chrono::Utc::now(),
-                                                    from_user_id: None,
-                                                    to_user_id: Some(user_id),
-                                                    secure_message: None,
-                                                };
-                                                manager.broadcast_message(response_message).await;
+                                                    let error_message = WebSocketMessage {
+                                                        id: Some(Uuid::new_v4().to_string()),
+                                                        message_type: MessageType::CommandResponse,
+                                                        data: serde_json::to_value(&error_response)
+                                                            .unwrap(),
+                                                        timestamp: Some(chrono::Utc::now()),
+                                                    };
+                                                    manager.broadcast_message(error_message).await;
+                                                }
                                             }
                                         }
                                     }
                                     MessageType::Text => {
                                         // 广播文本消息
-                                        let mut broadcast_msg = ws_message;
-                                        broadcast_msg.from_user_id = Some(user_id);
-                                        broadcast_msg.timestamp = chrono::Utc::now();
-                                        manager.broadcast_message(broadcast_msg).await;
+                                        info!(
+                                            "💬 WebSocket Text message received from connection_id: {}",
+                                            connection_id
+                                        );
+                                        manager.broadcast_message(complete_message).await;
                                     }
                                     _ => {
                                         // 处理其他类型的消息
-                                        let mut broadcast_msg = ws_message;
-                                        broadcast_msg.from_user_id = Some(user_id);
-                                        broadcast_msg.timestamp = chrono::Utc::now();
-                                        manager.broadcast_message(broadcast_msg).await;
+                                        info!(
+                                            "📋 WebSocket Other message type received from connection_id: {}, type: {:?}",
+                                            connection_id, complete_message.message_type
+                                        );
+                                        manager.broadcast_message(complete_message).await;
                                     }
                                 }
+                            } else {
+                                error!(
+                                    "❌ WebSocket failed to parse message from connection_id: {}, text: {}",
+                                    connection_id, text
+                                );
                             }
                         }
                         Ok(Message::Close(_)) => {
                             info!(
-                                "WebSocket connection closed for connection_id: {}",
+                                "🔌 WebSocket connection closed for connection_id: {}",
                                 connection_id
                             );
                             break;
                         }
                         Err(e) => {
-                            error!("WebSocket error for connection_id {}: {}", connection_id, e);
+                            error!(
+                                "❌ WebSocket error for connection_id {}: {}",
+                                connection_id, e
+                            );
                             break;
                         }
                         _ => {}
@@ -508,17 +642,22 @@ impl WebSocketManager {
             let monitor = monitor.clone();
             tokio::spawn(async move {
                 while let Ok(message) = rx.recv().await {
-                    // 检查消息是否是发给这个用户的
-                    let should_send = match message.to_user_id {
-                        Some(target_user_id) => target_user_id == user_id,
-                        None => true, // 广播消息发给所有人
-                    };
+                    // 基于workspace广播 - 发送给同一workspace的所有用户
+                    let should_send = true; // 所有广播消息都发送给当前连接
 
                     if should_send {
                         if let Ok(msg_text) = serde_json::to_string(&message) {
                             // 记录消息发送
+                            info!(
+                                "📤 WebSocket sending message to connection_id: {}, length: {}, type: {:?}",
+                                connection_id_clone,
+                                msg_text.len(),
+                                message.message_type
+                            );
                             if let Some(ref monitor) = monitor {
-                                monitor.record_message_sent(&connection_id_clone, msg_text.len()).await;
+                                monitor
+                                    .record_message_sent(&connection_id_clone, msg_text.len())
+                                    .await;
                             }
 
                             if sender.send(Message::Text(msg_text)).await.is_err() {
@@ -541,7 +680,9 @@ impl WebSocketManager {
 
         // 记录连接断开监控
         if let Some(ref monitor) = monitor {
-            monitor.record_disconnection(&connection_id_for_cleanup).await;
+            monitor
+                .record_disconnection(&connection_id_for_cleanup)
+                .await;
         }
     }
 }

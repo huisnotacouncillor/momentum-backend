@@ -79,6 +79,7 @@ impl WebSocketHandler {
             message_queue: std::collections::VecDeque::new(),
             recovery_token: None,
             metadata: std::collections::HashMap::new(),
+            current_workspace_id: authenticated_user.current_workspace_id,
         };
 
         tracing::info!(
@@ -138,7 +139,7 @@ impl WebSocketHandler {
         use crate::websocket::manager::{MessageType, WebSocketMessage};
 
         let message = WebSocketMessage {
-            id: Uuid::new_v4().to_string(),
+            id: Some(Uuid::new_v4().to_string()),
             message_type: match payload.message_type.as_str() {
                 "text" => MessageType::Text,
                 "notification" => MessageType::Notification,
@@ -146,10 +147,7 @@ impl WebSocketHandler {
                 _ => MessageType::Text,
             },
             data: payload.data,
-            timestamp: chrono::Utc::now(),
-            from_user_id: payload.from_user_id,
-            to_user_id: Some(payload.to_user_id),
-            secure_message: None,
+            timestamp: Some(chrono::Utc::now()),
         };
 
         state
@@ -171,7 +169,7 @@ impl WebSocketHandler {
         use crate::websocket::manager::{MessageType, WebSocketMessage};
 
         let message = WebSocketMessage {
-            id: Uuid::new_v4().to_string(),
+            id: Some(Uuid::new_v4().to_string()),
             message_type: match payload.message_type.as_str() {
                 "text" => MessageType::Text,
                 "notification" => MessageType::Notification,
@@ -179,10 +177,7 @@ impl WebSocketHandler {
                 _ => MessageType::SystemMessage,
             },
             data: payload.data,
-            timestamp: chrono::Utc::now(),
-            from_user_id: payload.from_user_id,
-            to_user_id: None, // 广播消息不指定目标用户
-            secure_message: None,
+            timestamp: Some(chrono::Utc::now()),
         };
 
         state.ws_manager.broadcast_message(message).await;
@@ -239,7 +234,6 @@ pub struct WebSocketStats {
 #[derive(serde::Deserialize)]
 pub struct SendMessageRequest {
     pub to_user_id: Uuid,
-    pub from_user_id: Option<Uuid>,
     pub message_type: String,
     pub data: serde_json::Value,
 }
@@ -252,7 +246,6 @@ pub struct SendMessageResponse {
 
 #[derive(serde::Deserialize)]
 pub struct BroadcastMessageRequest {
-    pub from_user_id: Option<Uuid>,
     pub message_type: String,
     pub data: serde_json::Value,
 }

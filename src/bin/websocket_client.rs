@@ -209,12 +209,10 @@ async fn handle_interactive_mode(config: ClientConfig) -> Result<(), Box<dyn std
             ping_interval.tick().await;
 
             let ping_message = json!({
-                "id": Uuid::new_v4().to_string(),
                 "message_type": "ping",
                 "data": {
                     "timestamp": chrono::Utc::now()
-                },
-                "timestamp": chrono::Utc::now(),
+                }
             });
 
             if ping_tx.send(ping_message.to_string()).is_err() {

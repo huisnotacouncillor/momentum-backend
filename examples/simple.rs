@@ -1,6 +1,6 @@
 use axum::{Router, Server};
 use diesel::r2d2::{self, ConnectionManager};
-use rust_backend::AppState;
+// use rust_backend::AppState;
 
 #[tokio::main]
 async fn main() {
@@ -13,7 +13,7 @@ async fn main() {
     let app = Router::new()
         .route(
             "/user/:id",
-            axum::routing::get(rust_backend::routes::users::get_user),
+            axum::routing::get(|_: axum::extract::Path<String>| async { "Hello World" }),
         )
         .with_state(state);
 

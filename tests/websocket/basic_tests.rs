@@ -27,13 +27,10 @@ async fn test_websocket_manager_creation() {
 #[tokio::test]
 async fn test_websocket_message_serialization() {
     let message = WebSocketMessage {
-        id: "test_id".to_string(),
+        id: Some("test_id".to_string()),
         message_type: MessageType::Text,
         data: json!({"content": "Hello, World!"}),
-        timestamp: chrono::Utc::now(),
-        from_user_id: Some(Uuid::new_v4()),
-        to_user_id: None,
-        secure_message: None,
+        timestamp: Some(chrono::Utc::now()),
     };
 
     let serialized = serde_json::to_string(&message).unwrap();
@@ -70,13 +67,10 @@ async fn test_websocket_manager_broadcast() {
     let mut rx = manager.get_broadcast_receiver();
 
     let test_message = WebSocketMessage {
-        id: Uuid::new_v4().to_string(),
+        id: Some(Uuid::new_v4().to_string()),
         message_type: MessageType::Text,
         data: json!({"content": "Test broadcast message"}),
-        timestamp: chrono::Utc::now(),
-        from_user_id: Some(Uuid::new_v4()),
-        to_user_id: None,
-        secure_message: None,
+        timestamp: Some(chrono::Utc::now()),
     };
 
     // Broadcast the message
@@ -112,6 +106,7 @@ async fn test_websocket_manager_connection_lifecycle() {
         message_queue: std::collections::VecDeque::new(),
         recovery_token: None,
         metadata: std::collections::HashMap::new(),
+        current_workspace_id: Some(Uuid::new_v4()),
     };
 
     // Initially no connections
@@ -161,6 +156,7 @@ async fn test_websocket_manager_cleanup_stale_connections() {
         message_queue: std::collections::VecDeque::new(),
         recovery_token: None,
         metadata: std::collections::HashMap::new(),
+        current_workspace_id: Some(Uuid::new_v4()),
     };
 
     manager
@@ -188,13 +184,10 @@ async fn test_websocket_message_types() {
 
     for (message_type, expected_str) in test_cases {
         let message = WebSocketMessage {
-            id: Uuid::new_v4().to_string(),
+            id: Some(Uuid::new_v4().to_string()),
             message_type: message_type.clone(),
             data: json!({}),
-            timestamp: chrono::Utc::now(),
-            from_user_id: None,
-            to_user_id: None,
-        secure_message: None,
+            timestamp: Some(chrono::Utc::now()),
         };
 
         let serialized = serde_json::to_string(&message).unwrap();
@@ -226,18 +219,16 @@ async fn test_websocket_manager_send_to_user() {
         message_queue: std::collections::VecDeque::new(),
         recovery_token: None,
         metadata: std::collections::HashMap::new(),
+        current_workspace_id: Some(Uuid::new_v4()),
     };
 
     manager.add_connection(connection_id, user).await;
 
     let test_message = WebSocketMessage {
-        id: Uuid::new_v4().to_string(),
+        id: Some(Uuid::new_v4().to_string()),
         message_type: MessageType::Text,
         data: json!({"content": "Direct message"}),
-        timestamp: chrono::Utc::now(),
-        from_user_id: Some(Uuid::new_v4()),
-        to_user_id: Some(user_id),
-        secure_message: None,
+        timestamp: Some(chrono::Utc::now()),
     };
 
     // This should not fail (we're just testing the API)
@@ -265,6 +256,7 @@ async fn test_websocket_manager_multiple_users() {
             message_queue: std::collections::VecDeque::new(),
             recovery_token: None,
             metadata: std::collections::HashMap::new(),
+            current_workspace_id: Some(Uuid::new_v4()),
         };
 
         users.push((connection_id.clone(), user_id));
@@ -366,6 +358,7 @@ async fn test_websocket_manager_performance() {
             message_queue: std::collections::VecDeque::new(),
             recovery_token: None,
             metadata: std::collections::HashMap::new(),
+            current_workspace_id: Some(Uuid::new_v4()),
         };
 
         manager.add_connection(connection_id, user).await;
@@ -379,13 +372,10 @@ async fn test_websocket_manager_performance() {
     // Test broadcast performance
     let broadcast_start = std::time::Instant::now();
     let test_message = WebSocketMessage {
-        id: Uuid::new_v4().to_string(),
+        id: Some(Uuid::new_v4().to_string()),
         message_type: MessageType::Text,
         data: json!({"content": "Performance test broadcast"}),
-        timestamp: chrono::Utc::now(),
-        from_user_id: Some(Uuid::new_v4()),
-        to_user_id: None,
-        secure_message: None,
+        timestamp: Some(chrono::Utc::now()),
     };
 
     manager.broadcast_message(test_message).await;

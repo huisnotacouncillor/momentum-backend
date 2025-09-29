@@ -72,6 +72,7 @@ async fn stress_test_websocket_manager_concurrent_connections() {
                 message_queue: std::collections::VecDeque::new(),
                 recovery_token: None,
                 metadata: std::collections::HashMap::new(),
+                current_workspace_id: Some(Uuid::new_v4()),
             };
 
             // Wait for all tasks to be ready
@@ -137,6 +138,7 @@ async fn stress_test_websocket_manager_message_broadcasting() {
             message_queue: std::collections::VecDeque::new(),
             recovery_token: None,
             metadata: std::collections::HashMap::new(),
+            current_workspace_id: Some(Uuid::new_v4()),
         };
 
         manager.add_connection(connection_id, user).await;
@@ -155,16 +157,13 @@ async fn stress_test_websocket_manager_message_broadcasting() {
 
         let handle = tokio::spawn(async move {
             let message = WebSocketMessage {
-                id: Uuid::new_v4().to_string(),
+                id: Some(Uuid::new_v4().to_string()),
                 message_type: MessageType::Text,
                 data: json!({
                     "content": format!("Stress test message {}", i),
                     "timestamp": chrono::Utc::now()
                 }),
-                timestamp: chrono::Utc::now(),
-                from_user_id: Some(Uuid::new_v4()),
-                to_user_id: None,
-                secure_message: None,
+                timestamp: Some(chrono::Utc::now()),
             };
 
             manager_clone.broadcast_message(message).await;
@@ -233,6 +232,7 @@ async fn stress_test_websocket_manager_rapid_connect_disconnect() {
                     message_queue: std::collections::VecDeque::new(),
                     recovery_token: None,
                     metadata: std::collections::HashMap::new(),
+                    current_workspace_id: Some(Uuid::new_v4()),
                 };
 
                 manager_clone
@@ -298,6 +298,7 @@ async fn stress_test_websocket_manager_memory_usage() {
             message_queue: std::collections::VecDeque::new(),
             recovery_token: None,
             metadata: std::collections::HashMap::new(),
+            current_workspace_id: Some(Uuid::new_v4()),
         };
 
         manager.add_connection(connection_id, user).await;
@@ -313,15 +314,13 @@ async fn stress_test_websocket_manager_memory_usage() {
 
     // Test large message broadcasting
     let large_message = WebSocketMessage {
-        id: Uuid::new_v4().to_string(),
+        id: Some(Uuid::new_v4().to_string()),
         message_type: MessageType::Text,
         data: json!({
             "content": "x".repeat(large_data_size),
             "large_array": vec![1; 1000]
         }),
-        timestamp: chrono::Utc::now(),
-        from_user_id: Some(Uuid::new_v4()),
-        to_user_id: None, secure_message: None,
+        timestamp: Some(chrono::Utc::now()),
     };
 
     let broadcast_start = Instant::now();
@@ -369,6 +368,7 @@ async fn stress_test_websocket_manager_ping_updates() {
             message_queue: std::collections::VecDeque::new(),
             recovery_token: None,
             metadata: std::collections::HashMap::new(),
+            current_workspace_id: Some(Uuid::new_v4()),
         };
 
         manager.add_connection(connection_id, user).await;
@@ -456,6 +456,7 @@ async fn stress_test_websocket_manager_concurrent_operations() {
                         message_queue: std::collections::VecDeque::new(),
                         recovery_token: None,
                         metadata: std::collections::HashMap::new(),
+                        current_workspace_id: Some(Uuid::new_v4()),
                     };
                     manager_clone.add_connection(connection_id, user).await;
                 }
@@ -470,13 +471,10 @@ async fn stress_test_websocket_manager_concurrent_operations() {
                 3 => {
                     // Broadcast message
                     let message = WebSocketMessage {
-                        id: Uuid::new_v4().to_string(),
+                        id: Some(Uuid::new_v4().to_string()),
                         message_type: MessageType::Text,
                         data: json!({"content": format!("Concurrent message {}", i)}),
-                        timestamp: chrono::Utc::now(),
-                        from_user_id: Some(user_id),
-                        to_user_id: None,
-                secure_message: None,
+                        timestamp: Some(chrono::Utc::now()),
                     };
                     manager_clone.broadcast_message(message).await;
                 }
@@ -545,15 +543,13 @@ async fn stress_test_websocket_manager_subscription_performance() {
     // Broadcast messages
     for i in 0..num_messages {
         let message = WebSocketMessage {
-            id: Uuid::new_v4().to_string(),
+            id: Some(Uuid::new_v4().to_string()),
             message_type: MessageType::Text,
             data: json!({
                 "content": format!("Subscription test message {}", i),
                 "sequence": i
             }),
-            timestamp: chrono::Utc::now(),
-            from_user_id: Some(Uuid::new_v4()),
-            to_user_id: None, secure_message: None,
+            timestamp: Some(chrono::Utc::now()),
         };
 
         manager.broadcast_message(message).await;

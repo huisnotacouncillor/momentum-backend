@@ -31,6 +31,9 @@ validator = { version = "0.16", features = ["derive"] }
 hex = "0.4"
 hmac = "0.12"
 sha2 = "0.10"
+async-trait = "0.1.89"
+futures = "0.3.31"
+base64 = "0.22.1"
 
 [dev-dependencies]
 reqwest = { version = "0.11", features = ["json"] }

@@ -56,20 +56,17 @@ pub fn create_test_jwt(user_id: Uuid, username: &str, secret: &str) -> String {
 pub fn create_test_message(
     message_type: rust_backend::websocket::MessageType,
     content: &str,
-    from_user_id: Option<Uuid>,
-    to_user_id: Option<Uuid>,
+    _from_user_id: Option<Uuid>,
+    _to_user_id: Option<Uuid>,
 ) -> rust_backend::websocket::WebSocketMessage {
     rust_backend::websocket::WebSocketMessage {
-        id: Uuid::new_v4().to_string(),
+        id: Some(Uuid::new_v4().to_string()),
         message_type,
         data: json!({
             "content": content,
             "timestamp": chrono::Utc::now()
         }),
-        timestamp: chrono::Utc::now(),
-        from_user_id,
-        to_user_id,
-        secure_message: None,
+        timestamp: Some(chrono::Utc::now()),
     }
 }
 
@@ -85,6 +82,7 @@ pub fn create_test_connected_user(username: &str) -> rust_backend::websocket::Co
         message_queue: std::collections::VecDeque::new(),
         recovery_token: None,
         metadata: std::collections::HashMap::new(),
+        current_workspace_id: Some(Uuid::new_v4()),
     }
 }
 
@@ -139,10 +137,9 @@ mod tests {
             None,
         );
 
-        assert!(!message.id.is_empty());
+        assert!(message.id.is_some());
+        assert!(!message.id.as_ref().unwrap().is_empty());
         assert_eq!(message.data["content"], "Hello, World!");
-        assert!(message.from_user_id.is_some());
-        assert!(message.to_user_id.is_none());
     }
 
     #[test]

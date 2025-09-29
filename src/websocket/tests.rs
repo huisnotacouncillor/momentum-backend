@@ -412,7 +412,7 @@ mod tests {
         use crate::websocket::manager::{WebSocketMessage, MessageType};
 
         let message = WebSocketMessage {
-            id: "test-id".to_string(),
+            id: Some("test-id".to_string()),
             message_type: MessageType::Command,
             data: serde_json::json!({
                 "type": "create_label",
@@ -423,18 +423,13 @@ mod tests {
                     "level": "high"
                 }
             }),
-            timestamp: chrono::Utc::now(),
-            from_user_id: Some(Uuid::new_v4()),
-            to_user_id: Some(Uuid::new_v4()),
-            secure_message: None,
+            timestamp: Some(chrono::Utc::now()),
         };
 
         let json = serde_json::to_string(&message).unwrap();
         let deserialized: WebSocketMessage = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(deserialized.id, "test-id");
+        assert_eq!(deserialized.id, Some("test-id".to_string()));
         assert_eq!(deserialized.message_type, MessageType::Command);
-        assert!(deserialized.from_user_id.is_some());
-        assert!(deserialized.to_user_id.is_some());
     }
 }
