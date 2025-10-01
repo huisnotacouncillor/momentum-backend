@@ -549,6 +549,13 @@ impl WebSocketManager {
                                                             | crate::websocket::WebSocketCommand::BatchDeleteLabels { .. }
                                                     );
 
+                                                    // 标记此次命令是否会影响 workspace 数据
+                                                    let affects_workspace = matches!(
+                                                        &command,
+                                                        crate::websocket::WebSocketCommand::UpdateWorkspace { .. }
+                                                            | crate::websocket::WebSocketCommand::CreateWorkspace { .. }
+                                                    );
+
                                                     let start_time = std::time::Instant::now();
                                                     let response = handler
                                                         .handle_command(
@@ -616,6 +623,44 @@ impl WebSocketManager {
                                                         manager
                                                             .broadcast_message(refresh_message)
                                                             .await;
+                                                    }
+
+                                                    // 如果是影响 workspace 的命令，广播 get_current_workspace
+                                                    if affects_workspace {
+                                                        // 构造一个 GetCurrentWorkspace 命令
+                                                        let refresh_cmd = crate::websocket::WebSocketCommand::GetCurrentWorkspace {
+                                                            request_id: None,
+                                                        };
+
+                                                        let refresh_response = handler
+                                                            .handle_command(
+                                                                refresh_cmd,
+                                                                &authenticated_user,
+                                                            )
+                                                            .await;
+
+                                                        let refresh_message = WebSocketMessage {
+                                                            id: Some(Uuid::new_v4().to_string()),
+                                                            message_type:
+                                                                MessageType::CommandResponse,
+                                                            data: serde_json::to_value(
+                                                                &refresh_response,
+                                                            )
+                                                            .unwrap(),
+                                                            timestamp: Some(chrono::Utc::now()),
+                                                        };
+
+                                                        // 广播到同一workspace的所有用户
+                                                        if let Some(workspace_id) =
+                                                            authenticated_user.current_workspace_id
+                                                        {
+                                                            manager
+                                                                .broadcast_to_workspace(
+                                                                    workspace_id,
+                                                                    refresh_message,
+                                                                )
+                                                                .await;
+                                                        }
                                                     }
                                                 }
                                                 Err(e) => {

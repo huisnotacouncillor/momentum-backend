@@ -126,6 +126,27 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    // Workspace
+    CreateWorkspace {
+        data: CreateWorkspaceCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    UpdateWorkspace {
+        workspace_id: Uuid,
+        data: UpdateWorkspaceCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    DeleteWorkspace {
+        workspace_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    GetCurrentWorkspace {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -450,4 +471,19 @@ pub struct WorkspaceMemberFilters {
     pub role: Option<WorkspaceMemberRole>,
     pub user_id: Option<Uuid>,
     pub search: Option<String>,
+}
+
+// Workspace command payloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateWorkspaceCommand {
+    pub name: String,
+    pub url_key: String,
+    pub logo_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateWorkspaceCommand {
+    pub name: Option<String>,
+    pub url_key: Option<String>,
+    pub logo_url: Option<String>,
 }

@@ -219,6 +219,30 @@ impl WebSocketCommandHandler {
                     search.hash(&mut hasher);
                 }
             }
+            WebSocketCommand::CreateWorkspace { data, .. } => {
+                "create_workspace".hash(&mut hasher);
+                data.name.hash(&mut hasher);
+                data.url_key.hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateWorkspace {
+                workspace_id, data, ..
+            } => {
+                "update_workspace".hash(&mut hasher);
+                workspace_id.hash(&mut hasher);
+                if let Some(ref name) = data.name {
+                    name.hash(&mut hasher);
+                }
+                if let Some(ref url_key) = data.url_key {
+                    url_key.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::DeleteWorkspace { workspace_id, .. } => {
+                "delete_workspace".hash(&mut hasher);
+                workspace_id.hash(&mut hasher);
+            }
+            WebSocketCommand::GetCurrentWorkspace { .. } => {
+                "get_current_workspace".hash(&mut hasher);
+            }
         }
         let time_window = chrono::Utc::now().timestamp() / 300;
         time_window.hash(&mut hasher);
@@ -283,7 +307,11 @@ impl WebSocketCommandHandler {
             | WebSocketCommand::ListTeamMembers { request_id, .. }
             | WebSocketCommand::InviteWorkspaceMember { request_id, .. }
             | WebSocketCommand::AcceptInvitation { request_id, .. }
-            | WebSocketCommand::QueryWorkspaceMembers { request_id, .. } => request_id.clone(),
+            | WebSocketCommand::QueryWorkspaceMembers { request_id, .. }
+            | WebSocketCommand::CreateWorkspace { request_id, .. }
+            | WebSocketCommand::UpdateWorkspace { request_id, .. }
+            | WebSocketCommand::DeleteWorkspace { request_id, .. }
+            | WebSocketCommand::GetCurrentWorkspace { request_id, .. } => request_id.clone(),
         };
 
         let idempotency_key = "disabled".to_string();
@@ -310,6 +338,10 @@ impl WebSocketCommandHandler {
             WebSocketCommand::InviteWorkspaceMember { .. } => "invite_workspace_member",
             WebSocketCommand::AcceptInvitation { .. } => "accept_invitation",
             WebSocketCommand::QueryWorkspaceMembers { .. } => "query_workspace_members",
+            WebSocketCommand::CreateWorkspace { .. } => "create_workspace",
+            WebSocketCommand::UpdateWorkspace { .. } => "update_workspace",
+            WebSocketCommand::DeleteWorkspace { .. } => "delete_workspace",
+            WebSocketCommand::GetCurrentWorkspace { .. } => "get_current_workspace",
         };
 
         let workspace_id = match user.current_workspace_id {
@@ -400,6 +432,18 @@ impl WebSocketCommandHandler {
             }
             WebSocketCommand::QueryWorkspaceMembers { filters, .. } => {
                 self.handle_list_workspace_members(ctx, filters).await
+            }
+            WebSocketCommand::CreateWorkspace { data, .. } => {
+                self.handle_create_workspace(ctx, data).await
+            }
+            WebSocketCommand::UpdateWorkspace {
+                workspace_id, data, ..
+            } => self.handle_update_workspace(ctx, workspace_id, data).await,
+            WebSocketCommand::DeleteWorkspace { workspace_id, .. } => {
+                self.handle_delete_workspace(ctx, workspace_id).await
+            }
+            WebSocketCommand::GetCurrentWorkspace { .. } => {
+                self.handle_get_current_workspace(ctx).await
             }
         };
 
@@ -854,6 +898,58 @@ impl WebSocketCommandHandler {
             &self.asset_helper,
             ctx,
             filters,
+        )
+        .await
+    }
+
+    // Workspace handlers (delegate)
+    async fn handle_create_workspace(
+        &self,
+        ctx: RequestContext,
+        data: CreateWorkspaceCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::workspaces::WorkspaceHandlers::handle_create_workspace(
+            &self.db,
+            ctx,
+            data,
+            &self.asset_helper,
+        )
+        .await
+    }
+
+    async fn handle_update_workspace(
+        &self,
+        ctx: RequestContext,
+        workspace_id: Uuid,
+        data: UpdateWorkspaceCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::workspaces::WorkspaceHandlers::handle_update_workspace(
+            &self.db,
+            ctx,
+            workspace_id,
+            data,
+            &self.asset_helper,
+        )
+        .await
+    }
+
+    async fn handle_delete_workspace(
+        &self,
+        ctx: RequestContext,
+        workspace_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::workspaces::WorkspaceHandlers::handle_delete_workspace(&self.db, ctx, workspace_id)
+            .await
+    }
+
+    async fn handle_get_current_workspace(
+        &self,
+        ctx: RequestContext,
+    ) -> Result<serde_json::Value, AppError> {
+        super::workspaces::WorkspaceHandlers::handle_get_current_workspace(
+            &self.db,
+            ctx,
+            &self.asset_helper,
         )
         .await
     }

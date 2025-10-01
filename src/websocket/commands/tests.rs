@@ -203,7 +203,10 @@ mod tests {
         let deserialized: WebSocketCommand = serde_json::from_str(&json).unwrap();
 
         match deserialized {
-            WebSocketCommand::QueryWorkspaceMembers { filters, request_id } => {
+            WebSocketCommand::QueryWorkspaceMembers {
+                filters,
+                request_id,
+            } => {
                 assert_eq!(request_id, Some("req-query-ws".to_string()));
                 assert!(matches!(filters.role, Some(WorkspaceMemberRole::Admin)));
                 assert_eq!(filters.user_id, None);
@@ -228,13 +231,119 @@ mod tests {
         let deserialized: WebSocketCommand = serde_json::from_str(&json).unwrap();
 
         match deserialized {
-            WebSocketCommand::QueryWorkspaceMembers { filters, request_id } => {
+            WebSocketCommand::QueryWorkspaceMembers {
+                filters,
+                request_id,
+            } => {
                 assert_eq!(request_id, Some("req-query-ws-no-search".to_string()));
                 assert_eq!(filters.role, None);
                 assert_eq!(filters.user_id, None);
                 assert_eq!(filters.search, None);
             }
             _ => panic!("Expected QueryWorkspaceMembers command"),
+        }
+    }
+
+    #[test]
+    fn test_create_workspace_command_serialization() {
+        let command = WebSocketCommand::CreateWorkspace {
+            data: CreateWorkspaceCommand {
+                name: "Test Workspace".to_string(),
+                url_key: "test-workspace".to_string(),
+                logo_url: Some("https://example.com/logo.png".to_string()),
+            },
+            request_id: Some("req-create-ws".to_string()),
+        };
+
+        let json = serde_json::to_string(&command).unwrap();
+        let deserialized: WebSocketCommand = serde_json::from_str(&json).unwrap();
+
+        match deserialized {
+            WebSocketCommand::CreateWorkspace { data, request_id } => {
+                assert_eq!(request_id, Some("req-create-ws".to_string()));
+                assert_eq!(data.name, "Test Workspace");
+                assert_eq!(data.url_key, "test-workspace");
+                assert_eq!(
+                    data.logo_url,
+                    Some("https://example.com/logo.png".to_string())
+                );
+            }
+            _ => panic!("Expected CreateWorkspace command"),
+        }
+    }
+
+    #[test]
+    fn test_update_workspace_command_serialization() {
+        let workspace_id = uuid::Uuid::new_v4();
+        let command = WebSocketCommand::UpdateWorkspace {
+            workspace_id,
+            data: UpdateWorkspaceCommand {
+                name: Some("Updated Workspace".to_string()),
+                url_key: Some("updated-workspace".to_string()),
+                logo_url: Some("https://example.com/new-logo.png".to_string()),
+            },
+            request_id: Some("req-update-ws".to_string()),
+        };
+
+        let json = serde_json::to_string(&command).unwrap();
+        let deserialized: WebSocketCommand = serde_json::from_str(&json).unwrap();
+
+        match deserialized {
+            WebSocketCommand::UpdateWorkspace {
+                workspace_id: ws_id,
+                data,
+                request_id,
+            } => {
+                assert_eq!(request_id, Some("req-update-ws".to_string()));
+                assert_eq!(ws_id, workspace_id);
+                assert_eq!(data.name, Some("Updated Workspace".to_string()));
+                assert_eq!(data.url_key, Some("updated-workspace".to_string()));
+                assert_eq!(
+                    data.logo_url,
+                    Some("https://example.com/new-logo.png".to_string())
+                );
+            }
+            _ => panic!("Expected UpdateWorkspace command"),
+        }
+    }
+
+    #[test]
+    fn test_delete_workspace_command_serialization() {
+        let workspace_id = uuid::Uuid::new_v4();
+        let command = WebSocketCommand::DeleteWorkspace {
+            workspace_id,
+            request_id: Some("req-delete-ws".to_string()),
+        };
+
+        let json = serde_json::to_string(&command).unwrap();
+        let deserialized: WebSocketCommand = serde_json::from_str(&json).unwrap();
+
+        match deserialized {
+            WebSocketCommand::DeleteWorkspace {
+                workspace_id: ws_id,
+                request_id,
+            } => {
+                assert_eq!(request_id, Some("req-delete-ws".to_string()));
+                assert_eq!(ws_id, workspace_id);
+            }
+            _ => panic!("Expected DeleteWorkspace command"),
+        }
+    }
+
+    #[test]
+    fn test_get_current_workspace_command_serialization() {
+        let command = WebSocketCommand::GetCurrentWorkspace {
+            request_id: Some("req-get-current-ws".to_string()),
+        };
+
+        let json = serde_json::to_string(&command).unwrap();
+        let deserialized: WebSocketCommand = serde_json::from_str(&json).unwrap();
+
+        match deserialized {
+            WebSocketCommand::GetCurrentWorkspace { request_id } => {
+                assert_eq!(request_id, Some("req-get-current-ws".to_string()));
+            }
+            _ => panic!("Expected GetCurrentWorkspace command"),
         }
     }
 }
