@@ -83,8 +83,9 @@ use std::sync::Arc;
 pub fn create_websocket_state(db: Arc<DbPool>, config: &crate::config::Config) -> WebSocketState {
     let ws_manager = WebSocketManager::new();
     let message_signer = Arc::new(MessageSigner::new(config));
-    let command_handler =
-        WebSocketCommandHandler::new(db.clone()).with_message_signer(message_signer.clone());
+    let asset_helper = Arc::new(crate::utils::AssetUrlHelper::new(&config.assets()));
+    let command_handler = WebSocketCommandHandler::new(db.clone(), asset_helper)
+        .with_message_signer(message_signer.clone());
     let rate_limiter = WebSocketRateLimiter::new(RateLimitConfig::default());
     let error_handler = WebSocketErrorHandler::new();
     let retry_timeout_manager =

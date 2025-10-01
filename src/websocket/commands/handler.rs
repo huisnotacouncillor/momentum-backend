@@ -1,0 +1,871 @@
+use diesel::{Connection, RunQueryDsl};
+use std::sync::Arc;
+use uuid::Uuid;
+
+use crate::{
+    db::DbPool, error::AppError, services::context::RequestContext,
+    websocket::security::SecureMessage,
+};
+
+use super::types::*;
+
+#[derive(Clone)]
+pub struct WebSocketCommandHandler {
+    db: Arc<DbPool>,
+    idempotency: IdempotencyControl,
+    message_signer: Option<Arc<crate::websocket::MessageSigner>>,
+    asset_helper: Arc<crate::utils::AssetUrlHelper>,
+}
+
+impl WebSocketCommandHandler {
+    pub fn new(db: Arc<DbPool>, asset_helper: Arc<crate::utils::AssetUrlHelper>) -> Self {
+        Self {
+            db,
+            idempotency: IdempotencyControl::new(300),
+            message_signer: None,
+            asset_helper,
+        }
+    }
+
+    pub fn with_message_signer(mut self, signer: Arc<crate::websocket::MessageSigner>) -> Self {
+        self.message_signer = Some(signer);
+        self
+    }
+
+    async fn verify_secure_message(&self, secure_message: &SecureMessage) -> Result<(), AppError> {
+        if let Some(ref signer) = self.message_signer {
+            signer
+                .verify_message(secure_message)
+                .await
+                .map_err(|e| AppError::auth(format!("Security verification failed: {}", e)))
+        } else {
+            Err(AppError::Internal(
+                "Message signer not configured".to_string(),
+            ))
+        }
+    }
+
+    #[allow(dead_code)]
+    fn generate_idempotency_key(
+        &self,
+        command: &WebSocketCommand,
+        user: &crate::websocket::auth::AuthenticatedUser,
+    ) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        user.user_id.hash(&mut hasher);
+        if let Some(workspace_id) = user.current_workspace_id {
+            workspace_id.hash(&mut hasher);
+        }
+        match command {
+            WebSocketCommand::CreateLabel { data, .. } => {
+                "create_label".hash(&mut hasher);
+                data.name.hash(&mut hasher);
+                data.color.hash(&mut hasher);
+                format!("{:?}", data.level).hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateLabel { label_id, data, .. } => {
+                "update_label".hash(&mut hasher);
+                label_id.hash(&mut hasher);
+                if let Some(ref name) = data.name {
+                    name.hash(&mut hasher);
+                }
+                if let Some(ref color) = data.color {
+                    color.hash(&mut hasher);
+                }
+                if let Some(ref level) = data.level {
+                    format!("{:?}", level).hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::DeleteLabel { label_id, .. } => {
+                "delete_label".hash(&mut hasher);
+                label_id.hash(&mut hasher);
+            }
+            WebSocketCommand::QueryLabels { filters, .. } => {
+                "query_labels".hash(&mut hasher);
+                if let Some(ref level) = filters.level {
+                    format!("{:?}", level).hash(&mut hasher);
+                }
+                if let Some(ref name_pattern) = filters.name_pattern {
+                    name_pattern.hash(&mut hasher);
+                }
+                if let Some(ref color) = filters.color {
+                    color.hash(&mut hasher);
+                }
+                if let Some(limit) = filters.limit {
+                    limit.hash(&mut hasher);
+                }
+                if let Some(offset) = filters.offset {
+                    offset.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::BatchCreateLabels { data, .. } => {
+                "batch_create_labels".hash(&mut hasher);
+                data.len().hash(&mut hasher);
+                for item in data {
+                    item.name.hash(&mut hasher);
+                    item.color.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::BatchUpdateLabels { updates, .. } => {
+                "batch_update_labels".hash(&mut hasher);
+                updates.len().hash(&mut hasher);
+                for update in updates {
+                    update.label_id.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::BatchDeleteLabels { label_ids, .. } => {
+                "batch_delete_labels".hash(&mut hasher);
+                label_ids.len().hash(&mut hasher);
+                for label_id in label_ids {
+                    label_id.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::Subscribe { topics, .. } => {
+                "subscribe".hash(&mut hasher);
+                topics.len().hash(&mut hasher);
+                for topic in topics {
+                    topic.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::Unsubscribe { topics, .. } => {
+                "unsubscribe".hash(&mut hasher);
+                topics.len().hash(&mut hasher);
+                for topic in topics {
+                    topic.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::GetConnectionInfo { .. } => {
+                "get_connection_info".hash(&mut hasher);
+            }
+            WebSocketCommand::Ping { .. } => {
+                "ping".hash(&mut hasher);
+            }
+            WebSocketCommand::CreateTeam { data, .. } => {
+                "create_team".hash(&mut hasher);
+                data.name.hash(&mut hasher);
+                data.team_key.hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateTeam { team_id, data, .. } => {
+                "update_team".hash(&mut hasher);
+                team_id.hash(&mut hasher);
+                if let Some(ref name) = data.name {
+                    name.hash(&mut hasher);
+                }
+                if let Some(ref team_key) = data.team_key {
+                    team_key.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::DeleteTeam { team_id, .. } => {
+                "delete_team".hash(&mut hasher);
+                team_id.hash(&mut hasher);
+            }
+            WebSocketCommand::QueryTeams { .. } => {
+                "query_teams".hash(&mut hasher);
+            }
+            WebSocketCommand::AddTeamMember { team_id, data, .. } => {
+                "add_team_member".hash(&mut hasher);
+                team_id.hash(&mut hasher);
+                data.user_id.hash(&mut hasher);
+                match data.role {
+                    TeamMemberRole::Admin => "admin",
+                    TeamMemberRole::Member => "member",
+                }
+                .hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateTeamMember {
+                team_id,
+                member_user_id,
+                data,
+                ..
+            } => {
+                "update_team_member".hash(&mut hasher);
+                team_id.hash(&mut hasher);
+                member_user_id.hash(&mut hasher);
+                match data.role {
+                    TeamMemberRole::Admin => "admin",
+                    TeamMemberRole::Member => "member",
+                }
+                .hash(&mut hasher);
+            }
+            WebSocketCommand::RemoveTeamMember {
+                team_id,
+                member_user_id,
+                ..
+            } => {
+                "remove_team_member".hash(&mut hasher);
+                team_id.hash(&mut hasher);
+                member_user_id.hash(&mut hasher);
+            }
+            WebSocketCommand::ListTeamMembers { team_id, .. } => {
+                "list_team_members".hash(&mut hasher);
+                team_id.hash(&mut hasher);
+            }
+            WebSocketCommand::InviteWorkspaceMember { data, .. } => {
+                "invite_workspace_member".hash(&mut hasher);
+                data.email.hash(&mut hasher);
+            }
+            WebSocketCommand::AcceptInvitation { invitation_id, .. } => {
+                "accept_invitation".hash(&mut hasher);
+                invitation_id.hash(&mut hasher);
+            }
+            WebSocketCommand::QueryWorkspaceMembers { filters, .. } => {
+                "query_workspace_members".hash(&mut hasher);
+                if let Some(user_id) = filters.user_id {
+                    user_id.hash(&mut hasher);
+                }
+                if let Some(ref search) = filters.search {
+                    search.hash(&mut hasher);
+                }
+            }
+        }
+        let time_window = chrono::Utc::now().timestamp() / 300;
+        time_window.hash(&mut hasher);
+        format!("ws_cmd_{:x}", hasher.finish())
+    }
+
+    pub async fn handle_secure_command(
+        &self,
+        secure_message: SecureMessage,
+        user: &crate::websocket::auth::AuthenticatedUser,
+    ) -> WebSocketCommandResponse {
+        if let Err(e) = self.verify_secure_message(&secure_message).await {
+            return WebSocketCommandResponse::error(
+                "unknown",
+                &secure_message.message_id,
+                None,
+                WebSocketCommandError::system_error(&format!(
+                    "Security verification failed: {}",
+                    e
+                )),
+            );
+        }
+        let command: WebSocketCommand = match serde_json::from_value(secure_message.payload.clone())
+        {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                return WebSocketCommandResponse::error(
+                    "unknown",
+                    &secure_message.message_id,
+                    None,
+                    WebSocketCommandError::system_error(&format!("Failed to parse command: {}", e)),
+                );
+            }
+        };
+        self.handle_command(command, user).await
+    }
+
+    pub async fn handle_command(
+        &self,
+        command: WebSocketCommand,
+        user: &crate::websocket::auth::AuthenticatedUser,
+    ) -> WebSocketCommandResponse {
+        let request_id = match &command {
+            WebSocketCommand::CreateLabel { request_id, .. }
+            | WebSocketCommand::UpdateLabel { request_id, .. }
+            | WebSocketCommand::DeleteLabel { request_id, .. }
+            | WebSocketCommand::QueryLabels { request_id, .. }
+            | WebSocketCommand::BatchCreateLabels { request_id, .. }
+            | WebSocketCommand::BatchUpdateLabels { request_id, .. }
+            | WebSocketCommand::BatchDeleteLabels { request_id, .. }
+            | WebSocketCommand::Subscribe { request_id, .. }
+            | WebSocketCommand::Unsubscribe { request_id, .. }
+            | WebSocketCommand::GetConnectionInfo { request_id, .. }
+            | WebSocketCommand::Ping { request_id, .. }
+            | WebSocketCommand::CreateTeam { request_id, .. }
+            | WebSocketCommand::UpdateTeam { request_id, .. }
+            | WebSocketCommand::DeleteTeam { request_id, .. }
+            | WebSocketCommand::QueryTeams { request_id, .. }
+            | WebSocketCommand::AddTeamMember { request_id, .. }
+            | WebSocketCommand::UpdateTeamMember { request_id, .. }
+            | WebSocketCommand::RemoveTeamMember { request_id, .. }
+            | WebSocketCommand::ListTeamMembers { request_id, .. }
+            | WebSocketCommand::InviteWorkspaceMember { request_id, .. }
+            | WebSocketCommand::AcceptInvitation { request_id, .. }
+            | WebSocketCommand::QueryWorkspaceMembers { request_id, .. } => request_id.clone(),
+        };
+
+        let idempotency_key = "disabled".to_string();
+        let command_type = match &command {
+            WebSocketCommand::CreateLabel { .. } => "create_label",
+            WebSocketCommand::UpdateLabel { .. } => "update_label",
+            WebSocketCommand::DeleteLabel { .. } => "delete_label",
+            WebSocketCommand::QueryLabels { .. } => "query_labels",
+            WebSocketCommand::BatchCreateLabels { .. } => "batch_create_labels",
+            WebSocketCommand::BatchUpdateLabels { .. } => "batch_update_labels",
+            WebSocketCommand::BatchDeleteLabels { .. } => "batch_delete_labels",
+            WebSocketCommand::Subscribe { .. } => "subscribe",
+            WebSocketCommand::Unsubscribe { .. } => "unsubscribe",
+            WebSocketCommand::GetConnectionInfo { .. } => "get_connection_info",
+            WebSocketCommand::Ping { .. } => "ping",
+            WebSocketCommand::CreateTeam { .. } => "create_team",
+            WebSocketCommand::UpdateTeam { .. } => "update_team",
+            WebSocketCommand::DeleteTeam { .. } => "delete_team",
+            WebSocketCommand::QueryTeams { .. } => "query_teams",
+            WebSocketCommand::AddTeamMember { .. } => "add_team_member",
+            WebSocketCommand::UpdateTeamMember { .. } => "update_team_member",
+            WebSocketCommand::RemoveTeamMember { .. } => "remove_team_member",
+            WebSocketCommand::ListTeamMembers { .. } => "list_team_members",
+            WebSocketCommand::InviteWorkspaceMember { .. } => "invite_workspace_member",
+            WebSocketCommand::AcceptInvitation { .. } => "accept_invitation",
+            WebSocketCommand::QueryWorkspaceMembers { .. } => "query_workspace_members",
+        };
+
+        let workspace_id = match user.current_workspace_id {
+            Some(ws) => ws,
+            None => {
+                return WebSocketCommandResponse::error(
+                    &command_type,
+                    &idempotency_key,
+                    request_id,
+                    WebSocketCommandError::business_error(
+                        "NO_WORKSPACE",
+                        "No current workspace selected",
+                    ),
+                );
+            }
+        };
+
+        let ctx = RequestContext {
+            user_id: user.user_id,
+            workspace_id,
+            idempotency_key: Some(idempotency_key.clone()),
+        };
+
+        let result = match command {
+            WebSocketCommand::CreateLabel { data, .. } => self.handle_create_label(ctx, data).await,
+            WebSocketCommand::UpdateLabel { label_id, data, .. } => {
+                self.handle_update_label(ctx, label_id, data).await
+            }
+            WebSocketCommand::DeleteLabel { label_id, .. } => {
+                self.handle_delete_label(ctx, label_id).await
+            }
+            WebSocketCommand::QueryLabels { filters, .. } => {
+                self.handle_query_labels(ctx, filters).await
+            }
+            WebSocketCommand::BatchCreateLabels { data, .. } => {
+                self.handle_batch_create_labels(ctx, data).await
+            }
+            WebSocketCommand::BatchUpdateLabels { updates, .. } => {
+                self.handle_batch_update_labels(ctx, updates).await
+            }
+            WebSocketCommand::BatchDeleteLabels { label_ids, .. } => {
+                self.handle_batch_delete_labels(ctx, label_ids).await
+            }
+            WebSocketCommand::Subscribe { topics, .. } => self.handle_subscribe(ctx, topics).await,
+            WebSocketCommand::Unsubscribe { topics, .. } => {
+                self.handle_unsubscribe(ctx, topics).await
+            }
+            WebSocketCommand::GetConnectionInfo { .. } => {
+                self.handle_get_connection_info(ctx, user).await
+            }
+            WebSocketCommand::Ping { .. } => Ok(serde_json::json!({"message": "pong"})),
+            WebSocketCommand::CreateTeam { data, .. } => self.handle_create_team(ctx, data).await,
+            WebSocketCommand::UpdateTeam { team_id, data, .. } => {
+                self.handle_update_team(ctx, team_id, data).await
+            }
+            WebSocketCommand::DeleteTeam { team_id, .. } => {
+                self.handle_delete_team(ctx, team_id).await
+            }
+            WebSocketCommand::QueryTeams { .. } => self.handle_query_teams(ctx).await,
+            WebSocketCommand::AddTeamMember { team_id, data, .. } => {
+                self.handle_add_team_member(ctx, team_id, data).await
+            }
+            WebSocketCommand::UpdateTeamMember {
+                team_id,
+                member_user_id,
+                data,
+                ..
+            } => {
+                self.handle_update_team_member(ctx, team_id, member_user_id, data)
+                    .await
+            }
+            WebSocketCommand::RemoveTeamMember {
+                team_id,
+                member_user_id,
+                ..
+            } => {
+                self.handle_remove_team_member(ctx, team_id, member_user_id)
+                    .await
+            }
+            WebSocketCommand::ListTeamMembers { team_id, .. } => {
+                self.handle_list_team_members(ctx, team_id).await
+            }
+            WebSocketCommand::InviteWorkspaceMember { data, .. } => {
+                self.handle_invite_workspace_member(ctx, data).await
+            }
+            WebSocketCommand::AcceptInvitation { invitation_id, .. } => {
+                self.handle_accept_invitation(ctx, invitation_id).await
+            }
+            WebSocketCommand::QueryWorkspaceMembers { filters, .. } => {
+                self.handle_list_workspace_members(ctx, filters).await
+            }
+        };
+
+        match result {
+            Ok(data) => {
+                WebSocketCommandResponse::success(&command_type, &idempotency_key, request_id, data)
+            }
+            Err(app_error) => WebSocketCommandResponse::error(
+                &command_type,
+                &idempotency_key,
+                request_id,
+                WebSocketCommandError::business_error("COMMAND_ERROR", &app_error.to_string()),
+            ),
+        }
+    }
+
+    // Label handlers (delegate)
+    async fn handle_create_label(
+        &self,
+        ctx: RequestContext,
+        data: CreateLabelCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::labels::LabelHandlers::handle_create_label(&self.db, ctx, data).await
+    }
+
+    async fn handle_update_label(
+        &self,
+        ctx: RequestContext,
+        label_id: Uuid,
+        data: UpdateLabelCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::labels::LabelHandlers::handle_update_label(&self.db, ctx, label_id, data).await
+    }
+
+    async fn handle_delete_label(
+        &self,
+        ctx: RequestContext,
+        label_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::labels::LabelHandlers::handle_delete_label(&self.db, ctx, label_id).await
+    }
+
+    async fn handle_query_labels(
+        &self,
+        ctx: RequestContext,
+        filters: LabelFilters,
+    ) -> Result<serde_json::Value, AppError> {
+        super::labels::LabelHandlers::handle_query_labels(&self.db, ctx, filters).await
+    }
+
+    async fn handle_batch_create_labels(
+        &self,
+        ctx: RequestContext,
+        data: Vec<CreateLabelCommand>,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut results = Vec::new();
+        let mut errors = Vec::new();
+        for (index, label_data) in data.into_iter().enumerate() {
+            match self.handle_create_label(ctx.clone(), label_data).await {
+                Ok(result) => results.push(result),
+                Err(e) => errors.push(serde_json::json!({"index": index, "error": e.to_string()})),
+            }
+        }
+        Ok(
+            serde_json::json!({"created": results, "errors": errors, "total_created": results.len(), "total_errors": errors.len()}),
+        )
+    }
+
+    async fn handle_batch_update_labels(
+        &self,
+        ctx: RequestContext,
+        updates: Vec<LabelUpdate>,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut results = Vec::new();
+        let mut errors = Vec::new();
+        for (index, update) in updates.into_iter().enumerate() {
+            match self.handle_update_label(ctx.clone(), update.label_id, update.data).await {
+                Ok(result) => results.push(result),
+                Err(e) => errors.push(serde_json::json!({"index": index, "label_id": update.label_id, "error": e.to_string()})),
+            }
+        }
+        Ok(
+            serde_json::json!({"updated": results, "errors": errors, "total_updated": results.len(), "total_errors": errors.len()}),
+        )
+    }
+
+    async fn handle_batch_delete_labels(
+        &self,
+        ctx: RequestContext,
+        label_ids: Vec<Uuid>,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut results = Vec::new();
+        let mut errors = Vec::new();
+        for (index, label_id) in label_ids.into_iter().enumerate() {
+            match self.handle_delete_label(ctx.clone(), label_id).await {
+                Ok(result) => results.push(result),
+                Err(e) => errors.push(serde_json::json!({"index": index, "label_id": label_id, "error": e.to_string()})),
+            }
+        }
+        Ok(
+            serde_json::json!({"deleted": results, "errors": errors, "total_deleted": results.len(), "total_errors": errors.len()}),
+        )
+    }
+
+    async fn handle_subscribe(
+        &self,
+        _ctx: RequestContext,
+        topics: Vec<String>,
+    ) -> Result<serde_json::Value, AppError> {
+        Ok(
+            serde_json::json!({"subscribed_topics": topics, "message": "Successfully subscribed to topics"}),
+        )
+    }
+
+    async fn handle_unsubscribe(
+        &self,
+        _ctx: RequestContext,
+        topics: Vec<String>,
+    ) -> Result<serde_json::Value, AppError> {
+        Ok(
+            serde_json::json!({"unsubscribed_topics": topics, "message": "Successfully unsubscribed from topics"}),
+        )
+    }
+
+    async fn handle_get_connection_info(
+        &self,
+        _ctx: RequestContext,
+        user: &crate::websocket::auth::AuthenticatedUser,
+    ) -> Result<serde_json::Value, AppError> {
+        let connection_info = ConnectionInfo {
+            user_id: user.user_id,
+            username: user.username.clone(),
+            connected_at: chrono::Utc::now(),
+            last_ping: chrono::Utc::now(),
+            subscriptions: vec![],
+            message_queue_size: 0,
+            state: "connected".to_string(),
+        };
+        Ok(serde_json::to_value(connection_info).map_err(|e| AppError::Internal(e.to_string()))?)
+    }
+
+    // Team handlers
+    async fn handle_create_team(
+        &self,
+        ctx: RequestContext,
+        data: CreateTeamCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        if data.name.trim().is_empty() {
+            return Err(AppError::validation("Team name is required"));
+        }
+        if data.team_key.trim().is_empty() {
+            return Err(AppError::validation("Team key is required"));
+        }
+        if !data
+            .team_key
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(AppError::validation(
+                "Team key can only contain letters, numbers, hyphens, and underscores",
+            ));
+        }
+        let mut conn = self
+            .db
+            .get()
+            .map_err(|_| AppError::Internal("Database connection failed".to_string()))?;
+        let req = crate::routes::teams::CreateTeamRequest {
+            name: data.name,
+            team_key: data.team_key,
+            description: data.description,
+            icon_url: data.icon_url,
+            is_private: data.is_private,
+        };
+        let user_id = ctx.user_id;
+        let current_workspace_id = ctx.workspace_id;
+        use crate::schema;
+        let result =
+            conn.transaction::<crate::db::models::team::Team, diesel::result::Error, _>(|conn| {
+                let new_team = crate::db::models::team::NewTeam {
+                    name: req.name.clone(),
+                    team_key: req.team_key.clone(),
+                    description: req.description.clone(),
+                    icon_url: req.icon_url.clone(),
+                    is_private: req.is_private,
+                    workspace_id: current_workspace_id,
+                };
+                let team: crate::db::models::team::Team = diesel::insert_into(schema::teams::table)
+                    .values(&new_team)
+                    .get_result::<crate::db::models::team::Team>(conn)?;
+                let new_team_member = crate::db::models::team::NewTeamMember {
+                    user_id,
+                    team_id: team.id,
+                    role: "admin".to_string(),
+                };
+                diesel::insert_into(schema::team_members::table)
+                    .values(&new_team_member)
+                    .execute(conn)?;
+                Ok(team)
+            });
+        match result {
+            Ok(team) => Ok(serde_json::to_value(team).unwrap()),
+            Err(e) => {
+                if e.to_string().contains("team_key") {
+                    Err(AppError::validation(
+                        "Team with this key already exists in this workspace",
+                    ))
+                } else {
+                    Err(AppError::Internal("Failed to create team".to_string()))
+                }
+            }
+        }
+    }
+
+    async fn handle_update_team(
+        &self,
+        ctx: RequestContext,
+        team_id: Uuid,
+        data: UpdateTeamCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self
+            .db
+            .get()
+            .map_err(|_| AppError::Internal("Database connection failed".to_string()))?;
+        use crate::schema;
+        use diesel::prelude::*;
+        let existing_team = match schema::teams::table
+            .filter(schema::teams::id.eq(team_id))
+            .filter(schema::teams::workspace_id.eq(ctx.workspace_id))
+            .select(crate::db::models::team::Team::as_select())
+            .first::<crate::db::models::team::Team>(&mut conn)
+        {
+            Ok(team) => team,
+            Err(_) => return Err(AppError::not_found("Team not found")),
+        };
+        if data.name.is_none()
+            && data.team_key.is_none()
+            && data.description.is_none()
+            && data.icon_url.is_none()
+            && data.is_private.is_none()
+        {
+            return Ok(serde_json::to_value(existing_team).unwrap());
+        }
+        let team_name = data.name.as_ref().unwrap_or(&existing_team.name);
+        let team_key_val = data.team_key.as_ref().unwrap_or(&existing_team.team_key);
+        let description_val = data
+            .description
+            .as_ref()
+            .or(existing_team.description.as_ref());
+        let icon_url_val = data.icon_url.as_ref().or(existing_team.icon_url.as_ref());
+        let is_private_val = data.is_private.unwrap_or(existing_team.is_private);
+        let updated = diesel::update(schema::teams::table.filter(schema::teams::id.eq(team_id)))
+            .set((
+                schema::teams::name.eq(team_name),
+                schema::teams::team_key.eq(team_key_val),
+                schema::teams::description.eq(description_val),
+                schema::teams::icon_url.eq(icon_url_val),
+                schema::teams::is_private.eq(is_private_val),
+            ))
+            .get_result::<crate::db::models::team::Team>(&mut conn);
+        match updated {
+            Ok(team) => Ok(serde_json::to_value(team).unwrap()),
+            Err(e) => {
+                if e.to_string().contains("team_key") {
+                    Err(AppError::validation(
+                        "Team with this key already exists in this workspace",
+                    ))
+                } else {
+                    Err(AppError::Internal("Failed to update team".to_string()))
+                }
+            }
+        }
+    }
+
+    async fn handle_delete_team(
+        &self,
+        ctx: RequestContext,
+        team_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self
+            .db
+            .get()
+            .map_err(|_| AppError::Internal("Database connection failed".to_string()))?;
+        use crate::schema;
+        use diesel::prelude::*;
+        match schema::teams::table
+            .filter(schema::teams::id.eq(team_id))
+            .filter(schema::teams::workspace_id.eq(ctx.workspace_id))
+            .select(crate::db::models::team::Team::as_select())
+            .first::<crate::db::models::team::Team>(&mut conn)
+        {
+            Ok(_) => (),
+            Err(_) => return Err(AppError::not_found("Team not found")),
+        }
+        match diesel::delete(schema::teams::table.filter(schema::teams::id.eq(team_id)))
+            .execute(&mut conn)
+        {
+            Ok(_) => Ok(serde_json::json!({"deleted": true, "team_id": team_id})),
+            Err(_) => Err(AppError::Internal("Failed to delete team".to_string())),
+        }
+    }
+
+    async fn handle_query_teams(&self, ctx: RequestContext) -> Result<serde_json::Value, AppError> {
+        let mut conn = self
+            .db
+            .get()
+            .map_err(|_| AppError::Internal("Database connection failed".to_string()))?;
+        use crate::schema;
+        use diesel::prelude::*;
+        let list = match schema::teams::table
+            .filter(schema::teams::workspace_id.eq(ctx.workspace_id))
+            .select(crate::db::models::team::Team::as_select())
+            .order(schema::teams::created_at.desc())
+            .load::<crate::db::models::team::Team>(&mut conn)
+        {
+            Ok(list) => list,
+            Err(_) => return Err(AppError::Internal("Failed to retrieve teams".to_string())),
+        };
+        Ok(serde_json::to_value(list).unwrap())
+    }
+
+    // Team members via service
+    async fn handle_add_team_member(
+        &self,
+        ctx: RequestContext,
+        team_id: Uuid,
+        data: AddTeamMemberCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self
+            .db
+            .get()
+            .map_err(|_| AppError::Internal("Database connection failed".to_string()))?;
+        let role_str = match data.role {
+            TeamMemberRole::Admin => "admin",
+            TeamMemberRole::Member => "member",
+        };
+        crate::services::team_members_service::TeamMembersService::add(
+            &mut conn,
+            &ctx,
+            team_id,
+            data.user_id,
+            role_str,
+        )?;
+        Ok(serde_json::json!({"added": true, "team_id": team_id, "user_id": data.user_id}))
+    }
+
+    async fn handle_update_team_member(
+        &self,
+        ctx: RequestContext,
+        team_id: Uuid,
+        member_user_id: Uuid,
+        data: UpdateTeamMemberCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self
+            .db
+            .get()
+            .map_err(|_| AppError::Internal("Database connection failed".to_string()))?;
+        let role_str = match data.role {
+            TeamMemberRole::Admin => "admin",
+            TeamMemberRole::Member => "member",
+        };
+        crate::services::team_members_service::TeamMembersService::update(
+            &mut conn,
+            &ctx,
+            team_id,
+            member_user_id,
+            role_str,
+        )?;
+        Ok(serde_json::json!({"updated": true, "team_id": team_id, "user_id": member_user_id}))
+    }
+
+    async fn handle_remove_team_member(
+        &self,
+        ctx: RequestContext,
+        team_id: Uuid,
+        member_user_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self
+            .db
+            .get()
+            .map_err(|_| AppError::Internal("Database connection failed".to_string()))?;
+        crate::services::team_members_service::TeamMembersService::remove(
+            &mut conn,
+            &ctx,
+            team_id,
+            member_user_id,
+        )?;
+        Ok(serde_json::json!({"removed": true, "team_id": team_id, "user_id": member_user_id}))
+    }
+
+    async fn handle_list_team_members(
+        &self,
+        ctx: RequestContext,
+        team_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self
+            .db
+            .get()
+            .map_err(|_| AppError::Internal("Database connection failed".to_string()))?;
+        let members = crate::services::team_members_service::TeamMembersService::list(
+            &mut conn, &ctx, team_id,
+        )?;
+        // Map to DTO-like structure for ws response
+        let result: Vec<serde_json::Value> = members
+            .into_iter()
+            .map(|(member, user)| {
+                serde_json::json!({
+                    "user": {
+                        "id": user.id,
+                        "name": user.name,
+                        "username": user.username,
+                        "email": user.email,
+                        "avatar_url": user.avatar_url,
+                    },
+                    "role": member.role,
+                    "joined_at": member.joined_at,
+                })
+            })
+            .collect();
+        Ok(serde_json::to_value(result).unwrap())
+    }
+
+    // Workspace member handlers (delegate)
+    async fn handle_invite_workspace_member(
+        &self,
+        ctx: RequestContext,
+        data: InviteWorkspaceMemberCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::workspace_members::WorkspaceMemberHandlers::handle_invite_member(&self.db, ctx, data)
+            .await
+    }
+
+    async fn handle_accept_invitation(
+        &self,
+        ctx: RequestContext,
+        invitation_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::workspace_members::WorkspaceMemberHandlers::handle_accept_invitation(
+            &self.db,
+            ctx,
+            invitation_id,
+        )
+        .await
+    }
+
+    async fn handle_list_workspace_members(
+        &self,
+        ctx: RequestContext,
+        filters: WorkspaceMemberFilters,
+    ) -> Result<serde_json::Value, AppError> {
+        super::workspace_members::WorkspaceMemberHandlers::handle_list_workspace_members(
+            &self.db,
+            &self.asset_helper,
+            ctx,
+            filters,
+        )
+        .await
+    }
+
+    pub async fn start_cleanup_task(&self) {
+        let idempotency = self.idempotency.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                idempotency.cleanup_expired().await;
+            }
+        });
+    }
+}

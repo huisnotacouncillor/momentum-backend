@@ -538,6 +538,17 @@ impl WebSocketManager {
                                                                 .current_workspace_id, // 来自握手时的认证信息
                                                         };
 
+                                                    // 标记此次命令是否会影响标签数据（在移动 command 之前计算）
+                                                    let affects_labels = matches!(
+                                                        &command,
+                                                        crate::websocket::WebSocketCommand::CreateLabel { .. }
+                                                            | crate::websocket::WebSocketCommand::UpdateLabel { .. }
+                                                            | crate::websocket::WebSocketCommand::DeleteLabel { .. }
+                                                            | crate::websocket::WebSocketCommand::BatchCreateLabels { .. }
+                                                            | crate::websocket::WebSocketCommand::BatchUpdateLabels { .. }
+                                                            | crate::websocket::WebSocketCommand::BatchDeleteLabels { .. }
+                                                    );
+
                                                     let start_time = std::time::Instant::now();
                                                     let response = handler
                                                         .handle_command(
@@ -567,6 +578,45 @@ impl WebSocketManager {
                                                     manager
                                                         .broadcast_message(response_message)
                                                         .await;
+
+                                                    // 如果是影响标签数据的命令，追加一次 query_labels 的推送
+                                                    if affects_labels {
+                                                        // 构造一个 QueryLabels 命令（使用当前上下文工作区；filters 默认）
+                                                        let refresh_cmd = crate::websocket::WebSocketCommand::QueryLabels {
+                                                                filters: crate::websocket::commands::LabelFilters {
+                                                                    workspace_id: None,
+                                                                    level: None,
+                                                                    name_pattern: None,
+                                                                    color: None,
+                                                                    created_after: None,
+                                                                    created_before: None,
+                                                                    limit: None,
+                                                                    offset: None,
+                                                                },
+                                                                request_id: None,
+                                                            };
+
+                                                        let refresh_response = handler
+                                                            .handle_command(
+                                                                refresh_cmd,
+                                                                &authenticated_user,
+                                                            )
+                                                            .await;
+
+                                                        let refresh_message = WebSocketMessage {
+                                                            id: Some(Uuid::new_v4().to_string()),
+                                                            message_type:
+                                                                MessageType::CommandResponse,
+                                                            data: serde_json::to_value(
+                                                                &refresh_response,
+                                                            )
+                                                            .unwrap(),
+                                                            timestamp: Some(chrono::Utc::now()),
+                                                        };
+                                                        manager
+                                                            .broadcast_message(refresh_message)
+                                                            .await;
+                                                    }
                                                 }
                                                 Err(e) => {
                                                     error!(

@@ -2,10 +2,9 @@
 mod tests {
     // use super::*;
     use crate::websocket::{
-        WebSocketCommand, WebSocketCommandResponse,
-        WebSocketRateLimiter, RateLimitConfig, WebSocketErrorHandler,
-        RetryTimeoutManager, RetryConfig, TimeoutConfig,
-        WebSocketErrorMapper, WebSocketErrorCode,
+        RateLimitConfig, RetryConfig, RetryTimeoutManager, TimeoutConfig, WebSocketCommand,
+        WebSocketCommandResponse, WebSocketErrorCode, WebSocketErrorHandler, WebSocketErrorMapper,
+        WebSocketRateLimiter,
     };
     // use crate::db::models::ErrorDetail;
     use crate::db::enums::LabelLevel;
@@ -17,9 +16,11 @@ mod tests {
     /// 测试WebSocket命令序列化和反序列化
     #[test]
     fn test_websocket_command_serialization() {
+        use crate::websocket::commands::types::CreateLabelCommand;
+
         let command = WebSocketCommand::CreateLabel {
-            idempotency_key: "test-key-123".to_string(),
-            data: crate::websocket::commands::CreateLabelCommand {
+            request_id: Some("test-key-123".to_string()),
+            data: CreateLabelCommand {
                 name: "Test Label".to_string(),
                 color: "#FF0000".to_string(),
                 level: LabelLevel::Project,
@@ -35,8 +36,8 @@ mod tests {
         // 反序列化
         let deserialized: WebSocketCommand = serde_json::from_str(&json).unwrap();
         match deserialized {
-            WebSocketCommand::CreateLabel { idempotency_key, data } => {
-                assert_eq!(idempotency_key, "test-key-123");
+            WebSocketCommand::CreateLabel { request_id, data } => {
+                assert_eq!(request_id, Some("test-key-123".to_string()));
                 assert_eq!(data.name, "Test Label");
                 assert_eq!(data.color, "#FF0000");
                 assert_eq!(data.level, LabelLevel::Project);
@@ -48,22 +49,22 @@ mod tests {
     /// 测试WebSocket命令响应序列化
     #[test]
     fn test_websocket_command_response_serialization() {
-        let response = WebSocketCommandResponse {
-            idempotency_key: "test-key-123".to_string(),
-            success: true,
-            data: Some(serde_json::json!({
+        let response = WebSocketCommandResponse::success(
+            "create_label",
+            "test-key-123",
+            Some("req-123".to_string()),
+            serde_json::json!({
                 "id": "label-123",
                 "name": "Test Label",
                 "color": "#FF0000"
-            })),
-            error: None,
-            timestamp: chrono::Utc::now(),
-        };
+            }),
+        );
 
         let json = serde_json::to_string(&response).unwrap();
         let deserialized: WebSocketCommandResponse = serde_json::from_str(&json).unwrap();
 
         assert_eq!(deserialized.idempotency_key, "test-key-123");
+        assert_eq!(deserialized.command_type, "create_label");
         assert!(deserialized.success);
         assert!(deserialized.data.is_some());
         assert!(deserialized.error.is_none());
@@ -83,11 +84,18 @@ mod tests {
 
         // 前3个请求应该通过
         for i in 0..3 {
-            assert!(!limiter.is_rate_limited(user_id, None).await, "Request {} should pass", i + 1);
+            assert!(
+                !limiter.is_rate_limited(user_id, None).await,
+                "Request {} should pass",
+                i + 1
+            );
         }
 
         // 第4个请求应该被限流
-        assert!(limiter.is_rate_limited(user_id, None).await, "Request 4 should be rate limited");
+        assert!(
+            limiter.is_rate_limited(user_id, None).await,
+            "Request 4 should be rate limited"
+        );
     }
 
     /// 测试命令特定限流
@@ -182,7 +190,11 @@ mod tests {
                 error_code.clone(),
                 "Test error".to_string(),
             );
-            assert!(mapper.should_retry(&error), "Error {:?} should be retryable", error_code);
+            assert!(
+                mapper.should_retry(&error),
+                "Error {:?} should be retryable",
+                error_code
+            );
         }
 
         // 不可重试的错误
@@ -198,7 +210,11 @@ mod tests {
                 error_code.clone(),
                 "Test error".to_string(),
             );
-            assert!(!mapper.should_retry(&error), "Error {:?} should not be retryable", error_code);
+            assert!(
+                !mapper.should_retry(&error),
+                "Error {:?} should not be retryable",
+                error_code
+            );
         }
     }
 
@@ -222,7 +238,11 @@ mod tests {
                 error_code.clone(),
                 "Test error".to_string(),
             );
-            assert!(mapper.should_disconnect(&error), "Error {:?} should trigger disconnect", error_code);
+            assert!(
+                mapper.should_disconnect(&error),
+                "Error {:?} should trigger disconnect",
+                error_code
+            );
         }
 
         // 不应该断开连接的错误
@@ -238,7 +258,11 @@ mod tests {
                 error_code.clone(),
                 "Test error".to_string(),
             );
-            assert!(!mapper.should_disconnect(&error), "Error {:?} should not trigger disconnect", error_code);
+            assert!(
+                !mapper.should_disconnect(&error),
+                "Error {:?} should not trigger disconnect",
+                error_code
+            );
         }
     }
 
@@ -260,20 +284,22 @@ mod tests {
         let manager = RetryTimeoutManager::new(retry_config, timeout_config);
         let attempt_count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let result = manager.execute_with_retry(
-            || {
-                let count = attempt_count.clone();
-                Box::pin(async move {
-                    let current = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                    if current == 0 {
-                        Err("First retry fails")
-                    } else {
-                        Ok("Success")
-                    }
-                })
-            },
-            "test_operation",
-        ).await;
+        let result = manager
+            .execute_with_retry(
+                || {
+                    let count = attempt_count.clone();
+                    Box::pin(async move {
+                        let current = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        if current == 0 {
+                            Err("First retry fails")
+                        } else {
+                            Ok("Success")
+                        }
+                    })
+                },
+                "test_operation",
+            )
+            .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Success");
@@ -293,14 +319,16 @@ mod tests {
 
         let manager = RetryTimeoutManager::new(retry_config, timeout_config);
 
-        let result = manager.execute_with_retry(
-            || Box::pin(async { Err::<String, _>("Always fails") }),
-            "test_operation",
-        ).await;
+        let result = manager
+            .execute_with_retry(
+                || Box::pin(async { Err::<String, _>("Always fails") }),
+                "test_operation",
+            )
+            .await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            crate::websocket::retry_timeout::RetryTimeoutError::MaxRetriesExceeded(_) => {},
+            crate::websocket::retry_timeout::RetryTimeoutError::MaxRetriesExceeded(_) => {}
             _ => panic!("Expected MaxRetriesExceeded error"),
         }
     }
@@ -317,19 +345,22 @@ mod tests {
 
         let manager = RetryTimeoutManager::new(retry_config, timeout_config);
 
-        let result = manager.execute_with_retry(
-            || {
-                Box::pin(async {
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    Ok::<String, String>("Should not reach here".to_string())
-                })
-            },
-            "test_operation",
-        ).await;
+        let result = manager
+            .execute_with_retry(
+                || {
+                    Box::pin(async {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        Ok::<String, String>("Should not reach here".to_string())
+                    })
+                },
+                "test_operation",
+            )
+            .await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            crate::websocket::retry_timeout::RetryTimeoutError::Timeout(_) | crate::websocket::retry_timeout::RetryTimeoutError::MaxRetriesExceeded(_) => {},
+            crate::websocket::retry_timeout::RetryTimeoutError::Timeout(_)
+            | crate::websocket::retry_timeout::RetryTimeoutError::MaxRetriesExceeded(_) => {}
             _ => panic!("Expected Timeout or MaxRetriesExceeded error"),
         }
     }
@@ -346,7 +377,11 @@ mod tests {
         // 不应该重试的错误
         assert!(!manager.should_retry(&AppError::validation("v")));
         assert!(!manager.should_retry(&AppError::not_found("Not found")));
-        assert!(!manager.should_retry(&AppError::Conflict { message: "Conflict".into(), field: None, code: None }));
+        assert!(!manager.should_retry(&AppError::Conflict {
+            message: "Conflict".into(),
+            field: None,
+            code: None
+        }));
         assert!(!manager.should_retry(&AppError::auth("Unauthorized")));
     }
 
@@ -409,7 +444,7 @@ mod tests {
     /// 测试WebSocket消息结构
     #[test]
     fn test_websocket_message_structure() {
-        use crate::websocket::manager::{WebSocketMessage, MessageType};
+        use crate::websocket::manager::{MessageType, WebSocketMessage};
 
         let message = WebSocketMessage {
             id: Some("test-id".to_string()),

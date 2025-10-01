@@ -1,7 +1,7 @@
 use diesel::prelude::*;
 
 use crate::{
-    db::models::workspace_member::{WorkspaceMember, NewWorkspaceMember},
+    db::models::workspace_member::{NewWorkspaceMember, WorkspaceMember},
     db::repositories::workspace_members::WorkspaceMembersRepo,
     error::AppError,
     services::context::RequestContext,
@@ -10,16 +10,32 @@ use crate::{
 pub struct WorkspaceMembersService;
 
 impl WorkspaceMembersService {
-    pub fn list(conn: &mut PgConnection, ctx: &RequestContext) -> Result<Vec<WorkspaceMember>, AppError> {
+    pub fn list(
+        conn: &mut PgConnection,
+        ctx: &RequestContext,
+    ) -> Result<Vec<WorkspaceMember>, AppError> {
         let list = WorkspaceMembersRepo::list_by_workspace(conn, ctx.workspace_id)?;
         Ok(list)
     }
 
-    pub fn add(conn: &mut PgConnection, ctx: &RequestContext, user_id: uuid::Uuid, role: crate::db::models::workspace_member::WorkspaceMemberRole) -> Result<WorkspaceMember, AppError> {
+    pub fn add(
+        conn: &mut PgConnection,
+        ctx: &RequestContext,
+        user_id: uuid::Uuid,
+        role: crate::db::models::workspace_member::WorkspaceMemberRole,
+    ) -> Result<WorkspaceMember, AppError> {
         if WorkspaceMembersRepo::find(conn, ctx.workspace_id, user_id)?.is_some() {
-            return Err(AppError::conflict_with_code("User already a member", None, "ALREADY_MEMBER"));
+            return Err(AppError::conflict_with_code(
+                "User already a member",
+                None,
+                "ALREADY_MEMBER",
+            ));
         }
-        let new_member = NewWorkspaceMember { user_id, workspace_id: ctx.workspace_id, role };
+        let new_member = NewWorkspaceMember {
+            user_id,
+            workspace_id: ctx.workspace_id,
+            role,
+        };
         let member = WorkspaceMembersRepo::insert(conn, &new_member)?;
         Ok(member)
     }
@@ -38,7 +54,11 @@ impl WorkspaceMembersService {
         if let Some(user) = existing_user {
             // User exists, add them directly
             if WorkspaceMembersRepo::find(conn, ctx.workspace_id, user.id)?.is_some() {
-                return Err(AppError::conflict_with_code("User already a member", None, "ALREADY_MEMBER"));
+                return Err(AppError::conflict_with_code(
+                    "User already a member",
+                    None,
+                    "ALREADY_MEMBER",
+                ));
             }
             let new_member = NewWorkspaceMember {
                 user_id: user.id,
@@ -49,9 +69,18 @@ impl WorkspaceMembersService {
             Ok(member)
         } else {
             // User doesn't exist, create invitation
-            let _invitation = crate::services::InvitationsService::create(conn, ctx, &req.email, req.role.clone())?;
+            let _invitation = crate::services::InvitationsService::create(
+                conn,
+                ctx,
+                &req.email,
+                req.role.clone(),
+            )?;
             // Return a placeholder member - in real implementation, this might be different
-            Err(AppError::conflict_with_code("User doesn't exist, invitation sent", None, "INVITATION_SENT"))
+            Err(AppError::conflict_with_code(
+                "User doesn't exist, invitation sent",
+                None,
+                "INVITATION_SENT",
+            ))
         }
     }
 
@@ -77,6 +106,26 @@ impl WorkspaceMembersService {
         role: Option<crate::db::models::workspace_member::WorkspaceMemberRole>,
         user_id: Option<uuid::Uuid>,
     ) -> Result<Vec<crate::routes::workspace_members::WorkspaceMemberInfo>, AppError> {
+        Self::get_workspace_members_with_search(
+            conn,
+            _ctx,
+            asset_helper,
+            workspace_id,
+            role,
+            user_id,
+            None,
+        )
+    }
+
+    pub fn get_workspace_members_with_search(
+        conn: &mut PgConnection,
+        _ctx: &RequestContext,
+        asset_helper: &crate::utils::AssetUrlHelper,
+        workspace_id: uuid::Uuid,
+        role: Option<crate::db::models::workspace_member::WorkspaceMemberRole>,
+        user_id: Option<uuid::Uuid>,
+        search: Option<String>,
+    ) -> Result<Vec<crate::routes::workspace_members::WorkspaceMemberInfo>, AppError> {
         let mut members = WorkspaceMembersRepo::list_by_workspace(conn, workspace_id)?;
 
         // Apply filters
@@ -96,7 +145,22 @@ impl WorkspaceMembersService {
                 .optional()?
                 .ok_or_else(|| AppError::internal("Failed to retrieve user"))?;
 
-            let processed_avatar_url = user.avatar_url.as_ref().map(|url| asset_helper.process_url(url));
+            // Apply search filter
+            if let Some(ref search_term) = search {
+                let search_lower = search_term.to_lowercase();
+                let name_match = user.name.to_lowercase().contains(&search_lower);
+                let username_match = user.username.to_lowercase().contains(&search_lower);
+                let email_match = user.email.to_lowercase().contains(&search_lower);
+
+                if !name_match && !username_match && !email_match {
+                    continue;
+                }
+            }
+
+            let processed_avatar_url = user
+                .avatar_url
+                .as_ref()
+                .map(|url| asset_helper.process_url(url));
             let user_basic = crate::db::models::auth::UserBasicInfo {
                 id: user.id,
                 name: user.name,
@@ -127,7 +191,8 @@ impl WorkspaceMembersService {
         user_id: Option<uuid::Uuid>,
     ) -> Result<crate::routes::workspace_members::MembersAndInvitations, AppError> {
         // Get members
-        let members = Self::get_workspace_members(conn, ctx, asset_helper, ctx.workspace_id, role, user_id)?;
+        let members =
+            Self::get_workspace_members(conn, ctx, asset_helper, ctx.workspace_id, role, user_id)?;
 
         // Get invitations
         let invitations = crate::services::InvitationsService::get_user_invitations(
@@ -153,6 +218,23 @@ impl WorkspaceMembersService {
     ) -> Result<Vec<crate::routes::workspace_members::WorkspaceMemberInfo>, AppError> {
         Self::get_workspace_members(conn, ctx, asset_helper, ctx.workspace_id, role, user_id)
     }
+
+    pub fn get_current_workspace_members_with_search(
+        conn: &mut PgConnection,
+        ctx: &RequestContext,
+        asset_helper: &crate::utils::AssetUrlHelper,
+        role: Option<crate::db::models::workspace_member::WorkspaceMemberRole>,
+        user_id: Option<uuid::Uuid>,
+        search: Option<String>,
+    ) -> Result<Vec<crate::routes::workspace_members::WorkspaceMemberInfo>, AppError> {
+        Self::get_workspace_members_with_search(
+            conn,
+            ctx,
+            asset_helper,
+            ctx.workspace_id,
+            role,
+            user_id,
+            search,
+        )
+    }
 }
-
-

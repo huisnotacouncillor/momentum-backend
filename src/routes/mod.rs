@@ -93,25 +93,76 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/cycles/:cycle_id", delete(cycles::delete_cycle))
         .route("/cycles/:cycle_id/stats", get(cycles::get_cycle_stats))
         .route("/cycles/:cycle_id/issues", get(cycles::get_cycle_issues))
-        .route("/cycles/:cycle_id/issues", post(cycles::assign_issues_to_cycle))
-        .route("/cycles/:cycle_id/issues", delete(cycles::remove_issues_from_cycle))
-        .route("/cycles/auto-update-status", post(cycles::update_cycle_status_auto))
-        .route("/project-statuses", post(project_statuses::create_project_status))
-        .route("/project-statuses", get(project_statuses::get_project_statuses))
-        .route("/project-statuses/:status_id", get(project_statuses::get_project_status_by_id))
-        .route("/project-statuses/:status_id", put(project_statuses::update_project_status))
-        .route("/project-statuses/:status_id", delete(project_statuses::delete_project_status))
+        .route(
+            "/cycles/:cycle_id/issues",
+            post(cycles::assign_issues_to_cycle),
+        )
+        .route(
+            "/cycles/:cycle_id/issues",
+            delete(cycles::remove_issues_from_cycle),
+        )
+        .route(
+            "/cycles/auto-update-status",
+            post(cycles::update_cycle_status_auto),
+        )
+        .route(
+            "/project-statuses",
+            post(project_statuses::create_project_status),
+        )
+        .route(
+            "/project-statuses",
+            get(project_statuses::get_project_statuses),
+        )
+        .route(
+            "/project-statuses/:status_id",
+            get(project_statuses::get_project_status_by_id),
+        )
+        .route(
+            "/project-statuses/:status_id",
+            put(project_statuses::update_project_status),
+        )
+        .route(
+            "/project-statuses/:status_id",
+            delete(project_statuses::delete_project_status),
+        )
         .route("/teams/:team_id/workflows", get(workflows::get_workflows))
-        .route("/teams/:team_id/workflows", post(workflows::create_workflow))
-        .route("/teams/:team_id/workflows/default/states", get(workflows::get_team_default_workflow_states))
-        .route("/teams/:team_id/workflows/default/states", post(workflows::create_team_default_workflow_state))
-        .route("/teams/:team_id/workflows/default/states/:state_id", put(workflows::update_team_default_workflow_state))
-        .route("/workflows/:workflow_id", get(workflows::get_workflow_by_id))
+        .route(
+            "/teams/:team_id/workflows",
+            post(workflows::create_workflow),
+        )
+        .route(
+            "/teams/:team_id/workflows/default/states",
+            get(workflows::get_team_default_workflow_states),
+        )
+        .route(
+            "/teams/:team_id/workflows/default/states",
+            post(workflows::create_team_default_workflow_state),
+        )
+        .route(
+            "/teams/:team_id/workflows/default/states/:state_id",
+            put(workflows::update_team_default_workflow_state),
+        )
+        .route(
+            "/workflows/:workflow_id",
+            get(workflows::get_workflow_by_id),
+        )
         .route("/workflows/:workflow_id", put(workflows::update_workflow))
-        .route("/workflows/:workflow_id", delete(workflows::delete_workflow))
-        .route("/workflows/:workflow_id/states", get(workflows::get_workflow_states))
-        .route("/workflows/:workflow_id/states", post(workflows::create_workflow_state))
-        .route("/issues/:issue_id/transitions", get(workflows::get_issue_transitions))
+        .route(
+            "/workflows/:workflow_id",
+            delete(workflows::delete_workflow),
+        )
+        .route(
+            "/workflows/:workflow_id/states",
+            get(workflows::get_workflow_states),
+        )
+        .route(
+            "/workflows/:workflow_id/states",
+            post(workflows::create_workflow_state),
+        )
+        .route(
+            "/issues/:issue_id/transitions",
+            get(workflows::get_issue_transitions),
+        )
         .with_state(state.clone());
 
     // Create a router for routes that only need the database pool
