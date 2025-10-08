@@ -147,6 +147,60 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    // Project statuses
+    CreateProjectStatus {
+        data: CreateProjectStatusCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    UpdateProjectStatus {
+        status_id: Uuid,
+        data: UpdateProjectStatusCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    DeleteProjectStatus {
+        status_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    QueryProjectStatuses {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    GetProjectStatusById {
+        status_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    // User profile
+    UpdateProfile {
+        data: UpdateProfileCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    // Projects
+    CreateProject {
+        data: CreateProjectCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    UpdateProject {
+        project_id: Uuid,
+        data: UpdateProjectCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    DeleteProject {
+        project_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    QueryProjects {
+        filters: ProjectFilters,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -486,4 +540,58 @@ pub struct UpdateWorkspaceCommand {
     pub name: Option<String>,
     pub url_key: Option<String>,
     pub logo_url: Option<String>,
+}
+
+// Project status command payloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateProjectStatusCommand {
+    pub name: String,
+    pub description: Option<String>,
+    pub color: String,
+    // one of: backlog, planned, in_progress, completed, canceled
+    pub category: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateProjectStatusCommand {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub color: Option<String>,
+    // one of: backlog, planned, in_progress, completed, canceled
+    pub category: Option<String>,
+}
+
+// User profile command payloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateProfileCommand {
+    pub name: Option<String>,
+    pub username: Option<String>,
+    pub email: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+// Project command payloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateProjectCommand {
+    pub name: String,
+    pub project_key: String,
+    pub description: Option<String>,
+    pub target_date: Option<chrono::NaiveDate>,
+    pub project_status_id: Option<Uuid>,
+    pub priority: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateProjectCommand {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub target_date: Option<chrono::NaiveDate>,
+    pub project_status_id: Option<Uuid>,
+    pub priority: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectFilters {
+    pub search: Option<String>,
+    pub owner_id: Option<Uuid>,
 }

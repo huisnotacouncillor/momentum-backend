@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use rust_backend::websocket::{
     auth::WebSocketAuth,
-    manager::{MessageType, WebSocketManager, WebSocketMessage, ConnectionState},
+    manager::{ConnectionState, MessageType, WebSocketManager, WebSocketMessage},
 };
 
 const TEST_JWT_SECRET: &str = "test_jwt_secret_key";
@@ -455,5 +455,201 @@ mod integration_tests {
         let url = Url::parse(&url).unwrap();
         let result = connect_async(url).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_profile_update_websocket_command_serialization() {
+        use rust_backend::websocket::commands::types::{UpdateProfileCommand, WebSocketCommand};
+
+        // Test full profile update
+        let full_update = WebSocketCommand::UpdateProfile {
+            data: UpdateProfileCommand {
+                name: Some("John Doe Updated".to_string()),
+                username: Some("johndoe_updated".to_string()),
+                email: Some("john.updated@example.com".to_string()),
+                avatar_url: Some("https://example.com/avatar.jpg".to_string()),
+            },
+            request_id: Some("req_123".to_string()),
+        };
+
+        let serialized = serde_json::to_string(&full_update).unwrap();
+        let deserialized: WebSocketCommand = serde_json::from_str(&serialized).unwrap();
+
+        match deserialized {
+            WebSocketCommand::UpdateProfile { data, request_id } => {
+                assert_eq!(data.name, Some("John Doe Updated".to_string()));
+                assert_eq!(data.username, Some("johndoe_updated".to_string()));
+                assert_eq!(data.email, Some("john.updated@example.com".to_string()));
+                assert_eq!(
+                    data.avatar_url,
+                    Some("https://example.com/avatar.jpg".to_string())
+                );
+                assert_eq!(request_id, Some("req_123".to_string()));
+            }
+            _ => panic!("Expected UpdateProfile command"),
+        }
+
+        // Test partial profile update
+        let partial_update = WebSocketCommand::UpdateProfile {
+            data: UpdateProfileCommand {
+                name: Some("Jane Smith".to_string()),
+                username: None,
+                email: None,
+                avatar_url: Some("https://example.com/new-avatar.jpg".to_string()),
+            },
+            request_id: Some("req_124".to_string()),
+        };
+
+        let partial_serialized = serde_json::to_string(&partial_update).unwrap();
+        let partial_deserialized: WebSocketCommand =
+            serde_json::from_str(&partial_serialized).unwrap();
+
+        match partial_deserialized {
+            WebSocketCommand::UpdateProfile { data, request_id } => {
+                assert_eq!(data.name, Some("Jane Smith".to_string()));
+                assert_eq!(data.username, None);
+                assert_eq!(data.email, None);
+                assert_eq!(
+                    data.avatar_url,
+                    Some("https://example.com/new-avatar.jpg".to_string())
+                );
+                assert_eq!(request_id, Some("req_124".to_string()));
+            }
+            _ => panic!("Expected UpdateProfile command"),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires running server"]
+    async fn test_websocket_profile_update_command() {
+        use rust_backend::websocket::commands::types::{UpdateProfileCommand, WebSocketCommand};
+
+        let user_id = Uuid::new_v4();
+        let token = create_test_jwt(user_id, "test_user", TEST_JWT_SECRET);
+        let url = format!("{}?token={}", WEBSOCKET_URL, token);
+
+        let url = Url::parse(&url).unwrap();
+        let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+
+        let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+
+        // Send profile update command
+        let update_command = WebSocketCommand::UpdateProfile {
+            data: UpdateProfileCommand {
+                name: Some("Updated Name".to_string()),
+                username: Some("updated_username".to_string()),
+                email: None,
+                avatar_url: Some("https://example.com/new-avatar.jpg".to_string()),
+            },
+            request_id: Some("profile_update_123".to_string()),
+        };
+
+        let command_json = serde_json::to_string(&update_command).unwrap();
+        let secure_message = json!({
+            "message_id": Uuid::new_v4().to_string(),
+            "payload": serde_json::from_str::<serde_json::Value>(&command_json).unwrap(),
+            "signature": "test_signature"
+        });
+
+        ws_sender
+            .send(TungsteniteMessage::Text(secure_message.to_string()))
+            .await
+            .expect("Failed to send profile update command");
+
+        // Wait for response
+        if let Ok(Some(msg)) = timeout(Duration::from_secs(5), ws_receiver.next()).await {
+            match msg {
+                Ok(TungsteniteMessage::Text(text)) => {
+                    let response: serde_json::Value = serde_json::from_str(&text).unwrap();
+                    // Should receive command response
+                    assert!(response.get("command_type").is_some());
+                    assert!(response.get("success").is_some());
+                }
+                _ => panic!("Unexpected message type"),
+            }
+        } else {
+            panic!("No response received within timeout");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_project_websocket_command_serialization() {
+        use rust_backend::websocket::commands::types::{CreateProjectCommand, UpdateProjectCommand, ProjectFilters, WebSocketCommand};
+
+        // Test create project command
+        let create_command = WebSocketCommand::CreateProject {
+            data: CreateProjectCommand {
+                name: "Test Project".to_string(),
+                project_key: "TEST-PROJ".to_string(),
+                description: Some("A test project".to_string()),
+                target_date: Some(chrono::NaiveDate::from_ymd_opt(2024, 12, 31).unwrap()),
+                project_status_id: None,
+                priority: Some("high".to_string()),
+            },
+            request_id: Some("create_project_123".to_string()),
+        };
+
+        let serialized = serde_json::to_string(&create_command).unwrap();
+        let deserialized: WebSocketCommand = serde_json::from_str(&serialized).unwrap();
+
+        match deserialized {
+            WebSocketCommand::CreateProject { data, request_id } => {
+                assert_eq!(data.name, "Test Project");
+                assert_eq!(data.project_key, "TEST-PROJ");
+                assert_eq!(data.description, Some("A test project".to_string()));
+                assert_eq!(data.priority, Some("high".to_string()));
+                assert_eq!(request_id, Some("create_project_123".to_string()));
+            }
+            _ => panic!("Expected CreateProject command"),
+        }
+
+        // Test update project command
+        let project_id = Uuid::new_v4();
+        let update_command = WebSocketCommand::UpdateProject {
+            project_id,
+            data: UpdateProjectCommand {
+                name: Some("Updated Project".to_string()),
+                description: Some("Updated description".to_string()),
+                target_date: None,
+                project_status_id: None,
+                priority: Some("medium".to_string()),
+            },
+            request_id: Some("update_project_123".to_string()),
+        };
+
+        let update_serialized = serde_json::to_string(&update_command).unwrap();
+        let update_deserialized: WebSocketCommand = serde_json::from_str(&update_serialized).unwrap();
+
+        match update_deserialized {
+            WebSocketCommand::UpdateProject { project_id: pid, data, request_id } => {
+                assert_eq!(pid, project_id);
+                assert_eq!(data.name, Some("Updated Project".to_string()));
+                assert_eq!(data.description, Some("Updated description".to_string()));
+                assert_eq!(data.priority, Some("medium".to_string()));
+                assert_eq!(request_id, Some("update_project_123".to_string()));
+            }
+            _ => panic!("Expected UpdateProject command"),
+        }
+
+        // Test query projects command
+        let query_command = WebSocketCommand::QueryProjects {
+            filters: ProjectFilters {
+                search: Some("test".to_string()),
+                owner_id: Some(Uuid::new_v4()),
+            },
+            request_id: Some("query_projects_123".to_string()),
+        };
+
+        let query_serialized = serde_json::to_string(&query_command).unwrap();
+        let query_deserialized: WebSocketCommand = serde_json::from_str(&query_serialized).unwrap();
+
+        match query_deserialized {
+            WebSocketCommand::QueryProjects { filters, request_id } => {
+                assert_eq!(filters.search, Some("test".to_string()));
+                assert!(filters.owner_id.is_some());
+                assert_eq!(request_id, Some("query_projects_123".to_string()));
+            }
+            _ => panic!("Expected QueryProjects command"),
+        }
     }
 }

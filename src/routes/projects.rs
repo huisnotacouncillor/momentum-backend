@@ -1,9 +1,9 @@
 use crate::AppState;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -55,7 +55,11 @@ pub async fn create_project(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -99,7 +103,11 @@ pub async fn get_projects(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -110,9 +118,16 @@ pub async fn get_projects(
         }
     };
 
-    match ProjectsService::list_infos(&mut conn, &ctx, &state.asset_helper, params.search, params.owner_id) {
-        Ok(infos) => {
-            let response = ApiResponse::success(infos, "Projects retrieved successfully");
+    match ProjectsService::list_infos(
+        &mut conn,
+        &ctx,
+        &state.asset_helper,
+        params.search,
+        params.owner_id,
+    ) {
+        Ok(project_list_response) => {
+            let response =
+                ApiResponse::success(project_list_response, "Projects retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => err.into_response(),
@@ -135,7 +150,11 @@ pub async fn update_project(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -146,15 +165,13 @@ pub async fn update_project(
         }
     };
 
-    let priority_enum = payload.priority.as_ref().and_then(|p| {
-        match p.as_str() {
-            "none" => Some(crate::db::enums::ProjectPriority::None),
-            "low" => Some(crate::db::enums::ProjectPriority::Low),
-            "medium" => Some(crate::db::enums::ProjectPriority::Medium),
-            "high" => Some(crate::db::enums::ProjectPriority::High),
-            "urgent" => Some(crate::db::enums::ProjectPriority::Urgent),
-            _ => None,
-        }
+    let priority_enum = payload.priority.as_ref().and_then(|p| match p.as_str() {
+        "none" => Some(crate::db::enums::ProjectPriority::None),
+        "low" => Some(crate::db::enums::ProjectPriority::Low),
+        "medium" => Some(crate::db::enums::ProjectPriority::Medium),
+        "high" => Some(crate::db::enums::ProjectPriority::High),
+        "urgent" => Some(crate::db::enums::ProjectPriority::Urgent),
+        _ => None,
     });
 
     let model_request = crate::db::models::project::UpdateProjectRequest {
@@ -166,7 +183,13 @@ pub async fn update_project(
         priority: priority_enum,
     };
 
-    match ProjectsService::update(&mut conn, &ctx, &state.asset_helper, project_id, &model_request) {
+    match ProjectsService::update(
+        &mut conn,
+        &ctx,
+        &state.asset_helper,
+        project_id,
+        &model_request,
+    ) {
         Ok(project) => {
             let response = ApiResponse::success(project, "Project updated successfully");
             (StatusCode::OK, Json(response)).into_response()
@@ -190,7 +213,11 @@ pub async fn delete_project(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,

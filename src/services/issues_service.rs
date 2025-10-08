@@ -1,14 +1,14 @@
-use diesel::prelude::*;
 use chrono::Utc;
+use diesel::prelude::*;
 use uuid::Uuid;
 
 use crate::{
+    db::enums::IssuePriority,
     db::models::issue::{Issue, NewIssue},
     db::models::team::{Team, TeamBasicInfo},
     db::models::workflow::WorkflowStateResponse,
     db::repositories::issues::IssueRepo,
     db::repositories::workflows::WorkflowsRepo,
-    db::enums::IssuePriority,
     error::AppError,
     services::context::RequestContext,
     validation::issue::{validate_create_issue, validate_update_issue},
@@ -66,7 +66,8 @@ impl IssuesService {
                     .filter(t::id.eq(issue.team_id))
                     .first::<Team>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(&format!("Failed to load team: {}", e)))? {
+                    .map_err(|e| AppError::internal(&format!("Failed to load team: {}", e)))?
+                {
                     resp.team_key = Some(team.team_key.clone());
                     resp.team = Some(TeamBasicInfo {
                         id: team.id,
@@ -80,13 +81,18 @@ impl IssuesService {
             }
             // Determine states source
             let states = if let Some(wf_id) = issue.workflow_id {
-                WorkflowsRepo::list_states_by_workflow(conn, wf_id)
-                    .map_err(|e| AppError::internal(&format!("Failed to load workflow states: {}", e)))?
+                WorkflowsRepo::list_states_by_workflow(conn, wf_id).map_err(|e| {
+                    AppError::internal(&format!("Failed to load workflow states: {}", e))
+                })?
             } else {
-                WorkflowsRepo::list_team_default_states(conn, issue.team_id)
-                    .map_err(|e| AppError::internal(&format!("Failed to load team default states: {}", e)))?
+                WorkflowsRepo::list_team_default_states(conn, issue.team_id).map_err(|e| {
+                    AppError::internal(&format!("Failed to load team default states: {}", e))
+                })?
             };
-            resp.workflow_states = states.into_iter().map(WorkflowStateResponse::from).collect();
+            resp.workflow_states = states
+                .into_iter()
+                .map(WorkflowStateResponse::from)
+                .collect();
             responses.push(resp);
         }
 
@@ -138,22 +144,35 @@ impl IssuesService {
         // Build changeset
         let mut cs = crate::db::models::issue::UpdateIssue::default();
 
-        if let Some(t) = &changes.title { cs.title = Some(t.clone()); }
-        if let Some(d) = &changes.description { cs.description = Some(Some(d.clone())); }
-        if let Some(pid) = changes.project_id { cs.project_id = Some(Some(pid)); }
-        if let Some(tid) = changes.team_id { cs.team_id = Some(tid); }
-        if let Some(aid) = changes.assignee_id { cs.assignee_id = Some(Some(aid)); }
-        if let Some(cyc) = changes.cycle_id { cs.cycle_id = Some(Some(cyc)); }
-        if let Some(pr) = &changes.priority { cs.priority = Some(Self::priority_to_string(pr)); }
+        if let Some(t) = &changes.title {
+            cs.title = Some(t.clone());
+        }
+        if let Some(d) = &changes.description {
+            cs.description = Some(Some(d.clone()));
+        }
+        if let Some(pid) = changes.project_id {
+            cs.project_id = Some(Some(pid));
+        }
+        if let Some(tid) = changes.team_id {
+            cs.team_id = Some(tid);
+        }
+        if let Some(aid) = changes.assignee_id {
+            cs.assignee_id = Some(Some(aid));
+        }
+        if let Some(cyc) = changes.cycle_id {
+            cs.cycle_id = Some(Some(cyc));
+        }
+        if let Some(pr) = &changes.priority {
+            cs.priority = Some(Self::priority_to_string(pr));
+        }
 
         // Handle workflow/workflow_state validation and setting
         use crate::schema::{workflow_states as ws, workflows as w};
         use diesel::prelude::*;
 
-
         // Validate foreign keys belong to current workspace/team as appropriate
         {
-            use crate::schema::{teams, projects, cycles, users};
+            use crate::schema::{cycles, projects, teams, users};
             use diesel::prelude::*;
 
             if let Some(tid) = changes.team_id {
@@ -164,7 +183,10 @@ impl IssuesService {
                     .first::<(uuid::Uuid,)>(conn)
                     .optional()
                     .map_err(|e| AppError::internal(&format!("Failed to validate team: {}", e)))?;
-                match owner_ws { Some((ws_id,)) if ws_id == ctx.workspace_id => {}, _ => return Err(AppError::validation("Invalid team_id for workspace")), }
+                match owner_ws {
+                    Some((ws_id,)) if ws_id == ctx.workspace_id => {}
+                    _ => return Err(AppError::validation("Invalid team_id for workspace")),
+                }
             }
 
             if let Some(pid) = changes.project_id {
@@ -174,8 +196,13 @@ impl IssuesService {
                     .select((projects::dsl::workspace_id,))
                     .first::<(uuid::Uuid,)>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(&format!("Failed to validate project: {}", e)))?;
-                match proj_ws { Some((ws_id,)) if ws_id == ctx.workspace_id => {}, _ => return Err(AppError::validation("Invalid project_id for workspace")), }
+                    .map_err(|e| {
+                        AppError::internal(&format!("Failed to validate project: {}", e))
+                    })?;
+                match proj_ws {
+                    Some((ws_id,)) if ws_id == ctx.workspace_id => {}
+                    _ => return Err(AppError::validation("Invalid project_id for workspace")),
+                }
             }
 
             if let Some(cyc_id) = changes.cycle_id {
@@ -189,7 +216,9 @@ impl IssuesService {
                     .first::<(uuid::Uuid,)>(conn)
                     .optional()
                     .map_err(|e| AppError::internal(&format!("Failed to validate cycle: {}", e)))?;
-                if ok.is_none() { return Err(AppError::validation("Invalid cycle_id for workspace")); }
+                if ok.is_none() {
+                    return Err(AppError::validation("Invalid cycle_id for workspace"));
+                }
             }
 
             if let Some(aid) = changes.assignee_id {
@@ -199,8 +228,12 @@ impl IssuesService {
                     .select((users::dsl::id,))
                     .first::<(uuid::Uuid,)>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(&format!("Failed to validate assignee: {}", e)))?;
-                if exists.is_none() { return Err(AppError::validation("Invalid assignee_id")); }
+                    .map_err(|e| {
+                        AppError::internal(&format!("Failed to validate assignee: {}", e))
+                    })?;
+                if exists.is_none() {
+                    return Err(AppError::validation("Invalid assignee_id"));
+                }
             }
         }
         if let Some(state_id) = changes.workflow_state_id {
@@ -216,8 +249,14 @@ impl IssuesService {
                     .select((ws::dsl::workflow_id,))
                     .first::<(Uuid,)>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(&format!("Failed to validate workflow state: {}", e)))?;
-                if found.is_none() { return Err(AppError::validation("Invalid workflow_state_id for workflow")); }
+                    .map_err(|e| {
+                        AppError::internal(&format!("Failed to validate workflow state: {}", e))
+                    })?;
+                if found.is_none() {
+                    return Err(AppError::validation(
+                        "Invalid workflow_state_id for workflow",
+                    ));
+                }
                 // Set workflow to match the state's workflow
                 cs.workflow_id = Some(Some(req_workflow_id));
             } else {
@@ -229,8 +268,15 @@ impl IssuesService {
                     .select((ws::dsl::workflow_id,))
                     .first::<(Uuid,)>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(&format!("Failed to validate workflow state: {}", e)))?;
-                match found { Some((wf_id,)) => { cs.workflow_id = Some(Some(wf_id)); }, None => return Err(AppError::validation("Invalid workflow_state_id for team")), }
+                    .map_err(|e| {
+                        AppError::internal(&format!("Failed to validate workflow state: {}", e))
+                    })?;
+                match found {
+                    Some((wf_id,)) => {
+                        cs.workflow_id = Some(Some(wf_id));
+                    }
+                    None => return Err(AppError::validation("Invalid workflow_state_id for team")),
+                }
             }
 
             // Set state and workflow
@@ -246,19 +292,24 @@ impl IssuesService {
                 .first::<(Uuid,)>(conn)
                 .optional()
                 .map_err(|e| AppError::internal(&format!("Failed to validate workflow: {}", e)))?;
-            if ok.is_none() { return Err(AppError::validation("Invalid workflow_id for team")); }
+            if ok.is_none() {
+                return Err(AppError::validation("Invalid workflow_id for team"));
+            }
             cs.workflow_id = Some(Some(wf_id));
         }
 
         // If team_id is changed and no explicit workflow fields provided, clear workflow linkage to avoid cross-team mismatch
-        if changes.team_id.is_some() && changes.workflow_id.is_none() && changes.workflow_state_id.is_none() {
+        if changes.team_id.is_some()
+            && changes.workflow_id.is_none()
+            && changes.workflow_state_id.is_none()
+        {
             cs.workflow_id = Some(None);
             cs.workflow_state_id = Some(None);
         }
 
         // Handle labels replacement if provided
         if let Some(ref label_ids) = changes.label_ids {
-            use crate::schema::{labels as l, issue_labels as il};
+            use crate::schema::{issue_labels as il, labels as l};
             use diesel::prelude::*;
 
             // Validate all labels exist in current workspace
@@ -268,7 +319,9 @@ impl IssuesService {
                     .filter(l::dsl::id.eq_any(label_ids))
                     .count()
                     .get_result::<i64>(conn)
-                    .map_err(|e| AppError::internal(&format!("Failed to validate labels: {}", e)))?;
+                    .map_err(|e| {
+                        AppError::internal(&format!("Failed to validate labels: {}", e))
+                    })?;
                 if count != label_ids.len() as i64 {
                     return Err(AppError::validation("Invalid label_ids for workspace"));
                 }
@@ -282,20 +335,30 @@ impl IssuesService {
             if !label_ids.is_empty() {
                 let new_rows: Vec<crate::db::models::issue::NewIssueLabel> = label_ids
                     .iter()
-                    .map(|lid| crate::db::models::issue::NewIssueLabel { issue_id, label_id: *lid })
+                    .map(|lid| crate::db::models::issue::NewIssueLabel {
+                        issue_id,
+                        label_id: *lid,
+                    })
                     .collect();
                 diesel::insert_into(il::dsl::issue_labels)
                     .values(&new_rows)
                     .execute(conn)
-                    .map_err(|e| AppError::internal(&format!("Failed to insert issue labels: {}", e)))?;
+                    .map_err(|e| {
+                        AppError::internal(&format!("Failed to insert issue labels: {}", e))
+                    })?;
             }
         }
 
         // Apply update using changeset only if any field changed; otherwise return current issue
-        let has_field_changes =
-            changes.title.is_some() || changes.description.is_some() || changes.project_id.is_some() ||
-            changes.team_id.is_some() || changes.assignee_id.is_some() || changes.cycle_id.is_some() ||
-            changes.priority.is_some() || changes.workflow_id.is_some() || changes.workflow_state_id.is_some();
+        let has_field_changes = changes.title.is_some()
+            || changes.description.is_some()
+            || changes.project_id.is_some()
+            || changes.team_id.is_some()
+            || changes.assignee_id.is_some()
+            || changes.cycle_id.is_some()
+            || changes.priority.is_some()
+            || changes.workflow_id.is_some()
+            || changes.workflow_state_id.is_some();
 
         if has_field_changes {
             use crate::schema::issues::dsl as i;
@@ -346,7 +409,8 @@ impl IssuesService {
                 .filter(t::id.eq(issue.team_id))
                 .first::<Team>(conn)
                 .optional()
-                .map_err(|e| AppError::internal(&format!("Failed to load team: {}", e)))? {
+                .map_err(|e| AppError::internal(&format!("Failed to load team: {}", e)))?
+            {
                 resp.team_key = Some(team.team_key.clone());
                 resp.team = Some(TeamBasicInfo {
                     id: team.id,
@@ -366,26 +430,50 @@ impl IssuesService {
                 .filter(p::id.eq(proj_id))
                 .first::<crate::db::models::project::Project>(conn)
                 .optional()
-                .map_err(|e| AppError::internal(&format!("Failed to load project: {}", e)))? {
+                .map_err(|e| AppError::internal(&format!("Failed to load project: {}", e)))?
+            {
                 // Build ProjectInfo
                 // load status
                 use crate::schema::project_statuses::dsl as ps;
                 let status = ps::project_statuses
                     .filter(ps::id.eq(project.project_status_id))
                     .first::<crate::db::models::project_status::ProjectStatus>(conn)
-                    .map_err(|e| AppError::internal(&format!("Failed to load project status: {}", e)))?;
+                    .map_err(|e| {
+                        AppError::internal(&format!("Failed to load project status: {}", e))
+                    })?;
                 // load owner basic info
                 use crate::schema::users::dsl as u;
                 let owner = u::users
                     .filter(u::id.eq(project.owner_id))
                     .first::<crate::db::models::auth::User>(conn)
-                    .map_err(|e| AppError::internal(&format!("Failed to load project owner: {}", e)))?;
+                    .map_err(|e| {
+                        AppError::internal(&format!("Failed to load project owner: {}", e))
+                    })?;
+
+                // Get all available statuses for this workspace
+                let all_statuses = ps::project_statuses
+                    .filter(ps::workspace_id.eq(ctx.workspace_id))
+                    .select(crate::db::models::project_status::ProjectStatus::as_select())
+                    .load::<crate::db::models::project_status::ProjectStatus>(conn)
+                    .map_err(|e| {
+                        AppError::internal(&format!("Failed to load project statuses: {}", e))
+                    })?;
+
+                let available_statuses: Vec<crate::db::models::project_status::ProjectStatusInfo> =
+                    all_statuses
+                        .into_iter()
+                        .map(|status| {
+                            crate::db::models::project_status::ProjectStatusInfo::from(status)
+                        })
+                        .collect();
+
                 resp.project = Some(crate::db::models::project::ProjectInfo {
                     id: project.id,
                     name: project.name,
                     project_key: project.project_key,
                     description: project.description,
                     status: crate::db::models::project_status::ProjectStatusInfo::from(status),
+                    available_statuses,
                     owner: crate::db::models::auth::UserBasicInfo {
                         id: owner.id,
                         name: owner.name,
@@ -408,7 +496,8 @@ impl IssuesService {
                 .filter(u::id.eq(uid))
                 .first::<crate::db::models::auth::User>(conn)
                 .optional()
-                .map_err(|e| AppError::internal(&format!("Failed to load assignee: {}", e)))? {
+                .map_err(|e| AppError::internal(&format!("Failed to load assignee: {}", e)))?
+            {
                 resp.assignee = Some(crate::db::models::auth::UserBasicInfo {
                     id: user.id,
                     name: user.name,
@@ -422,7 +511,9 @@ impl IssuesService {
         // parent issue
         if let Some(pid) = issue.parent_issue_id {
             if let Some(parent) = IssueRepo::find_by_id(conn, pid)? {
-                resp.parent_issue = Some(Box::new(crate::db::models::issue::IssueResponse::from(parent)));
+                resp.parent_issue = Some(Box::new(crate::db::models::issue::IssueResponse::from(
+                    parent,
+                )));
             }
         }
 
@@ -434,18 +525,26 @@ impl IssuesService {
                 .order(i::created_at.asc())
                 .load::<Issue>(conn)
                 .map_err(|e| AppError::internal(&format!("Failed to load child issues: {}", e)))?;
-            resp.child_issues = children.into_iter().map(crate::db::models::issue::IssueResponse::from).collect();
+            resp.child_issues = children
+                .into_iter()
+                .map(crate::db::models::issue::IssueResponse::from)
+                .collect();
         }
 
         // workflow states
         let states = if let Some(wf_id) = issue.workflow_id {
-            WorkflowsRepo::list_states_by_workflow(conn, wf_id)
-                .map_err(|e| AppError::internal(&format!("Failed to load workflow states: {}", e)))?
+            WorkflowsRepo::list_states_by_workflow(conn, wf_id).map_err(|e| {
+                AppError::internal(&format!("Failed to load workflow states: {}", e))
+            })?
         } else {
-            WorkflowsRepo::list_team_default_states(conn, issue.team_id)
-                .map_err(|e| AppError::internal(&format!("Failed to load team default states: {}", e)))?
+            WorkflowsRepo::list_team_default_states(conn, issue.team_id).map_err(|e| {
+                AppError::internal(&format!("Failed to load team default states: {}", e))
+            })?
         };
-        resp.workflow_states = states.into_iter().map(WorkflowStateResponse::from).collect();
+        resp.workflow_states = states
+            .into_iter()
+            .map(WorkflowStateResponse::from)
+            .collect();
 
         // labels
         {
@@ -466,7 +565,8 @@ impl IssuesService {
                 .filter(c::id.eq(cycle_id))
                 .first::<crate::db::models::cycle::Cycle>(conn)
                 .optional()
-                .map_err(|e| AppError::internal(&format!("Failed to load cycle: {}", e)))? {
+                .map_err(|e| AppError::internal(&format!("Failed to load cycle: {}", e)))?
+            {
                 resp.cycle = Some(cycle);
             }
         }

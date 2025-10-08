@@ -136,7 +136,7 @@ pub struct CreateProjectStatusRequest {
     pub category: ProjectStatusCategory,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProjectStatusInfo {
     pub id: Uuid,
     pub name: String,

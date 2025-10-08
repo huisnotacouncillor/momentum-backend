@@ -97,13 +97,14 @@ pub struct CreateProjectRequest {
     pub priority: Option<ProjectPriority>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 pub struct ProjectInfo {
     pub id: Uuid,
     pub name: String,
     pub project_key: String,
     pub description: Option<String>,
     pub status: ProjectStatusInfo,
+    pub available_statuses: Vec<ProjectStatusInfo>, // 添加所有可用的项目状态
     pub owner: UserBasicInfo,
     pub target_date: Option<chrono::NaiveDate>,
     #[serde(
@@ -164,7 +165,7 @@ where
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct ProjectListResponse {
     pub projects: Vec<ProjectInfo>,
     pub total_count: i64,

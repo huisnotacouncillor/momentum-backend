@@ -243,6 +243,86 @@ impl WebSocketCommandHandler {
             WebSocketCommand::GetCurrentWorkspace { .. } => {
                 "get_current_workspace".hash(&mut hasher);
             }
+            WebSocketCommand::CreateProjectStatus { data, .. } => {
+                "create_project_status".hash(&mut hasher);
+                data.name.hash(&mut hasher);
+                data.color.hash(&mut hasher);
+                data.category.hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateProjectStatus {
+                status_id, data, ..
+            } => {
+                "update_project_status".hash(&mut hasher);
+                status_id.hash(&mut hasher);
+                if let Some(ref name) = data.name {
+                    name.hash(&mut hasher);
+                }
+                if let Some(ref color) = data.color {
+                    color.hash(&mut hasher);
+                }
+                if let Some(ref category) = data.category {
+                    category.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::DeleteProjectStatus { status_id, .. } => {
+                "delete_project_status".hash(&mut hasher);
+                status_id.hash(&mut hasher);
+            }
+            WebSocketCommand::QueryProjectStatuses { .. } => {
+                "query_project_statuses".hash(&mut hasher);
+            }
+            WebSocketCommand::GetProjectStatusById { status_id, .. } => {
+                "get_project_status_by_id".hash(&mut hasher);
+                status_id.hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateProfile { data, .. } => {
+                "update_profile".hash(&mut hasher);
+                if let Some(ref name) = data.name {
+                    name.hash(&mut hasher);
+                }
+                if let Some(ref username) = data.username {
+                    username.hash(&mut hasher);
+                }
+                if let Some(ref email) = data.email {
+                    email.hash(&mut hasher);
+                }
+                if let Some(ref avatar_url) = data.avatar_url {
+                    avatar_url.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::CreateProject { data, .. } => {
+                "create_project".hash(&mut hasher);
+                data.name.hash(&mut hasher);
+                data.project_key.hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateProject {
+                project_id, data, ..
+            } => {
+                "update_project".hash(&mut hasher);
+                project_id.hash(&mut hasher);
+                if let Some(ref name) = data.name {
+                    name.hash(&mut hasher);
+                }
+                if let Some(ref description) = data.description {
+                    description.hash(&mut hasher);
+                }
+                if let Some(ref priority) = data.priority {
+                    priority.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::DeleteProject { project_id, .. } => {
+                "delete_project".hash(&mut hasher);
+                project_id.hash(&mut hasher);
+            }
+            WebSocketCommand::QueryProjects { filters, .. } => {
+                "query_projects".hash(&mut hasher);
+                if let Some(ref search) = filters.search {
+                    search.hash(&mut hasher);
+                }
+                if let Some(owner_id) = filters.owner_id {
+                    owner_id.hash(&mut hasher);
+                }
+            }
         }
         let time_window = chrono::Utc::now().timestamp() / 300;
         time_window.hash(&mut hasher);
@@ -308,10 +388,20 @@ impl WebSocketCommandHandler {
             | WebSocketCommand::InviteWorkspaceMember { request_id, .. }
             | WebSocketCommand::AcceptInvitation { request_id, .. }
             | WebSocketCommand::QueryWorkspaceMembers { request_id, .. }
+            | WebSocketCommand::CreateProjectStatus { request_id, .. }
+            | WebSocketCommand::UpdateProjectStatus { request_id, .. }
+            | WebSocketCommand::DeleteProjectStatus { request_id, .. }
+            | WebSocketCommand::QueryProjectStatuses { request_id, .. }
+            | WebSocketCommand::GetProjectStatusById { request_id, .. }
             | WebSocketCommand::CreateWorkspace { request_id, .. }
             | WebSocketCommand::UpdateWorkspace { request_id, .. }
             | WebSocketCommand::DeleteWorkspace { request_id, .. }
-            | WebSocketCommand::GetCurrentWorkspace { request_id, .. } => request_id.clone(),
+            | WebSocketCommand::GetCurrentWorkspace { request_id, .. }
+            | WebSocketCommand::UpdateProfile { request_id, .. }
+            | WebSocketCommand::CreateProject { request_id, .. }
+            | WebSocketCommand::UpdateProject { request_id, .. }
+            | WebSocketCommand::DeleteProject { request_id, .. }
+            | WebSocketCommand::QueryProjects { request_id, .. } => request_id.clone(),
         };
 
         let idempotency_key = "disabled".to_string();
@@ -338,10 +428,20 @@ impl WebSocketCommandHandler {
             WebSocketCommand::InviteWorkspaceMember { .. } => "invite_workspace_member",
             WebSocketCommand::AcceptInvitation { .. } => "accept_invitation",
             WebSocketCommand::QueryWorkspaceMembers { .. } => "query_workspace_members",
+            WebSocketCommand::CreateProjectStatus { .. } => "create_project_status",
+            WebSocketCommand::UpdateProjectStatus { .. } => "update_project_status",
+            WebSocketCommand::DeleteProjectStatus { .. } => "delete_project_status",
+            WebSocketCommand::QueryProjectStatuses { .. } => "query_project_statuses",
+            WebSocketCommand::GetProjectStatusById { .. } => "get_project_status_by_id",
             WebSocketCommand::CreateWorkspace { .. } => "create_workspace",
             WebSocketCommand::UpdateWorkspace { .. } => "update_workspace",
             WebSocketCommand::DeleteWorkspace { .. } => "delete_workspace",
             WebSocketCommand::GetCurrentWorkspace { .. } => "get_current_workspace",
+            WebSocketCommand::UpdateProfile { .. } => "update_profile",
+            WebSocketCommand::CreateProject { .. } => "create_project",
+            WebSocketCommand::UpdateProject { .. } => "update_project",
+            WebSocketCommand::DeleteProject { .. } => "delete_project",
+            WebSocketCommand::QueryProjects { .. } => "query_projects",
         };
 
         let workspace_id = match user.current_workspace_id {
@@ -433,6 +533,24 @@ impl WebSocketCommandHandler {
             WebSocketCommand::QueryWorkspaceMembers { filters, .. } => {
                 self.handle_list_workspace_members(ctx, filters).await
             }
+            WebSocketCommand::CreateProjectStatus { data, .. } => {
+                self.handle_create_project_status(ctx, data).await
+            }
+            WebSocketCommand::UpdateProjectStatus {
+                status_id, data, ..
+            } => {
+                self.handle_update_project_status(ctx, status_id, data)
+                    .await
+            }
+            WebSocketCommand::DeleteProjectStatus { status_id, .. } => {
+                self.handle_delete_project_status(ctx, status_id).await
+            }
+            WebSocketCommand::QueryProjectStatuses { .. } => {
+                self.handle_get_project_statuses(ctx).await
+            }
+            WebSocketCommand::GetProjectStatusById { status_id, .. } => {
+                self.handle_get_project_status_by_id(ctx, status_id).await
+            }
             WebSocketCommand::CreateWorkspace { data, .. } => {
                 self.handle_create_workspace(ctx, data).await
             }
@@ -444,6 +562,21 @@ impl WebSocketCommandHandler {
             }
             WebSocketCommand::GetCurrentWorkspace { .. } => {
                 self.handle_get_current_workspace(ctx).await
+            }
+            WebSocketCommand::UpdateProfile { data, .. } => {
+                self.handle_update_profile(ctx, data).await
+            }
+            WebSocketCommand::CreateProject { data, .. } => {
+                self.handle_create_project(ctx, data).await
+            }
+            WebSocketCommand::UpdateProject {
+                project_id, data, ..
+            } => self.handle_update_project(ctx, project_id, data).await,
+            WebSocketCommand::DeleteProject { project_id, .. } => {
+                self.handle_delete_project(ctx, project_id).await
+            }
+            WebSocketCommand::QueryProjects { filters, .. } => {
+                self.handle_query_projects(ctx, filters).await
             }
         };
 
@@ -902,6 +1035,52 @@ impl WebSocketCommandHandler {
         .await
     }
 
+    // Project statuses handlers (delegate)
+    async fn handle_get_project_statuses(
+        &self,
+        ctx: RequestContext,
+    ) -> Result<serde_json::Value, AppError> {
+        super::project_statuses::ProjectStatusesHandlers::handle_get_list(&self.db, ctx).await
+    }
+
+    async fn handle_get_project_status_by_id(
+        &self,
+        ctx: RequestContext,
+        status_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::project_statuses::ProjectStatusesHandlers::handle_get_by_id(&self.db, ctx, status_id)
+            .await
+    }
+
+    async fn handle_create_project_status(
+        &self,
+        ctx: RequestContext,
+        data: CreateProjectStatusCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::project_statuses::ProjectStatusesHandlers::handle_create(&self.db, ctx, data).await
+    }
+
+    async fn handle_update_project_status(
+        &self,
+        ctx: RequestContext,
+        status_id: Uuid,
+        data: UpdateProjectStatusCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::project_statuses::ProjectStatusesHandlers::handle_update(
+            &self.db, ctx, status_id, data,
+        )
+        .await
+    }
+
+    async fn handle_delete_project_status(
+        &self,
+        ctx: RequestContext,
+        status_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::project_statuses::ProjectStatusesHandlers::handle_delete(&self.db, ctx, status_id)
+            .await
+    }
+
     // Workspace handlers (delegate)
     async fn handle_create_workspace(
         &self,
@@ -949,6 +1128,69 @@ impl WebSocketCommandHandler {
         super::workspaces::WorkspaceHandlers::handle_get_current_workspace(
             &self.db,
             ctx,
+            &self.asset_helper,
+        )
+        .await
+    }
+
+    // User profile handlers (delegate)
+    async fn handle_update_profile(
+        &self,
+        ctx: RequestContext,
+        data: UpdateProfileCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::user::UserHandlers::handle_update_profile(&self.db, ctx, data, &self.asset_helper)
+            .await
+    }
+
+    // Project handlers (delegate)
+    async fn handle_create_project(
+        &self,
+        ctx: RequestContext,
+        data: CreateProjectCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::projects::ProjectHandlers::handle_create_project(
+            &self.db,
+            ctx,
+            data,
+            &self.asset_helper,
+        )
+        .await
+    }
+
+    async fn handle_update_project(
+        &self,
+        ctx: RequestContext,
+        project_id: Uuid,
+        data: UpdateProjectCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::projects::ProjectHandlers::handle_update_project(
+            &self.db,
+            ctx,
+            project_id,
+            data,
+            &self.asset_helper,
+        )
+        .await
+    }
+
+    async fn handle_delete_project(
+        &self,
+        ctx: RequestContext,
+        project_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::projects::ProjectHandlers::handle_delete_project(&self.db, ctx, project_id).await
+    }
+
+    async fn handle_query_projects(
+        &self,
+        ctx: RequestContext,
+        filters: ProjectFilters,
+    ) -> Result<serde_json::Value, AppError> {
+        super::projects::ProjectHandlers::handle_query_projects(
+            &self.db,
+            ctx,
+            filters,
             &self.asset_helper,
         )
         .await

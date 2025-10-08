@@ -18,7 +18,11 @@ impl ProjectsService {
     ) -> Result<Project, AppError> {
         validate_create_project(&req.name, &req.project_key)?;
         if ProjectsRepo::exists_key_in_workspace(conn, ctx.workspace_id, &req.project_key)? {
-            return Err(AppError::conflict_with_code("Project key already exists in this workspace", Some("project_key".into()), "PROJECT_KEY_EXISTS"));
+            return Err(AppError::conflict_with_code(
+                "Project key already exists in this workspace",
+                Some("project_key".into()),
+                "PROJECT_KEY_EXISTS",
+            ));
         }
 
         // Resolve default status similar to routes/projects.rs logic
@@ -70,12 +74,36 @@ impl ProjectsService {
         let mut query = p::projects
             .filter(p::workspace_id.eq(ctx.workspace_id))
             .into_boxed();
-        if let Some(owner) = owner_id_filter { query = query.filter(p::owner_id.eq(owner)); }
+        if let Some(owner) = owner_id_filter {
+            query = query.filter(p::owner_id.eq(owner));
+        }
         if let Some(search_term) = search {
             let pattern = format!("%{}%", search_term.to_lowercase());
             query = query.filter(p::name.ilike(pattern));
         }
         let list = query.order(p::created_at.desc()).load::<Project>(conn)?;
+
+        // Get all project statuses for this workspace once
+        let all_statuses = crate::schema::project_statuses::table
+            .filter(crate::schema::project_statuses::workspace_id.eq(ctx.workspace_id))
+            .select(crate::db::models::project_status::ProjectStatus::as_select())
+            .load::<crate::db::models::project_status::ProjectStatus>(conn)?;
+
+        let available_statuses: Vec<crate::db::models::project_status::ProjectStatusInfo> =
+            all_statuses
+                .into_iter()
+                .map(
+                    |status| crate::db::models::project_status::ProjectStatusInfo {
+                        id: status.id,
+                        name: status.name,
+                        description: status.description,
+                        color: status.color,
+                        category: status.category,
+                        created_at: status.created_at,
+                        updated_at: status.updated_at,
+                    },
+                )
+                .collect();
 
         // Assemble infos
         let mut infos = Vec::with_capacity(list.len());
@@ -102,8 +130,12 @@ impl ProjectsService {
                 .select(crate::db::models::auth::User::as_select())
                 .first::<crate::db::models::auth::User>(conn)
                 .optional()?;
-            let owner = owner.ok_or_else(|| AppError::internal("Failed to retrieve project owner"))?;
-            let processed_avatar_url = owner.avatar_url.as_ref().map(|url| asset_helper.process_url(url));
+            let owner =
+                owner.ok_or_else(|| AppError::internal("Failed to retrieve project owner"))?;
+            let processed_avatar_url = owner
+                .avatar_url
+                .as_ref()
+                .map(|url| asset_helper.process_url(url));
             let owner_basic = crate::db::models::auth::UserBasicInfo {
                 id: owner.id,
                 name: owner.name,
@@ -118,6 +150,7 @@ impl ProjectsService {
                 project_key: project.project_key,
                 description: project.description,
                 status: status_info,
+                available_statuses: available_statuses.clone(), // 为每个项目添加所有可用的状态选项
                 owner: owner_basic,
                 target_date: project.target_date,
                 priority: project.priority,
@@ -137,7 +170,9 @@ impl ProjectsService {
     ) -> Result<crate::db::models::project::ProjectInfo, AppError> {
         // Check if project exists and belongs to workspace
         let existing = ProjectsRepo::find_by_id_in_workspace(conn, ctx.workspace_id, project_id)?;
-        let Some(_project) = existing else { return Err(AppError::not_found("project")); };
+        let Some(_project) = existing else {
+            return Err(AppError::not_found("project"));
+        };
 
         // Update fields
         let updated = ProjectsRepo::update_fields(
@@ -147,7 +182,11 @@ impl ProjectsService {
             req.description.as_ref().map(|s| s.as_str()),
             None, // project_key not available in update request
             req.project_status_id,
-            req.target_date.map(|opt_date| opt_date.map(|d| chrono::NaiveDateTime::from(d.and_hms_opt(0, 0, 0).unwrap_or_default()))),
+            req.target_date.map(|opt_date| {
+                opt_date.map(|d| {
+                    chrono::NaiveDateTime::from(d.and_hms_opt(0, 0, 0).unwrap_or_default())
+                })
+            }),
             req.priority.as_ref(),
             req.roadmap_id,
         )?;
@@ -167,7 +206,10 @@ impl ProjectsService {
             .optional()?
             .ok_or_else(|| AppError::internal("Failed to retrieve project owner"))?;
 
-        let processed_avatar_url = owner.avatar_url.as_ref().map(|url| asset_helper.process_url(url));
+        let processed_avatar_url = owner
+            .avatar_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url));
         let owner_basic = crate::db::models::auth::UserBasicInfo {
             id: owner.id,
             name: owner.name,
@@ -186,12 +228,35 @@ impl ProjectsService {
             updated_at: status.updated_at,
         };
 
+        // Get all available statuses for this workspace
+        let all_statuses = crate::schema::project_statuses::table
+            .filter(crate::schema::project_statuses::workspace_id.eq(ctx.workspace_id))
+            .select(crate::db::models::project_status::ProjectStatus::as_select())
+            .load::<crate::db::models::project_status::ProjectStatus>(conn)?;
+
+        let available_statuses: Vec<crate::db::models::project_status::ProjectStatusInfo> =
+            all_statuses
+                .into_iter()
+                .map(
+                    |status| crate::db::models::project_status::ProjectStatusInfo {
+                        id: status.id,
+                        name: status.name,
+                        description: status.description,
+                        color: status.color,
+                        category: status.category,
+                        created_at: status.created_at,
+                        updated_at: status.updated_at,
+                    },
+                )
+                .collect();
+
         Ok(crate::db::models::project::ProjectInfo {
             id: updated.id,
             name: updated.name,
             project_key: updated.project_key,
             description: updated.description,
             status: status_info,
+            available_statuses,
             owner: owner_basic,
             target_date: updated.target_date,
             priority: updated.priority,
@@ -207,11 +272,11 @@ impl ProjectsService {
     ) -> Result<(), AppError> {
         // Check if project exists and belongs to workspace
         let existing = ProjectsRepo::find_by_id_in_workspace(conn, ctx.workspace_id, project_id)?;
-        if existing.is_none() { return Err(AppError::not_found("project")); }
+        if existing.is_none() {
+            return Err(AppError::not_found("project"));
+        }
 
         ProjectsRepo::delete_by_id(conn, project_id)?;
         Ok(())
     }
 }
-
-
