@@ -1,26 +1,29 @@
-use diesel::prelude::*;
 use bcrypt::{hash, verify};
 use chrono::Utc;
+use diesel::prelude::*;
 use uuid::Uuid;
 
+use crate::utils::AssetUrlHelper;
 use crate::{
-    db::models::auth::{User, NewUser, NewUserCredential, RegisterRequest, LoginRequest, LoginResponse, UserProfile, AuthUser},
-    db::models::{workspace::WorkspaceInfo, team::TeamInfo},
+    db::models::auth::{
+        AuthUser, LoginRequest, LoginResponse, NewUser, NewUserCredential, RegisterRequest, User,
+        UserProfile,
+    },
+    db::models::{team::TeamInfo, workspace::WorkspaceInfo},
     db::repositories::auth::AuthRepo,
     error::AppError,
+    middleware::auth::{AuthConfig, AuthService as JwtAuthService},
     services::context::RequestContext,
-    validation::auth::{validate_register_request, validate_login_request, validate_update_profile, UpdateProfileChanges},
-    middleware::auth::{AuthService as JwtAuthService, AuthConfig},
+    validation::auth::{
+        UpdateProfileChanges, validate_login_request, validate_register_request,
+        validate_update_profile,
+    },
 };
-use crate::utils::AssetUrlHelper;
 
 pub struct AuthService;
 
 impl AuthService {
-    pub fn register(
-        conn: &mut PgConnection,
-        req: &RegisterRequest,
-    ) -> Result<User, AppError> {
+    pub fn register(conn: &mut PgConnection, req: &RegisterRequest) -> Result<User, AppError> {
         validate_register_request(&req.name, &req.username, &req.email, &req.password)?;
 
         // Check if email already exists
@@ -104,10 +107,12 @@ impl AuthService {
             avatar_url: user.get_processed_avatar_url(asset_helper),
         };
 
-        let access_token = jwt_service.generate_access_token(&auth_user)
+        let access_token = jwt_service
+            .generate_access_token(&auth_user)
             .map_err(|_| AppError::internal("Failed to generate access token"))?;
 
-        let refresh_token = jwt_service.generate_refresh_token(user.id)
+        let refresh_token = jwt_service
+            .generate_refresh_token(user.id)
             .map_err(|_| AppError::internal("Failed to generate refresh token"))?;
 
         Ok(LoginResponse {
@@ -124,8 +129,8 @@ impl AuthService {
         ctx: &RequestContext,
         asset_helper: &AssetUrlHelper,
     ) -> Result<UserProfile, AppError> {
-        let user = AuthRepo::find_by_id(conn, ctx.user_id)?
-            .ok_or_else(|| AppError::not_found("user"))?;
+        let user =
+            AuthRepo::find_by_id(conn, ctx.user_id)?.ok_or_else(|| AppError::not_found("user"))?;
 
         // Get user workspaces
         let workspaces = Self::get_user_workspaces(conn, ctx.user_id, asset_helper)?;
@@ -257,10 +262,7 @@ impl AuthService {
     }
 
     /// Get all teams that the user belongs to
-    fn get_user_teams(
-        conn: &mut PgConnection,
-        user_id: Uuid,
-    ) -> Result<Vec<TeamInfo>, AppError> {
+    fn get_user_teams(conn: &mut PgConnection, user_id: Uuid) -> Result<Vec<TeamInfo>, AppError> {
         use crate::schema::{team_members, teams};
 
         let results = team_members::table
@@ -275,20 +277,30 @@ impl AuthService {
                 teams::is_private,
                 team_members::role,
             ))
-            .load::<(Uuid, String, String, Option<String>, Option<String>, bool, String)>(conn)
+            .load::<(
+                Uuid,
+                String,
+                String,
+                Option<String>,
+                Option<String>,
+                bool,
+                String,
+            )>(conn)
             .map_err(|_| AppError::internal("Failed to retrieve user teams"))?;
 
         Ok(results
             .into_iter()
-            .map(|(id, name, team_key, description, icon_url, is_private, role)| TeamInfo {
-                id,
-                name,
-                team_key,
-                description,
-                icon_url,
-                is_private,
-                role,
-            })
+            .map(
+                |(id, name, team_key, description, icon_url, is_private, role)| TeamInfo {
+                    id,
+                    name,
+                    team_key,
+                    description,
+                    icon_url,
+                    is_private,
+                    role,
+                },
+            )
             .collect())
     }
 }

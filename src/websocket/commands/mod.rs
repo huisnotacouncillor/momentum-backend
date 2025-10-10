@@ -1,4 +1,5 @@
 pub mod handler;
+pub mod issues;
 pub mod labels;
 pub mod project_statuses;
 pub mod projects;
@@ -13,6 +14,7 @@ mod tests;
 
 pub use handler::WebSocketCommandHandler;
 pub use types::{
-    ConnectionInfo, IdempotencyControl, LabelFilters, WebSocketBatchStats, WebSocketCommand,
-    WebSocketCommandError, WebSocketCommandResponse, WebSocketPagination, WebSocketResponseMeta,
+    ConnectionInfo, CreateIssueCommand, IdempotencyControl, IssueFilters, LabelFilters,
+    UpdateIssueCommand, WebSocketBatchStats, WebSocketCommand, WebSocketCommandError,
+    WebSocketCommandResponse, WebSocketPagination, WebSocketResponseMeta,
 };

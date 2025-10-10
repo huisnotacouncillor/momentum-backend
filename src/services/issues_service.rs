@@ -26,6 +26,17 @@ impl IssuesService {
             IssuePriority::Urgent => "urgent".to_string(),
         }
     }
+
+    fn parse_priority(priority_str: &str) -> Result<IssuePriority, AppError> {
+        match priority_str {
+            "none" => Ok(IssuePriority::None),
+            "low" => Ok(IssuePriority::Low),
+            "medium" => Ok(IssuePriority::Medium),
+            "high" => Ok(IssuePriority::High),
+            "urgent" => Ok(IssuePriority::Urgent),
+            _ => Err(AppError::validation("Invalid priority value")),
+        }
+    }
     pub fn list(
         conn: &mut PgConnection,
         ctx: &RequestContext,
@@ -572,6 +583,93 @@ impl IssuesService {
         }
 
         Ok(resp)
+    }
+
+    // WebSocket command handlers
+    pub fn create_from_ws_command(
+        conn: &mut PgConnection,
+        ctx: &RequestContext,
+        cmd: &crate::websocket::commands::CreateIssueCommand,
+    ) -> Result<crate::db::models::issue::IssueResponse, AppError> {
+        if cmd.title.trim().is_empty() {
+            return Err(AppError::validation("Issue title is required"));
+        }
+
+        let priority_enum = if let Some(ref priority_str) = cmd.priority {
+            Some(Self::parse_priority(priority_str)?)
+        } else {
+            None
+        };
+
+        let req = crate::routes::issues::CreateIssueRequest {
+            title: cmd.title.clone(),
+            description: cmd.description.clone(),
+            project_id: cmd.project_id,
+            team_id: cmd.team_id,
+            priority: priority_enum,
+            assignee_id: cmd.assignee_id,
+            reporter_id: None,
+            workflow_id: cmd.workflow_id,
+            workflow_state_id: cmd.workflow_state_id,
+            label_ids: cmd.label_ids.clone(),
+            cycle_id: cmd.cycle_id,
+            parent_issue_id: cmd.parent_issue_id,
+        };
+
+        let issue = Self::create(conn, ctx, &req)?;
+        Self::get_by_id(conn, ctx, issue.id)
+    }
+
+    pub fn update_from_ws_command(
+        conn: &mut PgConnection,
+        ctx: &RequestContext,
+        issue_id: Uuid,
+        cmd: &crate::websocket::commands::UpdateIssueCommand,
+    ) -> Result<crate::db::models::issue::IssueResponse, AppError> {
+        let priority_enum = if let Some(ref priority_str) = cmd.priority {
+            Some(Self::parse_priority(priority_str)?)
+        } else {
+            None
+        };
+
+        let req = crate::routes::issues::UpdateIssueRequest {
+            title: cmd.title.clone(),
+            description: cmd.description.clone(),
+            project_id: cmd.project_id,
+            team_id: cmd.team_id,
+            priority: priority_enum,
+            assignee_id: cmd.assignee_id,
+            reporter_id: None,
+            workflow_id: cmd.workflow_id,
+            workflow_state_id: cmd.workflow_state_id,
+            cycle_id: cmd.cycle_id,
+            label_ids: cmd.label_ids.clone(),
+        };
+
+        Self::update(conn, ctx, issue_id, &req)?;
+        Self::get_by_id(conn, ctx, issue_id)
+    }
+
+    pub fn list_from_ws_command(
+        conn: &mut PgConnection,
+        ctx: &RequestContext,
+        filters: &crate::websocket::commands::IssueFilters,
+    ) -> Result<Vec<crate::db::models::issue::IssueResponse>, AppError> {
+        let priority_enum = if let Some(ref priority_str) = filters.priority {
+            Some(Self::parse_priority(priority_str)?)
+        } else {
+            None
+        };
+
+        let service_filters = IssueFilters {
+            team_id: filters.team_id,
+            project_id: filters.project_id,
+            assignee_id: filters.assignee_id,
+            priority: priority_enum,
+            search: filters.search.clone(),
+        };
+
+        Self::list(conn, ctx, &service_filters)
     }
 }
 

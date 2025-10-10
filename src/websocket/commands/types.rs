@@ -201,6 +201,33 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    // Issues
+    CreateIssue {
+        data: CreateIssueCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    UpdateIssue {
+        issue_id: Uuid,
+        data: UpdateIssueCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    DeleteIssue {
+        issue_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    QueryIssues {
+        filters: IssueFilters,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    GetIssue {
+        issue_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -594,4 +621,78 @@ pub struct UpdateProjectCommand {
 pub struct ProjectFilters {
     pub search: Option<String>,
     pub owner_id: Option<Uuid>,
+}
+
+// Issue command payloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateIssueCommand {
+    pub title: String,
+    pub description: Option<String>,
+    pub project_id: Option<Uuid>,
+    pub team_id: Uuid,
+    pub priority: Option<String>,
+    pub assignee_id: Option<Uuid>,
+    pub workflow_id: Option<Uuid>,
+    pub workflow_state_id: Option<Uuid>,
+    pub label_ids: Option<Vec<Uuid>>,
+    pub cycle_id: Option<Uuid>,
+    pub parent_issue_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateIssueCommand {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub project_id: Option<Uuid>,
+    pub team_id: Option<Uuid>,
+    pub priority: Option<String>,
+    pub assignee_id: Option<Uuid>,
+    pub workflow_id: Option<Uuid>,
+    pub workflow_state_id: Option<Uuid>,
+    pub cycle_id: Option<Uuid>,
+    pub label_ids: Option<Vec<Uuid>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueFilters {
+    #[serde(default, deserialize_with = "deserialize_optional_uuid")]
+    pub team_id: Option<Uuid>,
+    #[serde(default, deserialize_with = "deserialize_optional_uuid")]
+    pub project_id: Option<Uuid>,
+    #[serde(default, deserialize_with = "deserialize_optional_uuid")]
+    pub assignee_id: Option<Uuid>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
+    pub priority: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
+    pub search: Option<String>,
+}
+
+// 自定义反序列化函数：将空字符串转换为 None
+fn deserialize_optional_uuid<'de, D>(deserializer: D) -> Result<Option<Uuid>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(s) if s.trim().is_empty() => Ok(None),
+        Some(s) => s
+            .parse::<Uuid>()
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+        None => Ok(None),
+    }
+}
+
+fn deserialize_optional_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(s) if s.trim().is_empty() => Ok(None),
+        Some(s) => Ok(Some(s)),
+        None => Ok(None),
+    }
 }

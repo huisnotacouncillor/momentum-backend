@@ -56,7 +56,14 @@ impl WebSocketHandler {
 
         // 升级到WebSocket连接
         Ok(ws.on_upgrade(move |socket| {
-            Self::handle_websocket_connection(socket, authenticated_user, state.ws_manager, state.command_handler.clone(), state.monitor.clone())
+            Self::handle_websocket_connection(
+                socket,
+                authenticated_user,
+                state.ws_manager,
+                state.command_handler.clone(),
+                state.monitor.clone(),
+                state.db.clone(),
+            )
         }))
     }
 
@@ -67,6 +74,7 @@ impl WebSocketHandler {
         ws_manager: WebSocketManager,
         command_handler: crate::websocket::WebSocketCommandHandler,
         monitor: crate::websocket::WebSocketMonitor,
+        db: Arc<DbPool>,
     ) {
         let connection_id = Uuid::new_v4().to_string();
         let connected_user = ConnectedUser {
@@ -88,9 +96,20 @@ impl WebSocketHandler {
             connection_id
         );
 
+        // 获取 asset_helper 从 command_handler
+        let asset_helper = command_handler.get_asset_helper();
+
         // 将连接处理委托给WebSocket管理器
         ws_manager
-            .handle_socket(socket, connection_id, connected_user, Some(command_handler), Some(monitor))
+            .handle_socket(
+                socket,
+                connection_id,
+                connected_user,
+                Some(command_handler),
+                Some(monitor),
+                Some(db),
+                Some(asset_helper),
+            )
             .await;
     }
 

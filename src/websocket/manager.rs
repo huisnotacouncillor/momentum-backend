@@ -31,6 +31,7 @@ pub enum MessageType {
     Error,
     Command,         // 新增命令类型
     CommandResponse, // 新增命令响应类型
+    InitialData,     // 连接后的初始化数据
 }
 
 /// 连接状态
@@ -108,7 +109,13 @@ impl WebSocketManager {
     }
 
     // 添加新连接
-    pub async fn add_connection(&self, connection_id: String, user: ConnectedUser) {
+    pub async fn add_connection(
+        &self,
+        connection_id: String,
+        user: ConnectedUser,
+        db: Option<&Arc<crate::db::DbPool>>,
+        asset_helper: Option<&Arc<crate::utils::AssetUrlHelper>>,
+    ) {
         let mut connections = self.connections.write().await;
         connections.insert(connection_id.clone(), user.clone());
 
@@ -126,15 +133,29 @@ impl WebSocketManager {
             user.username, connection_id
         );
 
+        // 获取完整的用户信息
+        let user_info = if let (Some(db_pool), Some(helper)) = (db, asset_helper) {
+            Self::get_user_info(db_pool, user.user_id, helper).await
+        } else {
+            None
+        };
+
         // 发送用户加入消息
         let join_message = WebSocketMessage {
             id: Some(Uuid::new_v4().to_string()),
             message_type: MessageType::UserJoined,
-            data: serde_json::json!({
-                "user_id": user.user_id,
-                "username": user.username,
-                "connected_at": user.connected_at
-            }),
+            data: if let Some(info) = user_info {
+                serde_json::json!({
+                    "user": info,
+                    "connected_at": user.connected_at
+                })
+            } else {
+                serde_json::json!({
+                    "user_id": user.user_id,
+                    "username": user.username,
+                    "connected_at": user.connected_at
+                })
+            },
             timestamp: Some(chrono::Utc::now()),
         };
 
@@ -432,6 +453,8 @@ impl WebSocketManager {
         user: ConnectedUser,
         command_handler: Option<crate::websocket::WebSocketCommandHandler>,
         monitor: Option<crate::websocket::WebSocketMonitor>,
+        db: Option<Arc<crate::db::DbPool>>,
+        asset_helper: Option<Arc<crate::utils::AssetUrlHelper>>,
     ) {
         // 订阅广播消息
         let mut rx = self.get_broadcast_receiver();
@@ -439,8 +462,13 @@ impl WebSocketManager {
         let username = user.username.clone();
 
         // 添加连接
-        self.add_connection(connection_id.clone(), user.clone())
-            .await;
+        self.add_connection(
+            connection_id.clone(),
+            user.clone(),
+            db.as_ref(),
+            asset_helper.as_ref(),
+        )
+        .await;
 
         // 记录连接监控
         if let Some(ref monitor) = monitor {
@@ -449,7 +477,7 @@ impl WebSocketManager {
                 .await;
         }
 
-        // 发送连接成功消息
+        // 发送连接成功消息和初始化数据
         let welcome_message = WebSocketMessage {
             id: Some(Uuid::new_v4().to_string()),
             message_type: MessageType::SystemMessage,
@@ -463,6 +491,22 @@ impl WebSocketManager {
 
         if let Ok(msg_text) = serde_json::to_string(&welcome_message) {
             let _ = socket.send(Message::Text(msg_text)).await;
+        }
+
+        // 发送初始化数据（workspace members 和 teams）
+        if let (Some(workspace_id), Some(ref db_pool), Some(ref asset_helper_ref)) = (
+            user.current_workspace_id,
+            db.as_ref(),
+            asset_helper.as_ref(),
+        ) {
+            if let Some(init_data_message) = self
+                .get_initial_data_message(user_id, workspace_id, db_pool, asset_helper_ref)
+                .await
+            {
+                if let Ok(msg_text) = serde_json::to_string(&init_data_message) {
+                    let _ = socket.send(Message::Text(msg_text)).await;
+                }
+            }
         }
 
         // 分离发送和接收
@@ -778,6 +822,130 @@ impl WebSocketManager {
             monitor
                 .record_disconnection(&connection_id_for_cleanup)
                 .await;
+        }
+    }
+
+    // 获取初始化数据
+    async fn get_initial_data_message(
+        &self,
+        user_id: Uuid,
+        workspace_id: Uuid,
+        db: &Arc<crate::db::DbPool>,
+        asset_helper: &Arc<crate::utils::AssetUrlHelper>,
+    ) -> Option<WebSocketMessage> {
+        let mut conn = match db.get() {
+            Ok(conn) => conn,
+            Err(e) => {
+                error!("Failed to get database connection for initial data: {}", e);
+                return None;
+            }
+        };
+
+        let ctx = crate::services::context::RequestContext {
+            user_id,
+            workspace_id,
+            idempotency_key: None,
+        };
+
+        // 获取用户完整 profile（参考 GET /auth/profile API）
+        let user_profile = match crate::services::auth_service::AuthService::get_profile(
+            &mut conn,
+            &ctx,
+            asset_helper,
+        ) {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("Failed to get user profile: {}", e);
+                return None;
+            }
+        };
+
+        // 获取当前 workspace 的 members
+        let workspace_members = match crate::services::workspace_members_service::WorkspaceMembersService::get_current_workspace_members(
+            &mut conn,
+            &ctx,
+            asset_helper,
+            None,
+            None,
+        ) {
+            Ok(m) => m,
+            Err(e) => {
+                warn!("Failed to get workspace members: {}", e);
+                vec![]
+            }
+        };
+
+        // 获取当前 workspace 的 teams（不是用户所有的 teams）
+        let current_workspace_teams =
+            match crate::services::teams_service::TeamsService::list(&mut conn, &ctx) {
+                Ok(t) => t,
+                Err(e) => {
+                    warn!("Failed to get current workspace teams: {}", e);
+                    vec![]
+                }
+            };
+
+        // 构建返回数据：user 对象（不含 workspaces 和 teams），然后 workspaces 和 teams 提到同级
+        Some(WebSocketMessage {
+            id: Some(Uuid::new_v4().to_string()),
+            message_type: MessageType::InitialData,
+            data: serde_json::json!({
+                "user": {
+                    "id": user_profile.id,
+                    "email": user_profile.email,
+                    "username": user_profile.username,
+                    "name": user_profile.name,
+                    "avatar_url": user_profile.avatar_url,
+                    "current_workspace_id": user_profile.current_workspace_id,
+                },
+                "workspaces": user_profile.workspaces,  // 用户所有工作空间
+                "teams": current_workspace_teams,        // 当前工作空间的团队（修正）
+                "workspace_members": workspace_members,  // 当前工作空间的成员
+            }),
+            timestamp: Some(chrono::Utc::now()),
+        })
+    }
+
+    // 获取用户基本信息
+    async fn get_user_info(
+        db: &Arc<crate::db::DbPool>,
+        user_id: Uuid,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<crate::db::models::auth::UserBasicInfo> {
+        let mut conn = match db.get() {
+            Ok(conn) => conn,
+            Err(e) => {
+                error!("Failed to get database connection for user info: {}", e);
+                return None;
+            }
+        };
+
+        use crate::schema::users;
+        use diesel::prelude::*;
+
+        match users::table
+            .filter(users::id.eq(user_id))
+            .select(crate::db::models::auth::User::as_select())
+            .first::<crate::db::models::auth::User>(&mut conn)
+        {
+            Ok(user) => {
+                let processed_avatar_url = user
+                    .avatar_url
+                    .as_ref()
+                    .map(|url| asset_helper.process_url(url));
+
+                Some(crate::db::models::auth::UserBasicInfo {
+                    id: user.id,
+                    name: user.name,
+                    username: user.username,
+                    email: user.email,
+                    avatar_url: processed_avatar_url,
+                })
+            }
+            Err(e) => {
+                warn!("Failed to get user info: {}", e);
+                None
+            }
         }
     }
 }

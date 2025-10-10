@@ -32,6 +32,10 @@ impl WebSocketCommandHandler {
         self
     }
 
+    pub fn get_asset_helper(&self) -> Arc<crate::utils::AssetUrlHelper> {
+        self.asset_helper.clone()
+    }
+
     async fn verify_secure_message(&self, secure_message: &SecureMessage) -> Result<(), AppError> {
         if let Some(ref signer) = self.message_signer {
             signer
@@ -323,6 +327,53 @@ impl WebSocketCommandHandler {
                     owner_id.hash(&mut hasher);
                 }
             }
+            WebSocketCommand::CreateIssue { data, .. } => {
+                "create_issue".hash(&mut hasher);
+                data.title.hash(&mut hasher);
+                data.team_id.hash(&mut hasher);
+                if let Some(ref project_id) = data.project_id {
+                    project_id.hash(&mut hasher);
+                }
+                if let Some(ref assignee_id) = data.assignee_id {
+                    assignee_id.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::UpdateIssue { issue_id, data, .. } => {
+                "update_issue".hash(&mut hasher);
+                issue_id.hash(&mut hasher);
+                if let Some(ref title) = data.title {
+                    title.hash(&mut hasher);
+                }
+                if let Some(team_id) = data.team_id {
+                    team_id.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::DeleteIssue { issue_id, .. } => {
+                "delete_issue".hash(&mut hasher);
+                issue_id.hash(&mut hasher);
+            }
+            WebSocketCommand::QueryIssues { filters, .. } => {
+                "query_issues".hash(&mut hasher);
+                if let Some(team_id) = filters.team_id {
+                    team_id.hash(&mut hasher);
+                }
+                if let Some(project_id) = filters.project_id {
+                    project_id.hash(&mut hasher);
+                }
+                if let Some(assignee_id) = filters.assignee_id {
+                    assignee_id.hash(&mut hasher);
+                }
+                if let Some(ref priority) = filters.priority {
+                    priority.hash(&mut hasher);
+                }
+                if let Some(ref search) = filters.search {
+                    search.hash(&mut hasher);
+                }
+            }
+            WebSocketCommand::GetIssue { issue_id, .. } => {
+                "get_issue".hash(&mut hasher);
+                issue_id.hash(&mut hasher);
+            }
         }
         let time_window = chrono::Utc::now().timestamp() / 300;
         time_window.hash(&mut hasher);
@@ -401,7 +452,12 @@ impl WebSocketCommandHandler {
             | WebSocketCommand::CreateProject { request_id, .. }
             | WebSocketCommand::UpdateProject { request_id, .. }
             | WebSocketCommand::DeleteProject { request_id, .. }
-            | WebSocketCommand::QueryProjects { request_id, .. } => request_id.clone(),
+            | WebSocketCommand::QueryProjects { request_id, .. }
+            | WebSocketCommand::CreateIssue { request_id, .. }
+            | WebSocketCommand::UpdateIssue { request_id, .. }
+            | WebSocketCommand::DeleteIssue { request_id, .. }
+            | WebSocketCommand::QueryIssues { request_id, .. }
+            | WebSocketCommand::GetIssue { request_id, .. } => request_id.clone(),
         };
 
         let idempotency_key = "disabled".to_string();
@@ -442,6 +498,11 @@ impl WebSocketCommandHandler {
             WebSocketCommand::UpdateProject { .. } => "update_project",
             WebSocketCommand::DeleteProject { .. } => "delete_project",
             WebSocketCommand::QueryProjects { .. } => "query_projects",
+            WebSocketCommand::CreateIssue { .. } => "create_issue",
+            WebSocketCommand::UpdateIssue { .. } => "update_issue",
+            WebSocketCommand::DeleteIssue { .. } => "delete_issue",
+            WebSocketCommand::QueryIssues { .. } => "query_issues",
+            WebSocketCommand::GetIssue { .. } => "get_issue",
         };
 
         let workspace_id = match user.current_workspace_id {
@@ -577,6 +638,21 @@ impl WebSocketCommandHandler {
             }
             WebSocketCommand::QueryProjects { filters, .. } => {
                 self.handle_query_projects(ctx, filters).await
+            }
+            WebSocketCommand::CreateIssue { data, .. } => {
+                self.handle_create_issue(ctx, data).await
+            }
+            WebSocketCommand::UpdateIssue { issue_id, data, .. } => {
+                self.handle_update_issue(ctx, issue_id, data).await
+            }
+            WebSocketCommand::DeleteIssue { issue_id, .. } => {
+                self.handle_delete_issue(ctx, issue_id).await
+            }
+            WebSocketCommand::QueryIssues { filters, .. } => {
+                self.handle_query_issues(ctx, filters).await
+            }
+            WebSocketCommand::GetIssue { issue_id, .. } => {
+                self.handle_get_issue(ctx, issue_id).await
             }
         };
 
@@ -1194,6 +1270,48 @@ impl WebSocketCommandHandler {
             &self.asset_helper,
         )
         .await
+    }
+
+    // Issue handlers (delegate to IssueHandlers)
+    async fn handle_create_issue(
+        &self,
+        ctx: RequestContext,
+        data: CreateIssueCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::issues::IssueHandlers::handle_create_issue(&self.db, ctx, data).await
+    }
+
+    async fn handle_update_issue(
+        &self,
+        ctx: RequestContext,
+        issue_id: Uuid,
+        data: UpdateIssueCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::issues::IssueHandlers::handle_update_issue(&self.db, ctx, issue_id, data).await
+    }
+
+    async fn handle_delete_issue(
+        &self,
+        ctx: RequestContext,
+        issue_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::issues::IssueHandlers::handle_delete_issue(&self.db, ctx, issue_id).await
+    }
+
+    async fn handle_query_issues(
+        &self,
+        ctx: RequestContext,
+        filters: IssueFilters,
+    ) -> Result<serde_json::Value, AppError> {
+        super::issues::IssueHandlers::handle_query_issues(&self.db, ctx, filters).await
+    }
+
+    async fn handle_get_issue(
+        &self,
+        ctx: RequestContext,
+        issue_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::issues::IssueHandlers::handle_get_issue(&self.db, ctx, issue_id).await
     }
 
     pub async fn start_cleanup_task(&self) {
