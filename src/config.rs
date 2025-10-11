@@ -127,7 +127,7 @@ fn default_bcrypt_cost() -> u32 {
 
 impl Config {
     pub fn from_env() -> AppResult<Self> {
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
 
         let config = envy::from_env::<Config>()
             .map_err(|e| AppError::Config(format!("Failed to load config: {}", e)))?;
