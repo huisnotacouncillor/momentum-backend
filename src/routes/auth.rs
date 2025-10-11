@@ -1,9 +1,4 @@
-use axum::{
-    Json,
-    extract::{State},
-    http::StatusCode,
-    response::IntoResponse,
-};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -12,11 +7,11 @@ use crate::{
     AppState,
     db::models::{
         api::ApiResponse,
-        auth::{RegisterRequest, LoginRequest},
+        auth::{LoginRequest, RegisterRequest},
     },
     middleware::auth::AuthUserInfo,
-    services::context::RequestContext,
     services::auth_service::AuthService,
+    services::context::RequestContext,
     validation::ValidatedJson,
 };
 

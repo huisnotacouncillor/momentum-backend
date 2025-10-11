@@ -1,5 +1,5 @@
-use std::time::Instant;
 use bcrypt::{hash, verify};
+use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Bcrypt 性能测试 ===");

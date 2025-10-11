@@ -177,8 +177,8 @@ pub async fn update_project(
     let model_request = crate::db::models::project::UpdateProjectRequest {
         name: payload.name,
         description: payload.description,
-        roadmap_id: payload.roadmap_id.map(|id| Some(id)),
-        target_date: payload.target_date.map(|d| Some(d)),
+        roadmap_id: payload.roadmap_id.map(Some),
+        target_date: payload.target_date.map(Some),
         project_status_id: payload.project_status_id,
         priority: priority_enum,
     };

@@ -23,16 +23,17 @@ impl FromStr for ProjectPriority {
     }
 }
 
-// 为ProjectPriority实现ToString trait
-impl ProjectPriority {
-    pub fn to_string(&self) -> String {
-        match self {
-            ProjectPriority::None => "none".to_string(),
-            ProjectPriority::Low => "low".to_string(),
-            ProjectPriority::Medium => "medium".to_string(),
-            ProjectPriority::High => "high".to_string(),
-            ProjectPriority::Urgent => "urgent".to_string(),
-        }
+// 为ProjectPriority实现Display trait
+impl std::fmt::Display for ProjectPriority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            ProjectPriority::None => "none",
+            ProjectPriority::Low => "low",
+            ProjectPriority::Medium => "medium",
+            ProjectPriority::High => "high",
+            ProjectPriority::Urgent => "urgent",
+        };
+        write!(f, "{}", s)
     }
 }
 

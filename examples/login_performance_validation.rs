@@ -1,6 +1,6 @@
-use std::time::Instant;
 use reqwest::Client;
 use serde_json::json;
+use std::time::Instant;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 预热请求
     println!("执行预热请求...");
     let _ = client
-        .post(&format!("{}/auth/login", base_url))
+        .post(format!("{}/auth/login", base_url))
         .json(&login_data)
         .send()
         .await;
@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let start = Instant::now();
 
         let response = client
-            .post(&format!("{}/auth/login", base_url))
+            .post(format!("{}/auth/login", base_url))
             .json(&login_data)
             .send()
             .await?;
@@ -49,12 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             max_time = duration;
         }
 
-        println!(
-            "请求 {}: {:?} (状态: {})",
-            i,
-            duration,
-            response.status()
-        );
+        println!("请求 {}: {:?} (状态: {})", i, duration, response.status());
     }
 
     let avg_time = total_time / iterations;

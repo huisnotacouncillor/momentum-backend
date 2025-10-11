@@ -6,7 +6,9 @@ pub fn validate_create_comment(content: &str) -> Result<(), AppError> {
     }
 
     if content.len() > 10000 {
-        return Err(AppError::validation("Comment content is too long (max 10000 characters)"));
+        return Err(AppError::validation(
+            "Comment content is too long (max 10000 characters)",
+        ));
     }
 
     Ok(())
@@ -18,7 +20,9 @@ pub fn validate_update_comment(content: &str) -> Result<(), AppError> {
     }
 
     if content.len() > 10000 {
-        return Err(AppError::validation("Comment content is too long (max 10000 characters)"));
+        return Err(AppError::validation(
+            "Comment content is too long (max 10000 characters)",
+        ));
     }
 
     Ok(())

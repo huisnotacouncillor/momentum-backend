@@ -1,7 +1,7 @@
 use diesel::prelude::*;
 
 use crate::{
-    db::models::workspace::{Workspace, NewWorkspace},
+    db::models::workspace::{NewWorkspace, Workspace},
     db::repositories::workspaces::WorkspacesRepo,
     error::AppError,
 };
@@ -9,11 +9,24 @@ use crate::{
 pub struct WorkspacesService;
 
 impl WorkspacesService {
-    pub fn create(conn: &mut PgConnection, name: &str, url_key: &str, logo_url: Option<String>) -> Result<Workspace, AppError> {
+    pub fn create(
+        conn: &mut PgConnection,
+        name: &str,
+        url_key: &str,
+        logo_url: Option<String>,
+    ) -> Result<Workspace, AppError> {
         if WorkspacesRepo::exists_url_key(conn, url_key)? {
-            return Err(AppError::conflict_with_code("Workspace URL key already exists", Some("url_key".into()), "WORKSPACE_URL_KEY_EXISTS"));
+            return Err(AppError::conflict_with_code(
+                "Workspace URL key already exists",
+                Some("url_key".into()),
+                "WORKSPACE_URL_KEY_EXISTS",
+            ));
         }
-        let new_ws = NewWorkspace { name: name.to_string(), url_key: url_key.to_string(), logo_url };
+        let new_ws = NewWorkspace {
+            name: name.to_string(),
+            url_key: url_key.to_string(),
+            logo_url,
+        };
         let ws = WorkspacesRepo::insert(conn, &new_ws)?;
         Ok(ws)
     }
@@ -26,7 +39,10 @@ impl WorkspacesService {
         let workspace = WorkspacesRepo::find_by_id(conn, ctx.workspace_id)?
             .ok_or_else(|| AppError::not_found("workspace"))?;
 
-        let processed_logo_url = workspace.logo_url.as_ref().map(|url| asset_helper.process_url(url));
+        let processed_logo_url = workspace
+            .logo_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url));
 
         Ok(crate::db::models::WorkspaceInfo {
             id: workspace.id,
@@ -53,9 +69,9 @@ impl WorkspacesService {
         let updated = WorkspacesRepo::update_fields(
             conn,
             workspace_id,
-            req.name.as_ref().map(|s| s.as_str()),
-            req.url_key.as_ref().map(|s| s.as_str()),
-            req.logo_url.as_ref().map(|s| s.as_str()),
+            req.name.as_deref(),
+            req.url_key.as_deref(),
+            req.logo_url.as_deref(),
         )?;
         Ok(updated)
     }
@@ -77,5 +93,3 @@ impl WorkspacesService {
         Ok(())
     }
 }
-
-

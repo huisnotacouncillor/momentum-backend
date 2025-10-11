@@ -1,8 +1,8 @@
 use axum::{Router, Server, middleware::from_fn};
-use rust_backend::{AppState, db, websocket, init_tracing};
-use rust_backend::middleware::{request_tracking_middleware, performance_monitoring_middleware};
-use tower_http::cors::{Any, CorsLayer};
+use rust_backend::middleware::{performance_monitoring_middleware, request_tracking_middleware};
+use rust_backend::{AppState, db, init_tracing, websocket};
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -33,7 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .allow_methods(Any)
             .allow_headers(Any)
     } else {
-        let origins: Result<Vec<_>, _> = config.cors_origins
+        let origins: Result<Vec<_>, _> = config
+            .cors_origins
             .iter()
             .map(|origin| origin.parse())
             .collect();
@@ -55,16 +56,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create the auth routes that don't need authentication
     let auth_routes = Router::new()
-        .route("/auth/register", axum::routing::post(rust_backend::routes::auth::register))
-        .route("/auth/login", axum::routing::post(rust_backend::routes::auth::login))
+        .route(
+            "/auth/register",
+            axum::routing::post(rust_backend::routes::auth::register),
+        )
+        .route(
+            "/auth/login",
+            axum::routing::post(rust_backend::routes::auth::login),
+        )
         .with_state(state.clone());
 
     // Build router - apply auth middleware only to routes that need it
-    let protected_routes = rust_backend::routes::create_router(state.clone())
-        .layer(axum::middleware::from_fn_with_state(
+    let protected_routes = rust_backend::routes::create_router(state.clone()).layer(
+        axum::middleware::from_fn_with_state(
             Arc::new(state.db.clone()),
             rust_backend::middleware::auth::auth_middleware,
-        ));
+        ),
+    );
 
     let app = Router::new()
         .merge(auth_routes)
@@ -73,18 +81,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .layer(cors)
         .layer(from_fn(request_tracking_middleware))
         .layer(from_fn(performance_monitoring_middleware))
-        .layer(from_fn(
-            rust_backend::middleware::logger::logger,
-        ));
+        .layer(from_fn(rust_backend::middleware::logger::logger));
 
     // Start server
     let addr = config.server_address().parse()?;
     tracing::info!("Server running at http://{}", addr);
     tracing::info!("WebSocket endpoint available at ws://{}/ws", addr);
 
-    Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await?;
+    Server::bind(&addr).serve(app.into_make_service()).await?;
 
     Ok(())
 }

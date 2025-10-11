@@ -15,7 +15,11 @@ impl CyclesService {
         Ok(list)
     }
 
-    pub fn create(conn: &mut PgConnection, _ctx: &RequestContext, req: &crate::routes::cycles::CreateCycleRequest) -> Result<Cycle, AppError> {
+    pub fn create(
+        conn: &mut PgConnection,
+        _ctx: &RequestContext,
+        req: &crate::routes::cycles::CreateCycleRequest,
+    ) -> Result<Cycle, AppError> {
         let new_cycle = NewCycle {
             team_id: req.team_id,
             name: req.name.clone(),
@@ -33,8 +37,8 @@ impl CyclesService {
         _ctx: &RequestContext,
         cycle_id: uuid::Uuid,
     ) -> Result<Cycle, AppError> {
-        let cycle = CyclesRepo::find_by_id(conn, cycle_id)?
-            .ok_or_else(|| AppError::not_found("cycle"))?;
+        let cycle =
+            CyclesRepo::find_by_id(conn, cycle_id)?.ok_or_else(|| AppError::not_found("cycle"))?;
         Ok(cycle)
     }
 
@@ -44,17 +48,19 @@ impl CyclesService {
         cycle_id: uuid::Uuid,
         req: &crate::routes::cycles::UpdateCycleRequest,
     ) -> Result<Cycle, AppError> {
-        let _existing = CyclesRepo::find_by_id(conn, cycle_id)?
-            .ok_or_else(|| AppError::not_found("cycle"))?;
+        let _existing =
+            CyclesRepo::find_by_id(conn, cycle_id)?.ok_or_else(|| AppError::not_found("cycle"))?;
 
         let updated = CyclesRepo::update_fields(
             conn,
             cycle_id,
-            req.name.as_ref().map(|s| s.as_str()),
-            req.description.as_ref().map(|s| s.as_str()),
-            req.goal.as_ref().map(|s| s.as_str()),
-            req.start_date.map(|d| chrono::NaiveDateTime::from(d.and_hms_opt(0, 0, 0).unwrap_or_default())),
-            req.end_date.map(|d| chrono::NaiveDateTime::from(d.and_hms_opt(0, 0, 0).unwrap_or_default())),
+            req.name.as_deref(),
+            req.description.as_deref(),
+            req.goal.as_deref(),
+            req.start_date
+                .map(|d| d.and_hms_opt(0, 0, 0).unwrap_or_default()),
+            req.end_date
+                .map(|d| d.and_hms_opt(0, 0, 0).unwrap_or_default()),
         )?;
         Ok(updated)
     }
@@ -64,8 +70,8 @@ impl CyclesService {
         _ctx: &RequestContext,
         cycle_id: uuid::Uuid,
     ) -> Result<(), AppError> {
-        let _existing = CyclesRepo::find_by_id(conn, cycle_id)?
-            .ok_or_else(|| AppError::not_found("cycle"))?;
+        let _existing =
+            CyclesRepo::find_by_id(conn, cycle_id)?.ok_or_else(|| AppError::not_found("cycle"))?;
 
         CyclesRepo::delete_by_id(conn, cycle_id)?;
         Ok(())
@@ -76,8 +82,8 @@ impl CyclesService {
         _ctx: &RequestContext,
         cycle_id: uuid::Uuid,
     ) -> Result<crate::routes::cycles::CycleStats, AppError> {
-        let cycle = CyclesRepo::find_by_id(conn, cycle_id)?
-            .ok_or_else(|| AppError::not_found("cycle"))?;
+        let cycle =
+            CyclesRepo::find_by_id(conn, cycle_id)?.ok_or_else(|| AppError::not_found("cycle"))?;
 
         // Get issue counts by status - simplified for now
         // use crate::schema::issues; // not used in simplified stats
@@ -108,7 +114,11 @@ impl CyclesService {
             completed_issues,
             in_progress_issues,
             todo_issues: planned_issues,
-            completion_rate: if total_issues > 0 { (completed_issues as f64) / (total_issues as f64) } else { 0.0 },
+            completion_rate: if total_issues > 0 {
+                (completed_issues as f64) / (total_issues as f64)
+            } else {
+                0.0
+            },
             days_remaining: 0, // Calculate based on end_date
             is_overdue: false, // Calculate based on end_date
         })
@@ -122,8 +132,8 @@ impl CyclesService {
         limit: Option<i64>,
         _status: Option<String>,
     ) -> Result<Vec<crate::db::models::issue::Issue>, AppError> {
-        let _cycle = CyclesRepo::find_by_id(conn, cycle_id)?
-            .ok_or_else(|| AppError::not_found("cycle"))?;
+        let _cycle =
+            CyclesRepo::find_by_id(conn, cycle_id)?.ok_or_else(|| AppError::not_found("cycle"))?;
 
         use crate::schema::issues;
         let query = issues::table
@@ -152,8 +162,8 @@ impl CyclesService {
         cycle_id: uuid::Uuid,
         issue_ids: &[uuid::Uuid],
     ) -> Result<(), AppError> {
-        let _cycle = CyclesRepo::find_by_id(conn, cycle_id)?
-            .ok_or_else(|| AppError::not_found("cycle"))?;
+        let _cycle =
+            CyclesRepo::find_by_id(conn, cycle_id)?.ok_or_else(|| AppError::not_found("cycle"))?;
 
         use crate::schema::issues;
         diesel::update(issues::table.filter(issues::id.eq_any(issue_ids)))
@@ -169,8 +179,8 @@ impl CyclesService {
         cycle_id: uuid::Uuid,
         issue_ids: &[uuid::Uuid],
     ) -> Result<(), AppError> {
-        let _cycle = CyclesRepo::find_by_id(conn, cycle_id)?
-            .ok_or_else(|| AppError::not_found("cycle"))?;
+        let _cycle =
+            CyclesRepo::find_by_id(conn, cycle_id)?.ok_or_else(|| AppError::not_found("cycle"))?;
 
         use crate::schema::issues;
         diesel::update(issues::table.filter(issues::id.eq_any(issue_ids)))
@@ -199,5 +209,3 @@ impl CyclesService {
         Ok(())
     }
 }
-
-

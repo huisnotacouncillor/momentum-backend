@@ -10,8 +10,8 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::db::models::api::{ApiResponse, ErrorDetail};
 use crate::middleware::auth::AuthUserInfo;
-use crate::services::context::RequestContext;
 use crate::services::comments_service::CommentsService;
+use crate::services::context::RequestContext;
 
 #[derive(Deserialize)]
 pub struct CommentQueryParams {
@@ -47,7 +47,7 @@ pub async fn get_comments(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -89,7 +89,7 @@ pub async fn create_comment(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -129,7 +129,7 @@ pub async fn update_comment(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -168,7 +168,7 @@ pub async fn delete_comment(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -207,7 +207,7 @@ pub async fn get_comment(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

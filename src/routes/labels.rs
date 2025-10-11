@@ -1,17 +1,17 @@
 use crate::AppState;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json
 };
 // use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::models::*;
 use crate::db::enums::LabelLevel;
+use crate::db::models::*;
 use crate::middleware::auth::AuthUserInfo;
 // use crate::schema; // no longer needed in handlers after service extraction
 use crate::services::context::RequestContext;
@@ -51,7 +51,11 @@ pub async fn get_labels(
         }
     };
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -85,7 +89,11 @@ pub async fn create_label(
         }
     };
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -120,7 +128,11 @@ pub async fn update_label(
         }
     };
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -154,7 +166,11 @@ pub async fn delete_label(
         }
     };
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,

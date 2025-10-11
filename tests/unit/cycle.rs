@@ -4,5 +4,3 @@ fn validate_create_cycle_rules() {
     assert!(validate_create_cycle("Sprint 1").is_ok());
     assert!(validate_create_cycle(" ").is_err());
 }
-
-

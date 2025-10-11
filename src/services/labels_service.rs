@@ -29,9 +29,7 @@ impl LabelsService {
         if let Some(level_val) = level_filter {
             query = query.filter(l::level.eq(level_val));
         }
-        let results = query
-            .order(l::created_at.desc())
-            .load::<Label>(conn)?;
+        let results = query.order(l::created_at.desc()).load::<Label>(conn)?;
         Ok(results)
     }
 
@@ -97,7 +95,11 @@ impl LabelsService {
         let updated = LabelRepo::update_fields(
             conn,
             label_id,
-            (changes.name.clone(), changes.color.clone(), changes.level.clone()),
+            (
+                changes.name.clone(),
+                changes.color.clone(),
+                changes.level.clone(),
+            ),
         )?;
         Ok(updated)
     }
@@ -116,5 +118,3 @@ impl LabelsService {
         Ok(())
     }
 }
-
-

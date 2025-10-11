@@ -14,7 +14,7 @@ impl LabelRepo {
         diesel::select(diesel::dsl::exists(
             labels
                 .filter(workspace_id.eq(ws_id))
-                .filter(name.eq(label_name))
+                .filter(name.eq(label_name)),
         ))
         .get_result(conn)
     }
@@ -30,7 +30,7 @@ impl LabelRepo {
             labels
                 .filter(workspace_id.eq(ws_id))
                 .filter(name.eq(label_name))
-                .filter(id.ne(exclude_id))
+                .filter(id.ne(exclude_id)),
         ))
         .get_result(conn)
     }
@@ -71,15 +71,17 @@ impl LabelRepo {
     pub fn update_fields(
         conn: &mut PgConnection,
         label_id_val: uuid::Uuid,
-        changes: (Option<String>, Option<String>, Option<crate::db::enums::LabelLevel>),
+        changes: (
+            Option<String>,
+            Option<String>,
+            Option<crate::db::enums::LabelLevel>,
+        ),
     ) -> Result<Label, diesel::result::Error> {
         use crate::schema::labels::dsl as l;
         // Apply sets in branches to satisfy type system
-        if let (Some(n), Some(c), Some(lvl)) = (
-            changes.0.clone(),
-            changes.1.clone(),
-            changes.2.clone(),
-        ) {
+        if let (Some(n), Some(c), Some(lvl)) =
+            (changes.0.clone(), changes.1.clone(), changes.2.clone())
+        {
             return diesel::update(l::labels.filter(l::id.eq(label_id_val)))
                 .set((l::name.eq(n), l::color.eq(c), l::level.eq(lvl)))
                 .get_result(conn);
@@ -127,5 +129,3 @@ impl LabelRepo {
         diesel::delete(labels.filter(id.eq(label_id_val))).execute(conn)
     }
 }
-
-

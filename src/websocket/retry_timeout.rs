@@ -1,6 +1,6 @@
+use crate::error::AppError;
 use std::time::Duration;
 use tokio::time::timeout;
-use crate::error::AppError;
 
 /// 重试配置
 #[derive(Debug, Clone)]
@@ -83,27 +83,45 @@ impl RetryTimeoutManager {
             match timeout(timeout_duration, operation_future).await {
                 Ok(Ok(result)) => {
                     if attempt > 0 {
-                        tracing::info!("Operation '{}' succeeded after {} retries", operation_name, attempt);
+                        tracing::info!(
+                            "Operation '{}' succeeded after {} retries",
+                            operation_name,
+                            attempt
+                        );
                     }
                     return Ok(result);
                 }
                 Ok(Err(e)) => {
                     _last_error = Some(RetryTimeoutError::OperationError(e.to_string()));
-                    tracing::warn!("Operation '{}' failed on attempt {}: {}", operation_name, attempt + 1, e);
+                    tracing::warn!(
+                        "Operation '{}' failed on attempt {}: {}",
+                        operation_name,
+                        attempt + 1,
+                        e
+                    );
                 }
                 Err(_e) => {
                     _last_error = Some(RetryTimeoutError::Timeout(format!(
                         "Operation '{}' timed out after {} seconds",
                         operation_name, self.timeout_config.command_timeout_seconds
                     )));
-                    tracing::warn!("Operation '{}' timed out on attempt {}", operation_name, attempt + 1);
+                    tracing::warn!(
+                        "Operation '{}' timed out on attempt {}",
+                        operation_name,
+                        attempt + 1
+                    );
                 }
             }
 
             // 如果不是最后一次尝试，等待后重试
             if attempt < self.retry_config.max_retries {
                 let delay_duration = Duration::from_millis(delay_ms);
-                tracing::debug!("Waiting {}ms before retry {} for operation '{}'", delay_ms, attempt + 2, operation_name);
+                tracing::debug!(
+                    "Waiting {}ms before retry {} for operation '{}'",
+                    delay_ms,
+                    attempt + 2,
+                    operation_name
+                );
                 tokio::time::sleep(delay_duration).await;
 
                 // 计算下次延迟时间（指数退避）
@@ -174,7 +192,9 @@ impl std::fmt::Display for RetryTimeoutError {
         match self {
             RetryTimeoutError::OperationError(msg) => write!(f, "Operation error: {}", msg),
             RetryTimeoutError::Timeout(msg) => write!(f, "Timeout: {}", msg),
-            RetryTimeoutError::MaxRetriesExceeded(msg) => write!(f, "Max retries exceeded: {}", msg),
+            RetryTimeoutError::MaxRetriesExceeded(msg) => {
+                write!(f, "Max retries exceeded: {}", msg)
+            }
         }
     }
 }
@@ -212,10 +232,7 @@ impl ConnectionHealthChecker {
     }
 
     /// 检查心跳是否正常
-    pub async fn check_heartbeat<F>(
-        &self,
-        heartbeat_check: F,
-    ) -> Result<bool, RetryTimeoutError>
+    pub async fn check_heartbeat<F>(&self, heartbeat_check: F) -> Result<bool, RetryTimeoutError>
     where
         F: std::future::Future<Output = Result<bool, String>>,
     {
@@ -235,8 +252,8 @@ impl ConnectionHealthChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     #[tokio::test]
     async fn test_retry_success_on_second_attempt() {
@@ -251,20 +268,22 @@ mod tests {
 
         let attempt_count = Arc::new(AtomicU32::new(0));
 
-        let result = manager.execute_with_retry(
-            || {
-                let count = attempt_count.clone();
-                Box::pin(async move {
-                    let current = count.fetch_add(1, Ordering::SeqCst);
-                    if current == 0 {
-                        Err("First attempt fails")
-                    } else {
-                        Ok("Success")
-                    }
-                })
-            },
-            "test_operation",
-        ).await;
+        let result = manager
+            .execute_with_retry(
+                || {
+                    let count = attempt_count.clone();
+                    Box::pin(async move {
+                        let current = count.fetch_add(1, Ordering::SeqCst);
+                        if current == 0 {
+                            Err("First attempt fails")
+                        } else {
+                            Ok("Success")
+                        }
+                    })
+                },
+                "test_operation",
+            )
+            .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Success");
@@ -282,14 +301,16 @@ mod tests {
         let timeout_config = TimeoutConfig::default();
         let manager = RetryTimeoutManager::new(retry_config, timeout_config);
 
-        let result = manager.execute_with_retry(
-            || Box::pin(async { Err::<String, _>("Always fails") }),
-            "test_operation",
-        ).await;
+        let result = manager
+            .execute_with_retry(
+                || Box::pin(async { Err::<String, _>("Always fails") }),
+                "test_operation",
+            )
+            .await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            RetryTimeoutError::MaxRetriesExceeded(_) => {},
+            RetryTimeoutError::MaxRetriesExceeded(_) => {}
             _ => panic!("Expected MaxRetriesExceeded error"),
         }
     }
@@ -304,19 +325,21 @@ mod tests {
         };
         let manager = RetryTimeoutManager::new(retry_config, timeout_config);
 
-        let result = manager.execute_with_retry(
-            || {
-                Box::pin(async {
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                    Ok::<String, String>("Should not reach here".to_string())
-                })
-            },
-            "test_operation",
-        ).await;
+        let result = manager
+            .execute_with_retry(
+                || {
+                    Box::pin(async {
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        Ok::<String, String>("Should not reach here".to_string())
+                    })
+                },
+                "test_operation",
+            )
+            .await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            RetryTimeoutError::Timeout(_) | RetryTimeoutError::MaxRetriesExceeded(_) => {},
+            RetryTimeoutError::Timeout(_) | RetryTimeoutError::MaxRetriesExceeded(_) => {}
             _ => panic!("Expected Timeout or MaxRetriesExceeded error"),
         }
     }
@@ -341,17 +364,17 @@ mod tests {
         let checker = ConnectionHealthChecker::new(timeout_config);
 
         // 成功的健康检查
-        let result = checker.check_connection_health(async {
-            Ok(true)
-        }).await;
+        let result = checker.check_connection_health(async { Ok(true) }).await;
         assert!(result.is_ok());
         assert!(result.unwrap());
 
         // 超时的健康检查
-        let result = checker.check_connection_health(async {
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            Ok(true)
-        }).await;
+        let result = checker
+            .check_connection_health(async {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                Ok(true)
+            })
+            .await;
         assert!(result.is_err());
     }
 }

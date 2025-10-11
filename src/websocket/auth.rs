@@ -59,9 +59,7 @@ impl WebSocketAuth {
             .map_err(|_| WebSocketAuthError::UserNotFound)?;
 
         // 获取用户的当前工作区
-        let current_workspace_id = get_user_current_workspace(&pool, user_id)
-            .await
-            .ok();
+        let current_workspace_id = get_user_current_workspace(&pool, user_id).await.ok();
 
         Ok(AuthenticatedUser {
             user_id: auth_user.id,

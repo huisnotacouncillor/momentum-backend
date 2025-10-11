@@ -88,7 +88,7 @@ impl AuthService {
         let credential = AuthRepo::find_credential_by_user_id(conn, user.id)?
             .ok_or_else(|| AppError::auth("Invalid email or password"))?;
 
-        let is_valid = verify(&req.password, &credential.credential_hash.as_ref().unwrap())
+        let is_valid = verify(&req.password, credential.credential_hash.as_ref().unwrap())
             .map_err(|_| AppError::internal("Failed to verify password"))?;
 
         if !is_valid {

@@ -1,14 +1,14 @@
 use rust_backend::{
     config::Config,
-    websocket::{
-        security::{SecureMessage, MessageSigner, SecurityError},
-        commands::{WebSocketCommand, CreateLabelCommand},
-        auth::AuthenticatedUser,
-    },
     db::enums::LabelLevel,
+    websocket::{
+        WebSocketCommand,
+        auth::AuthenticatedUser,
+        commands::types::CreateLabelCommand,
+        security::{MessageSigner, SecurityError},
+    },
 };
 use uuid::Uuid;
-use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,12 +56,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 3. 创建测试命令
     println!("\n2. 创建测试命令...");
     let test_command = WebSocketCommand::CreateLabel {
-        idempotency_key: "test-command-123".to_string(),
         data: CreateLabelCommand {
             name: "重要标签".to_string(),
             color: "#FF0000".to_string(),
             level: LabelLevel::Project,
         },
+        request_id: Some("test-command-123".to_string()),
     };
 
     let command_payload = serde_json::to_value(&test_command)?;

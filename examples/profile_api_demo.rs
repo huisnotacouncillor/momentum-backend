@@ -1,10 +1,9 @@
 use rust_backend::config::Config;
-use rust_backend::utils::AssetUrlHelper;
 use rust_backend::db::models::auth::{User, UserProfile};
 use rust_backend::db::models::team::TeamInfo;
 use rust_backend::db::models::workspace::WorkspaceInfo;
+use rust_backend::utils::AssetUrlHelper;
 use uuid::Uuid;
-use chrono::NaiveDateTime;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 加载配置
@@ -25,8 +24,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         username: "zhangsan".to_string(),
         avatar_url: Some("avatars/zhangsan.jpg".to_string()),
         is_active: true,
-        created_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
-        updated_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
+        created_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
+        updated_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
         current_workspace_id: Some(Uuid::new_v4()),
     };
 
@@ -84,8 +87,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== 工作空间信息 ===");
     for workspace in &user_profile.workspaces {
-        println!("工作空间: {} ({}), URL Key: {}",
-                workspace.name, workspace.id, workspace.url_key);
+        println!(
+            "工作空间: {} ({}), URL Key: {}",
+            workspace.name, workspace.id, workspace.url_key
+        );
     }
 
     println!();
@@ -117,8 +122,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         username: "lisi".to_string(),
         avatar_url: Some("avatars/lisi.jpg".to_string()),
         is_active: true,
-        created_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
-        updated_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
+        created_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
+        updated_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
         current_workspace_id: None,
     };
 
@@ -137,8 +146,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         username: "wangwu".to_string(),
         avatar_url: Some("https://gravatar.com/avatar/wangwu.jpg".to_string()),
         is_active: true,
-        created_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
-        updated_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
+        created_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
+        updated_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
         current_workspace_id: None,
     };
 
@@ -157,8 +170,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         username: "zhaoliu".to_string(),
         avatar_url: None,
         is_active: true,
-        created_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
-        updated_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
+        created_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
+        updated_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
         current_workspace_id: None,
     };
 
@@ -182,7 +199,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("    \"username\": \"{}\",", user_profile.username);
     println!("    \"name\": \"{}\",", user_profile.name);
     println!("    \"avatar_url\": {:?},", user_profile.avatar_url);
-    println!("    \"current_workspace_id\": {:?},", user_profile.current_workspace_id);
+    println!(
+        "    \"current_workspace_id\": {:?},",
+        user_profile.current_workspace_id
+    );
     println!("    \"workspaces\": [...],");
     println!("    \"teams\": [...]");
     println!("  }}");

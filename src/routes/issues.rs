@@ -3,7 +3,7 @@ use crate::db::enums::IssuePriority;
 use crate::db::models::api::{ApiResponse, ErrorDetail};
 use crate::middleware::auth::AuthUserInfo;
 use crate::services::context::RequestContext;
-use crate::services::issues_service::{IssuesService, IssueFilters};
+use crate::services::issues_service::{IssueFilters, IssuesService};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -72,7 +72,7 @@ pub async fn get_issues(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -140,7 +140,7 @@ pub async fn create_issue(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -180,7 +180,7 @@ pub async fn update_issue(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -219,7 +219,7 @@ pub async fn delete_issue(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -258,7 +258,7 @@ pub async fn get_issue(
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
-            idempotency_key: None
+            idempotency_key: None,
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

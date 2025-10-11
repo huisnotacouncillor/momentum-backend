@@ -15,11 +15,15 @@ pub fn validate_register_request(
     }
 
     if username.len() < 3 {
-        return Err(AppError::validation("Username must be at least 3 characters"));
+        return Err(AppError::validation(
+            "Username must be at least 3 characters",
+        ));
     }
 
     if !username.chars().all(|c| c.is_alphanumeric() || c == '_') {
-        return Err(AppError::validation("Username can only contain letters, numbers, and underscores"));
+        return Err(AppError::validation(
+            "Username can only contain letters, numbers, and underscores",
+        ));
     }
 
     if email.trim().is_empty() {
@@ -31,16 +35,15 @@ pub fn validate_register_request(
     }
 
     if password.len() < 8 {
-        return Err(AppError::validation("Password must be at least 8 characters"));
+        return Err(AppError::validation(
+            "Password must be at least 8 characters",
+        ));
     }
 
     Ok(())
 }
 
-pub fn validate_login_request(
-    email: &str,
-    password: &str,
-) -> Result<(), AppError> {
+pub fn validate_login_request(email: &str, password: &str) -> Result<(), AppError> {
     if email.trim().is_empty() {
         return Err(AppError::validation("Email is required"));
     }
@@ -60,7 +63,11 @@ pub struct UpdateProfileChanges<'a> {
 }
 
 pub fn validate_update_profile(changes: &UpdateProfileChanges) -> Result<(), AppError> {
-    if changes.name.is_none() && changes.username.is_none() && changes.email.is_none() && changes.avatar_url.is_none() {
+    if changes.name.is_none()
+        && changes.username.is_none()
+        && changes.email.is_none()
+        && changes.avatar_url.is_none()
+    {
         return Err(AppError::validation("No update data provided"));
     }
 
@@ -75,10 +82,14 @@ pub fn validate_update_profile(changes: &UpdateProfileChanges) -> Result<(), App
             return Err(AppError::validation("Username cannot be empty"));
         }
         if username.len() < 3 {
-            return Err(AppError::validation("Username must be at least 3 characters"));
+            return Err(AppError::validation(
+                "Username must be at least 3 characters",
+            ));
         }
         if !username.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return Err(AppError::validation("Username can only contain letters, numbers, and underscores"));
+            return Err(AppError::validation(
+                "Username can only contain letters, numbers, and underscores",
+            ));
         }
     }
 
@@ -100,11 +111,23 @@ mod tests {
 
     #[test]
     fn test_register_validation() {
-        assert!(validate_register_request("John Doe", "johndoe", "john@example.com", "password123").is_ok());
-        assert!(validate_register_request("", "johndoe", "john@example.com", "password123").is_err());
-        assert!(validate_register_request("John Doe", "jo", "john@example.com", "password123").is_err());
-        assert!(validate_register_request("John Doe", "johndoe", "invalid-email", "password123").is_err());
-        assert!(validate_register_request("John Doe", "johndoe", "john@example.com", "123").is_err());
+        assert!(
+            validate_register_request("John Doe", "johndoe", "john@example.com", "password123")
+                .is_ok()
+        );
+        assert!(
+            validate_register_request("", "johndoe", "john@example.com", "password123").is_err()
+        );
+        assert!(
+            validate_register_request("John Doe", "jo", "john@example.com", "password123").is_err()
+        );
+        assert!(
+            validate_register_request("John Doe", "johndoe", "invalid-email", "password123")
+                .is_err()
+        );
+        assert!(
+            validate_register_request("John Doe", "johndoe", "john@example.com", "123").is_err()
+        );
     }
 
     #[test]

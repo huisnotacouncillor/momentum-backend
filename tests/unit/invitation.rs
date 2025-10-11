@@ -5,5 +5,3 @@ fn validate_invite_email_rules() {
     assert!(validate_invite_email("").is_err());
     assert!(validate_invite_email("no-at.com").is_err());
 }
-
-

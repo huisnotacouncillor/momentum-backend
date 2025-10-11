@@ -13,5 +13,3 @@ fn validate_issue_create_and_update() {
     assert!(validate_update_issue(&None, &Some("Desc".to_string())).is_ok());
     assert!(validate_update_issue(&None, &None).is_err());
 }
-
-

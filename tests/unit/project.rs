@@ -7,5 +7,3 @@ fn validate_create_project_rules() {
     assert!(validate_create_project("Alpha", "TOO_LONG_KEY_123").is_err());
     assert!(validate_create_project("Alpha", "BAD KEY").is_err());
 }
-
-

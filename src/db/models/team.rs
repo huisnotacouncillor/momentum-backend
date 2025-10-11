@@ -85,32 +85,52 @@ pub struct TeamWithMembers {
 impl Team {
     /// 获取处理后的图标 URL
     /// 如果 icon_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
-    pub fn get_processed_icon_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
-        self.icon_url.as_ref().map(|url| asset_helper.process_url(url))
+    pub fn get_processed_icon_url(
+        &self,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<String> {
+        self.icon_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url))
     }
 }
 
 impl TeamInfo {
     /// 获取处理后的图标 URL
     /// 如果 icon_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
-    pub fn get_processed_icon_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
-        self.icon_url.as_ref().map(|url| asset_helper.process_url(url))
+    pub fn get_processed_icon_url(
+        &self,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<String> {
+        self.icon_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url))
     }
 }
 
 impl TeamBasicInfo {
     /// 获取处理后的图标 URL
     /// 如果 icon_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
-    pub fn get_processed_icon_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
-        self.icon_url.as_ref().map(|url| asset_helper.process_url(url))
+    pub fn get_processed_icon_url(
+        &self,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<String> {
+        self.icon_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url))
     }
 }
 
 impl TeamWithMembers {
     /// 获取处理后的图标 URL
     /// 如果 icon_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
-    pub fn get_processed_icon_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
-        self.icon_url.as_ref().map(|url| asset_helper.process_url(url))
+    pub fn get_processed_icon_url(
+        &self,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<String> {
+        self.icon_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url))
     }
 }
 

@@ -1,9 +1,9 @@
 use crate::AppState;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -35,7 +35,11 @@ pub async fn get_project_statuses(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -78,7 +82,11 @@ pub async fn create_project_status(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -129,7 +137,11 @@ pub async fn get_project_status_by_id(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -173,7 +185,11 @@ pub async fn update_project_status(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -208,7 +224,11 @@ pub async fn delete_project_status(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,

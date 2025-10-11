@@ -10,7 +10,10 @@ impl CommentRepo {
         comment_id: uuid::Uuid,
     ) -> Result<Option<Comment>, diesel::result::Error> {
         use crate::schema::comments::dsl::*;
-        comments.filter(id.eq(comment_id)).first::<Comment>(conn).optional()
+        comments
+            .filter(id.eq(comment_id))
+            .first::<Comment>(conn)
+            .optional()
     }
 
     pub fn list_by_issue(
@@ -22,9 +25,7 @@ impl CommentRepo {
         let mut query = comments.filter(issue_id.eq(target_issue_id)).into_boxed();
 
         if !include_deleted {
-            query = query.filter(
-                is_deleted.is_null().or(is_deleted.eq(false))
-            );
+            query = query.filter(is_deleted.is_null().or(is_deleted.eq(false)));
         }
 
         query.order(created_at.desc()).load::<Comment>(conn)

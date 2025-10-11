@@ -6,5 +6,3 @@ pub struct RequestContext {
     pub workspace_id: Uuid,
     pub idempotency_key: Option<String>,
 }
-
-

@@ -446,6 +446,7 @@ impl WebSocketManager {
     }
 
     // 处理WebSocket连接
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle_socket(
         &self,
         mut socket: WebSocket,
@@ -494,7 +495,7 @@ impl WebSocketManager {
         }
 
         // 发送初始化数据（workspace members 和 teams）
-        if let (Some(workspace_id), Some(ref db_pool), Some(ref asset_helper_ref)) = (
+        if let (Some(workspace_id), Some(db_pool), Some(asset_helper_ref)) = (
             user.current_workspace_id,
             db.as_ref(),
             asset_helper.as_ref(),
@@ -573,7 +574,7 @@ impl WebSocketManager {
                                                 Ok(command) => {
                                                     let authenticated_user =
                                                         crate::websocket::auth::AuthenticatedUser {
-                                                            user_id: user_id,
+                                                            user_id,
                                                             username: username.clone(),
                                                             email: "".to_string(), // 这里需要从数据库获取
                                                             name: username.clone(),

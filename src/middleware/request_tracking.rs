@@ -12,10 +12,7 @@ pub const REQUEST_ID_HEADER: &str = "x-request-id";
 
 /// 请求追踪中间件
 /// 为每个请求生成唯一ID，记录请求信息和响应时间
-pub async fn request_tracking_middleware<B>(
-    mut request: Request<B>,
-    next: Next<B>,
-) -> Response {
+pub async fn request_tracking_middleware<B>(mut request: Request<B>, next: Next<B>) -> Response {
     let start_time = Instant::now();
 
     // 生成或获取请求ID
@@ -123,10 +120,7 @@ fn get_or_generate_request_id(headers: &HeaderMap) -> String {
 
 /// 性能监控中间件
 /// 专门用于监控API性能指标
-pub async fn performance_monitoring_middleware<B>(
-    request: Request<B>,
-    next: Next<B>,
-) -> Response {
+pub async fn performance_monitoring_middleware<B>(request: Request<B>, next: Next<B>) -> Response {
     let start_time = Instant::now();
     let method = request.method().clone();
     let uri = request.uri().path().to_string();

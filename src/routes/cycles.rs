@@ -1,16 +1,16 @@
 use crate::AppState;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::db::models::*;
 use crate::db::enums::*;
+use crate::db::models::*;
 use crate::middleware::auth::AuthUserInfo;
 use crate::services::context::RequestContext;
 use crate::services::cycles_service::CyclesService;
@@ -96,7 +96,11 @@ pub async fn create_cycle(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -137,7 +141,11 @@ pub async fn get_cycles(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -172,7 +180,11 @@ pub async fn get_cycle_by_id(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -208,7 +220,11 @@ pub async fn update_cycle(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -243,7 +259,11 @@ pub async fn delete_cycle(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -278,7 +298,11 @@ pub async fn get_cycle_stats(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -314,7 +338,11 @@ pub async fn get_cycle_issues(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -325,7 +353,14 @@ pub async fn get_cycle_issues(
         }
     };
 
-    match CyclesService::get_issues(&mut conn, &ctx, cycle_id, query.page, query.limit, query.status) {
+    match CyclesService::get_issues(
+        &mut conn,
+        &ctx,
+        cycle_id,
+        query.page,
+        query.limit,
+        query.status,
+    ) {
         Ok(issues) => {
             let response = ApiResponse::success(issues, "Cycle issues retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()
@@ -350,7 +385,11 @@ pub async fn assign_issues_to_cycle(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -364,7 +403,10 @@ pub async fn assign_issues_to_cycle(
     match CyclesService::assign_issues(&mut conn, &ctx, cycle_id, &payload.issue_ids) {
         Ok(_count) => {
             let response = ApiResponse::success(
-                Some(format!("Successfully assigned {} issues to cycle", payload.issue_ids.len())),
+                Some(format!(
+                    "Successfully assigned {} issues to cycle",
+                    payload.issue_ids.len()
+                )),
                 "Issues assigned to cycle successfully",
             );
             (StatusCode::OK, Json(response)).into_response()
@@ -389,7 +431,11 @@ pub async fn remove_issues_from_cycle(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -403,7 +449,10 @@ pub async fn remove_issues_from_cycle(
     match CyclesService::remove_issues(&mut conn, &ctx, cycle_id, &payload.issue_ids) {
         Ok(_count) => {
             let response = ApiResponse::success(
-                Some(format!("Successfully removed {} issues from cycle", payload.issue_ids.len())),
+                Some(format!(
+                    "Successfully removed {} issues from cycle",
+                    payload.issue_ids.len()
+                )),
                 "Issues removed from cycle successfully",
             );
             (StatusCode::OK, Json(response)).into_response()
@@ -428,7 +477,8 @@ pub async fn update_cycle_status_auto(State(state): State<Arc<AppState>>) -> imp
                 "Auto-updated {} cycles to active and {} cycles to completed",
                 0, 0
             );
-            let response = ApiResponse::success(Some(message), "Cycle statuses updated automatically");
+            let response =
+                ApiResponse::success(Some(message), "Cycle statuses updated automatically");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => err.into_response(),

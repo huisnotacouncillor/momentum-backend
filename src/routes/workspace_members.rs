@@ -1,9 +1,9 @@
 use crate::AppState;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -41,7 +41,11 @@ pub async fn invite_member_to_workspace(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -76,7 +80,11 @@ pub async fn accept_invitation(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -112,7 +120,11 @@ pub async fn get_workspace_members(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -123,18 +135,24 @@ pub async fn get_workspace_members(
         }
     };
 
-    let role_enum = params.role.as_ref().and_then(|r| {
-        match r.as_str() {
-            "owner" => Some(WorkspaceMemberRole::Owner),
-            "admin" => Some(WorkspaceMemberRole::Admin),
-            "member" => Some(WorkspaceMemberRole::Member),
-            _ => None,
-        }
+    let role_enum = params.role.as_ref().and_then(|r| match r.as_str() {
+        "owner" => Some(WorkspaceMemberRole::Owner),
+        "admin" => Some(WorkspaceMemberRole::Admin),
+        "member" => Some(WorkspaceMemberRole::Member),
+        _ => None,
     });
 
-    match WorkspaceMembersService::get_workspace_members(&mut conn, &ctx, &state.asset_helper, workspace_id, role_enum, params.user_id) {
+    match WorkspaceMembersService::get_workspace_members(
+        &mut conn,
+        &ctx,
+        &state.asset_helper,
+        workspace_id,
+        role_enum,
+        params.user_id,
+    ) {
         Ok(members) => {
-            let response = ApiResponse::success(members, "Workspace members retrieved successfully");
+            let response =
+                ApiResponse::success(members, "Workspace members retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => err.into_response(),
@@ -156,7 +174,11 @@ pub async fn get_workspace_members_and_invitations(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -167,18 +189,25 @@ pub async fn get_workspace_members_and_invitations(
         }
     };
 
-    let role_enum = params.role.as_ref().and_then(|r| {
-        match r.as_str() {
-            "owner" => Some(WorkspaceMemberRole::Owner),
-            "admin" => Some(WorkspaceMemberRole::Admin),
-            "member" => Some(WorkspaceMemberRole::Member),
-            _ => None,
-        }
+    let role_enum = params.role.as_ref().and_then(|r| match r.as_str() {
+        "owner" => Some(WorkspaceMemberRole::Owner),
+        "admin" => Some(WorkspaceMemberRole::Admin),
+        "member" => Some(WorkspaceMemberRole::Member),
+        _ => None,
     });
 
-    match WorkspaceMembersService::get_members_and_invitations(&mut conn, &ctx, &state.asset_helper, role_enum, params.user_id) {
+    match WorkspaceMembersService::get_members_and_invitations(
+        &mut conn,
+        &ctx,
+        &state.asset_helper,
+        role_enum,
+        params.user_id,
+    ) {
         Ok(result) => {
-            let response = ApiResponse::success(result, "Workspace members and invitations retrieved successfully");
+            let response = ApiResponse::success(
+                result,
+                "Workspace members and invitations retrieved successfully",
+            );
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => err.into_response(),
@@ -200,7 +229,11 @@ pub async fn get_current_workspace_members(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -211,18 +244,25 @@ pub async fn get_current_workspace_members(
         }
     };
 
-    let role_enum = params.role.as_ref().and_then(|r| {
-        match r.as_str() {
-            "owner" => Some(WorkspaceMemberRole::Owner),
-            "admin" => Some(WorkspaceMemberRole::Admin),
-            "member" => Some(WorkspaceMemberRole::Member),
-            _ => None,
-        }
+    let role_enum = params.role.as_ref().and_then(|r| match r.as_str() {
+        "owner" => Some(WorkspaceMemberRole::Owner),
+        "admin" => Some(WorkspaceMemberRole::Admin),
+        "member" => Some(WorkspaceMemberRole::Member),
+        _ => None,
     });
 
-    match WorkspaceMembersService::get_current_workspace_members(&mut conn, &ctx, &state.asset_helper, role_enum, params.user_id) {
+    match WorkspaceMembersService::get_current_workspace_members(
+        &mut conn,
+        &ctx,
+        &state.asset_helper,
+        role_enum,
+        params.user_id,
+    ) {
         Ok(result) => {
-            let response = ApiResponse::success(result, "Current workspace members and invitations retrieved successfully");
+            let response = ApiResponse::success(
+                result,
+                "Current workspace members and invitations retrieved successfully",
+            );
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => err.into_response(),

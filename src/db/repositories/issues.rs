@@ -10,7 +10,10 @@ impl IssueRepo {
         issue_id: uuid::Uuid,
     ) -> Result<Option<Issue>, diesel::result::Error> {
         use crate::schema::issues::dsl::*;
-        issues.filter(id.eq(issue_id)).first::<Issue>(conn).optional()
+        issues
+            .filter(id.eq(issue_id))
+            .first::<Issue>(conn)
+            .optional()
     }
 
     pub fn list_by_workspace(
@@ -18,9 +21,7 @@ impl IssueRepo {
         _workspace_id: uuid::Uuid,
     ) -> Result<Vec<Issue>, diesel::result::Error> {
         use crate::schema::issues::dsl::*;
-        issues
-            .order(created_at.desc())
-            .load::<Issue>(conn)
+        issues.order(created_at.desc()).load::<Issue>(conn)
     }
 
     pub fn list_by_team(
@@ -78,6 +79,7 @@ impl IssueRepo {
             .get_result(conn)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn update_fields(
         conn: &mut PgConnection,
         issue_id: uuid::Uuid,
@@ -108,13 +110,13 @@ impl IssueRepo {
                 .get_result(conn);
         }
 
-        if let Some(project_id_val) = changes.2.clone() {
+        if let Some(project_id_val) = changes.2 {
             return diesel::update(i::issues.filter(i::id.eq(issue_id)))
                 .set(i::project_id.eq(project_id_val))
                 .get_result(conn);
         }
 
-        if let Some(team_id_val) = changes.3.clone() {
+        if let Some(team_id_val) = changes.3 {
             return diesel::update(i::issues.filter(i::id.eq(issue_id)))
                 .set(i::team_id.eq(team_id_val))
                 .get_result(conn);
@@ -126,25 +128,25 @@ impl IssueRepo {
                 .get_result(conn);
         }
 
-        if let Some(assignee_id_val) = changes.5.clone() {
+        if let Some(assignee_id_val) = changes.5 {
             return diesel::update(i::issues.filter(i::id.eq(issue_id)))
                 .set(i::assignee_id.eq(assignee_id_val))
                 .get_result(conn);
         }
 
-        if let Some(workflow_id_val) = changes.6.clone() {
+        if let Some(workflow_id_val) = changes.6 {
             return diesel::update(i::issues.filter(i::id.eq(issue_id)))
                 .set(i::workflow_id.eq(workflow_id_val))
                 .get_result(conn);
         }
 
-        if let Some(workflow_state_id_val) = changes.7.clone() {
+        if let Some(workflow_state_id_val) = changes.7 {
             return diesel::update(i::issues.filter(i::id.eq(issue_id)))
                 .set(i::workflow_state_id.eq(workflow_state_id_val))
                 .get_result(conn);
         }
 
-        if let Some(cycle_id_val) = changes.8.clone() {
+        if let Some(cycle_id_val) = changes.8 {
             return diesel::update(i::issues.filter(i::id.eq(issue_id)))
                 .set(i::cycle_id.eq(cycle_id_val))
                 .get_result(conn);

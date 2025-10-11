@@ -1,6 +1,6 @@
-use std::time::Instant;
 use reqwest::Client;
 use serde_json::json;
+use std::time::Instant;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,12 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let duration = start.elapsed();
         times.push(duration);
 
-        println!(
-            "请求 {}: {:?} (状态: {})",
-            i,
-            duration,
-            response.status()
-        );
+        println!("请求 {}: {:?} (状态: {})", i, duration, response.status());
 
         // 短暂延迟
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;

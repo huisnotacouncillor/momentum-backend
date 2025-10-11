@@ -1,7 +1,7 @@
 use diesel::prelude::*;
 
 use crate::{
-    db::models::invitation::{Invitation, NewInvitation, InvitationStatus},
+    db::models::invitation::{Invitation, InvitationStatus, NewInvitation},
     db::repositories::invitations::InvitationsRepo,
     db::repositories::workspace_members::WorkspaceMembersRepo,
     error::AppError,
@@ -18,7 +18,11 @@ impl InvitationsService {
         role: crate::db::models::workspace_member::WorkspaceMemberRole,
     ) -> Result<Invitation, AppError> {
         if InvitationsRepo::pending_exists_for_email(conn, ctx.workspace_id, email)? {
-            return Err(AppError::conflict_with_code("User already has a pending invitation to this workspace", Some("email".into()), "PENDING_INVITATION"));
+            return Err(AppError::conflict_with_code(
+                "User already has a pending invitation to this workspace",
+                Some("email".into()),
+                "PENDING_INVITATION",
+            ));
         }
         let new_inv = NewInvitation {
             workspace_id: ctx.workspace_id,
@@ -37,9 +41,14 @@ impl InvitationsService {
     ) -> Result<Invitation, AppError> {
         // ensure invitation belongs to email of current user? callsites should check
         let updated = conn.transaction::<Invitation, diesel::result::Error, _>(|tx| {
-            let inv = InvitationsRepo::update_status(tx, invitation_id, InvitationStatus::Accepted)?;
+            let inv =
+                InvitationsRepo::update_status(tx, invitation_id, InvitationStatus::Accepted)?;
             // add workspace member
-            let new_member = crate::db::models::workspace_member::NewWorkspaceMember { user_id: ctx.user_id, workspace_id: inv.workspace_id, role: inv.role.clone() };
+            let new_member = crate::db::models::workspace_member::NewWorkspaceMember {
+                user_id: ctx.user_id,
+                workspace_id: inv.workspace_id,
+                role: inv.role.clone(),
+            };
             let _ = WorkspaceMembersRepo::insert(tx, &new_member)?;
             Ok(inv)
         })?;
@@ -105,7 +114,10 @@ impl InvitationsService {
                 .as_ref()
                 .map(|url| asset_helper.process_url(url));
 
-            let processed_workspace_logo_url = workspace.logo_url.as_ref().map(|url| asset_helper.process_url(url));
+            let processed_workspace_logo_url = workspace
+                .logo_url
+                .as_ref()
+                .map(|url| asset_helper.process_url(url));
             invitation_infos.push(crate::routes::invitations::InvitationInfo {
                 id: invitation.id,
                 email: invitation.email,
@@ -156,9 +168,15 @@ impl InvitationsService {
             .optional()?
             .ok_or_else(|| AppError::internal("Failed to retrieve workspace"))?;
 
-        let processed_avatar_url = inviter.avatar_url.as_ref().map(|url| asset_helper.process_url(url));
+        let processed_avatar_url = inviter
+            .avatar_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url));
 
-        let processed_workspace_logo_url = workspace.logo_url.as_ref().map(|url| asset_helper.process_url(url));
+        let processed_workspace_logo_url = workspace
+            .logo_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url));
         Ok(crate::routes::invitations::InvitationInfo {
             id: invitation.id,
             email: invitation.email,
@@ -189,7 +207,8 @@ impl InvitationsService {
             return Err(AppError::not_found("invitation"));
         }
 
-        let updated = InvitationsRepo::update_status(conn, invitation_id, InvitationStatus::Declined)?;
+        let updated =
+            InvitationsRepo::update_status(conn, invitation_id, InvitationStatus::Declined)?;
         Ok(updated)
     }
 
@@ -210,5 +229,3 @@ impl InvitationsService {
         Ok(())
     }
 }
-
-

@@ -1,20 +1,38 @@
 use diesel::prelude::*;
 
-use crate::db::models::project::{Project, NewProject};
+use crate::db::models::project::{NewProject, Project};
 
 pub struct ProjectsRepo;
 
 impl ProjectsRepo {
-    pub fn exists_key_in_workspace(conn: &mut PgConnection, ws: uuid::Uuid, key: &str) -> Result<bool, diesel::result::Error> {
+    pub fn exists_key_in_workspace(
+        conn: &mut PgConnection,
+        ws: uuid::Uuid,
+        key: &str,
+    ) -> Result<bool, diesel::result::Error> {
         use crate::schema::projects::dsl::*;
-        diesel::select(diesel::dsl::exists(projects.filter(workspace_id.eq(ws)).filter(project_key.eq(key)))).get_result(conn)
+        diesel::select(diesel::dsl::exists(
+            projects
+                .filter(workspace_id.eq(ws))
+                .filter(project_key.eq(key)),
+        ))
+        .get_result(conn)
     }
 
-    pub fn insert(conn: &mut PgConnection, new_project: &NewProject) -> Result<Project, diesel::result::Error> {
-        diesel::insert_into(crate::schema::projects::table).values(new_project).get_result(conn)
+    pub fn insert(
+        conn: &mut PgConnection,
+        new_project: &NewProject,
+    ) -> Result<Project, diesel::result::Error> {
+        diesel::insert_into(crate::schema::projects::table)
+            .values(new_project)
+            .get_result(conn)
     }
 
-    pub fn find_by_id_in_workspace(conn: &mut PgConnection, ws: uuid::Uuid, project_id: uuid::Uuid) -> Result<Option<Project>, diesel::result::Error> {
+    pub fn find_by_id_in_workspace(
+        conn: &mut PgConnection,
+        ws: uuid::Uuid,
+        project_id: uuid::Uuid,
+    ) -> Result<Option<Project>, diesel::result::Error> {
         use crate::schema::projects::dsl::*;
         projects
             .filter(id.eq(project_id))
@@ -23,6 +41,7 @@ impl ProjectsRepo {
             .optional()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_fields(
         conn: &mut PgConnection,
         project_id: uuid::Uuid,
@@ -74,13 +93,16 @@ impl ProjectsRepo {
         }
 
         // Return the updated project
-        p::projects.filter(p::id.eq(project_id)).first::<Project>(conn)
+        p::projects
+            .filter(p::id.eq(project_id))
+            .first::<Project>(conn)
     }
 
-    pub fn delete_by_id(conn: &mut PgConnection, project_id: uuid::Uuid) -> Result<usize, diesel::result::Error> {
+    pub fn delete_by_id(
+        conn: &mut PgConnection,
+        project_id: uuid::Uuid,
+    ) -> Result<usize, diesel::result::Error> {
         use crate::schema::projects::dsl::*;
         diesel::delete(projects.filter(id.eq(project_id))).execute(conn)
     }
 }
-
-

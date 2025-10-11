@@ -1,9 +1,8 @@
 use rust_backend::config::Config;
-use rust_backend::utils::AssetUrlHelper;
 use rust_backend::db::models::auth::User;
-use uuid::Uuid;
-use chrono::NaiveDateTime;
+use rust_backend::utils::AssetUrlHelper;
 use std::time::Instant;
+use uuid::Uuid;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 加载配置
@@ -20,8 +19,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         username: "testuser".to_string(),
         avatar_url: Some("avatars/test-user.jpg".to_string()),
         is_active: true,
-        created_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
-        updated_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
+        created_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
+        updated_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
         current_workspace_id: None,
     };
 
@@ -50,7 +53,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("旧实现 ({} 次): {:?}", iterations, old_duration);
     println!("新实现 ({} 次): {:?}", iterations, new_duration);
-    println!("性能提升: {:.2}x", old_duration.as_nanos() as f64 / new_duration.as_nanos() as f64);
+    println!(
+        "性能提升: {:.2}x",
+        old_duration.as_nanos() as f64 / new_duration.as_nanos() as f64
+    );
     println!();
 
     // 测试 2: 字符串操作优化
@@ -71,7 +77,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let build_duration = start.elapsed();
 
-    println!("构建 {} 个 URL ({} 次): {:?}", url_paths.len(), iterations, build_duration);
+    println!(
+        "构建 {} 个 URL ({} 次): {:?}",
+        url_paths.len(),
+        iterations,
+        build_duration
+    );
     println!();
 
     // 测试 3: 外部链接 vs 内部路径处理
@@ -93,7 +104,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("外部链接处理 ({} 次): {:?}", iterations, external_duration);
     println!("内部路径处理 ({} 次): {:?}", iterations, internal_duration);
-    println!("外部链接处理速度比: {:.2}x", internal_duration.as_nanos() as f64 / external_duration.as_nanos() as f64);
+    println!(
+        "外部链接处理速度比: {:.2}x",
+        internal_duration.as_nanos() as f64 / external_duration.as_nanos() as f64
+    );
     println!();
 
     // 测试 4: 内存分配优化
@@ -112,7 +126,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("String 返回 ({} 次): {:?}", iterations, string_duration);
     println!("Cow 返回 ({} 次): {:?}", iterations, cow_duration);
-    println!("Cow 优化提升: {:.2}x", string_duration.as_nanos() as f64 / cow_duration.as_nanos() as f64);
+    println!(
+        "Cow 优化提升: {:.2}x",
+        string_duration.as_nanos() as f64 / cow_duration.as_nanos() as f64
+    );
     println!();
 
     // 总结

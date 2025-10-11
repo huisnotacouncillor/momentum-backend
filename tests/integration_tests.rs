@@ -149,15 +149,12 @@ async fn test_websocket_text_message_exchange() {
     let mut received_messages = 0;
     while received_messages < 1 {
         if let Ok(Some(msg)) = timeout(Duration::from_secs(3), ws_receiver.next()).await {
-            match msg {
-                Ok(TungsteniteMessage::Text(text)) => {
-                    let response: serde_json::Value = serde_json::from_str(&text).unwrap();
-                    if response["message_type"] == "text" {
-                        received_messages += 1;
-                        println!("Received text message: {}", text);
-                    }
+            if let Ok(TungsteniteMessage::Text(text)) = msg {
+                let response: serde_json::Value = serde_json::from_str(&text).unwrap();
+                if response["message_type"] == "text" {
+                    received_messages += 1;
+                    println!("Received text message: {}", text);
                 }
-                _ => {}
             }
         } else {
             break;
@@ -242,7 +239,7 @@ async fn test_websocket_api_endpoints() {
 
     // Test online users endpoint
     let response = client
-        .get(&format!("{}/ws/online", base_url))
+        .get(format!("{}/ws/online", base_url))
         .send()
         .await
         .expect("Failed to get online users");
@@ -254,7 +251,7 @@ async fn test_websocket_api_endpoints() {
 
     // Test WebSocket stats endpoint
     let response = client
-        .get(&format!("{}/ws/stats", base_url))
+        .get(format!("{}/ws/stats", base_url))
         .send()
         .await
         .expect("Failed to get WebSocket stats");
@@ -275,7 +272,7 @@ async fn test_websocket_api_endpoints() {
     });
 
     let response = client
-        .post(&format!("{}/ws/broadcast", base_url))
+        .post(format!("{}/ws/broadcast", base_url))
         .json(&broadcast_payload)
         .send()
         .await
@@ -542,7 +539,7 @@ mod user_tests {
 
         // Test request structure
         let switch_request = SwitchWorkspaceRequest {
-            workspace_id: workspace_id,
+            workspace_id,
         };
 
         assert_eq!(switch_request.workspace_id, workspace_id);

@@ -1,13 +1,15 @@
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::io::Write;
+use uuid::Uuid;
 
-use crate::schema::{invitations};
 use crate::db::models::workspace_member::WorkspaceMemberRole;
+use crate::schema::invitations;
 
 // InvitationStatus 枚举定义
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, diesel::FromSqlRow, diesel::AsExpression)]
+#[derive(
+    Debug, Clone, PartialEq, Serialize, Deserialize, diesel::FromSqlRow, diesel::AsExpression,
+)]
 #[diesel(sql_type = crate::schema::sql_types::InvitationStatus)]
 pub enum InvitationStatus {
     Pending,
@@ -16,8 +18,13 @@ pub enum InvitationStatus {
     Cancelled,
 }
 
-impl diesel::serialize::ToSql<crate::schema::sql_types::InvitationStatus, diesel::pg::Pg> for InvitationStatus {
-    fn to_sql<'b>(&'b self, out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>) -> diesel::serialize::Result {
+impl diesel::serialize::ToSql<crate::schema::sql_types::InvitationStatus, diesel::pg::Pg>
+    for InvitationStatus
+{
+    fn to_sql<'b>(
+        &'b self,
+        out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
+    ) -> diesel::serialize::Result {
         match *self {
             InvitationStatus::Pending => out.write_all(b"pending")?,
             InvitationStatus::Accepted => out.write_all(b"accepted")?,
@@ -28,8 +35,12 @@ impl diesel::serialize::ToSql<crate::schema::sql_types::InvitationStatus, diesel
     }
 }
 
-impl diesel::deserialize::FromSql<crate::schema::sql_types::InvitationStatus, diesel::pg::Pg> for InvitationStatus {
-    fn from_sql(bytes: <diesel::pg::Pg as diesel::backend::Backend>::RawValue<'_>) -> diesel::deserialize::Result<Self> {
+impl diesel::deserialize::FromSql<crate::schema::sql_types::InvitationStatus, diesel::pg::Pg>
+    for InvitationStatus
+{
+    fn from_sql(
+        bytes: <diesel::pg::Pg as diesel::backend::Backend>::RawValue<'_>,
+    ) -> diesel::deserialize::Result<Self> {
         match <String as diesel::deserialize::FromSql<diesel::sql_types::Text, diesel::pg::Pg>>::from_sql(bytes)?.as_str() {
             "pending" => Ok(InvitationStatus::Pending),
             "accepted" => Ok(InvitationStatus::Accepted),

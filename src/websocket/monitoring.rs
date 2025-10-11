@@ -1,10 +1,10 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// 性能指标
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,7 +28,7 @@ pub struct ConnectionQuality {
     pub packet_loss_rate: f64,
     pub last_ping_time: DateTime<Utc>,
     pub connection_stability: f64, // 0.0-1.0, 1.0表示最稳定
-    pub bandwidth_usage: u64, // bytes per second
+    pub bandwidth_usage: u64,      // bytes per second
 }
 
 /// 系统健康状态
@@ -142,17 +142,23 @@ impl WebSocketMonitor {
         // 初始化连接质量数据
         let mut quality_map = self.connection_quality.write().unwrap();
         let connection_id_clone = connection_id.clone();
-        quality_map.insert(connection_id_clone.clone(), ConnectionQuality {
-            user_id,
-            connection_id: connection_id_clone.clone(),
-            latency_ms: 0.0,
-            packet_loss_rate: 0.0,
-            last_ping_time: Utc::now(),
-            connection_stability: 1.0,
-            bandwidth_usage: 0,
-        });
+        quality_map.insert(
+            connection_id_clone.clone(),
+            ConnectionQuality {
+                user_id,
+                connection_id: connection_id_clone.clone(),
+                latency_ms: 0.0,
+                packet_loss_rate: 0.0,
+                last_ping_time: Utc::now(),
+                connection_stability: 1.0,
+                bandwidth_usage: 0,
+            },
+        );
 
-        info!("New connection recorded: user_id={}, connection_id={}", user_id, connection_id_clone);
+        info!(
+            "New connection recorded: user_id={}, connection_id={}",
+            user_id, connection_id_clone
+        );
     }
 
     /// 记录连接断开
@@ -164,7 +170,10 @@ impl WebSocketMonitor {
         let mut quality_map = self.connection_quality.write().unwrap();
         quality_map.remove(connection_id);
 
-        debug!("Connection disconnection recorded: connection_id={}", connection_id);
+        debug!(
+            "Connection disconnection recorded: connection_id={}",
+            connection_id
+        );
     }
 
     /// 记录消息发送
@@ -179,7 +188,10 @@ impl WebSocketMonitor {
             quality.bandwidth_usage += message_size as u64;
         }
 
-        debug!("Message sent recorded: connection_id={}, size={}", connection_id, message_size);
+        debug!(
+            "Message sent recorded: connection_id={}, size={}",
+            connection_id, message_size
+        );
     }
 
     /// 记录消息接收
@@ -194,7 +206,10 @@ impl WebSocketMonitor {
             quality.bandwidth_usage += message_size as u64;
         }
 
-        debug!("Message received recorded: connection_id={}, size={}", connection_id, message_size);
+        debug!(
+            "Message received recorded: connection_id={}, size={}",
+            connection_id, message_size
+        );
     }
 
     /// 记录命令处理
@@ -217,7 +232,9 @@ impl WebSocketMonitor {
         // 更新错误率
         if !success {
             let mut error_summary = self.error_summary.write().unwrap();
-            *error_summary.entry("command_failed".to_string()).or_insert(0) += 1;
+            *error_summary
+                .entry("command_failed".to_string())
+                .or_insert(0) += 1;
         }
 
         // 计算错误率
@@ -229,11 +246,19 @@ impl WebSocketMonitor {
             0.0
         };
 
-        debug!("Command processed recorded: response_time={:?}, success={}", response_time, success);
+        debug!(
+            "Command processed recorded: response_time={:?}, success={}",
+            response_time, success
+        );
     }
 
     /// 记录连接质量数据
-    pub async fn record_connection_quality(&self, connection_id: &str, latency_ms: f64, packet_loss_rate: f64) {
+    pub async fn record_connection_quality(
+        &self,
+        connection_id: &str,
+        latency_ms: f64,
+        packet_loss_rate: f64,
+    ) {
         let mut quality_map = self.connection_quality.write().unwrap();
         if let Some(quality) = quality_map.get_mut(connection_id) {
             quality.latency_ms = latency_ms;
@@ -249,8 +274,12 @@ impl WebSocketMonitor {
             let packet_loss_score = (1.0 - packet_loss_rate).max(0.0);
             quality.connection_stability = (latency_score + packet_loss_score) / 2.0;
 
-            debug!("Connection quality updated: connection_id={}, latency={}ms, packet_loss={}%",
-                   connection_id, latency_ms, packet_loss_rate * 100.0);
+            debug!(
+                "Connection quality updated: connection_id={}, latency={}ms, packet_loss={}%",
+                connection_id,
+                latency_ms,
+                packet_loss_rate * 100.0
+            );
         }
     }
 
@@ -260,13 +289,22 @@ impl WebSocketMonitor {
         *error_summary.entry(error_type.to_string()).or_insert(0) += 1;
 
         // 记录详细错误信息
-        warn!("Error recorded: type={}, message={}", error_type, error_message);
+        warn!(
+            "Error recorded: type={}, message={}",
+            error_type, error_message
+        );
     }
 
     /// 获取监控数据
     pub async fn get_monitoring_data(&self) -> MonitoringData {
         let metrics = self.metrics.read().unwrap().clone();
-        let connection_quality: Vec<ConnectionQuality> = self.connection_quality.read().unwrap().values().cloned().collect();
+        let connection_quality: Vec<ConnectionQuality> = self
+            .connection_quality
+            .read()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect();
         let health_checks = self.health_checks.read().unwrap().clone();
         let error_summary = self.error_summary.read().unwrap().clone();
 
@@ -320,7 +358,10 @@ impl WebSocketMonitor {
         if metrics.average_response_time_ms > 1000.0 {
             health_checks.push(HealthCheck {
                 status: HealthStatus::Warning,
-                message: format!("High average response time: {:.2}ms", metrics.average_response_time_ms),
+                message: format!(
+                    "High average response time: {:.2}ms",
+                    metrics.average_response_time_ms
+                ),
                 timestamp: Utc::now(),
                 details: HashMap::new(),
             });
@@ -328,7 +369,8 @@ impl WebSocketMonitor {
 
         // 检查连接质量
         let quality_map = self.connection_quality.read().unwrap();
-        let poor_connections = quality_map.values()
+        let poor_connections = quality_map
+            .values()
             .filter(|q| q.connection_stability < 0.5)
             .count();
 
@@ -345,7 +387,10 @@ impl WebSocketMonitor {
         let mut health_checks_storage = self.health_checks.write().unwrap();
         *health_checks_storage = health_checks;
 
-        info!("Health check completed: {} issues found", health_checks_storage.len());
+        info!(
+            "Health check completed: {} issues found",
+            health_checks_storage.len()
+        );
     }
 
     /// 启动后台监控任务
@@ -391,7 +436,12 @@ impl WebSocketMonitor {
 
     /// 获取连接质量列表
     pub async fn get_connection_quality(&self) -> Vec<ConnectionQuality> {
-        self.connection_quality.read().unwrap().values().cloned().collect()
+        self.connection_quality
+            .read()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// 获取健康检查结果
@@ -440,7 +490,9 @@ mod tests {
         let connection_id = "test-connection".to_string();
 
         // 记录连接
-        monitor.record_connection(user_id, connection_id.clone()).await;
+        monitor
+            .record_connection(user_id, connection_id.clone())
+            .await;
         let metrics = monitor.get_performance_metrics().await;
         assert_eq!(metrics.total_connections, 1);
         assert_eq!(metrics.active_connections, 1);
@@ -463,11 +515,17 @@ mod tests {
         let monitor = WebSocketMonitor::new(MonitoringConfig::default());
 
         // 记录成功的命令
-        monitor.record_command_processed(Duration::from_millis(50), true).await;
-        monitor.record_command_processed(Duration::from_millis(100), true).await;
+        monitor
+            .record_command_processed(Duration::from_millis(50), true)
+            .await;
+        monitor
+            .record_command_processed(Duration::from_millis(100), true)
+            .await;
 
         // 记录失败的命令
-        monitor.record_command_processed(Duration::from_millis(200), false).await;
+        monitor
+            .record_command_processed(Duration::from_millis(200), false)
+            .await;
 
         let metrics = monitor.get_performance_metrics().await;
         assert_eq!(metrics.total_commands_processed, 3);
@@ -481,8 +539,12 @@ mod tests {
         let user_id = Uuid::new_v4();
         let connection_id = "test-connection".to_string();
 
-        monitor.record_connection(user_id, connection_id.clone()).await;
-        monitor.record_connection_quality(&connection_id, 50.0, 0.01).await;
+        monitor
+            .record_connection(user_id, connection_id.clone())
+            .await;
+        monitor
+            .record_connection_quality(&connection_id, 50.0, 0.01)
+            .await;
 
         let quality_list = monitor.get_connection_quality().await;
         assert_eq!(quality_list.len(), 1);

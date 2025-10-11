@@ -1,7 +1,7 @@
+use crate::db::enums::LabelLevel;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::db::enums::LabelLevel;
 
 // Label models
 #[derive(Queryable, Selectable, Serialize, Deserialize, Clone)]

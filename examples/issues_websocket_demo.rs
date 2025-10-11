@@ -24,7 +24,10 @@ fn main() {
     });
 
     println!("1. 创建 Issue 命令:");
-    println!("{}", serde_json::to_string_pretty(&create_issue_cmd).unwrap());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&create_issue_cmd).unwrap()
+    );
 
     // 更新 issue 命令示例
     let update_issue_cmd = json!({
@@ -40,7 +43,10 @@ fn main() {
     });
 
     println!("\n2. 更新 Issue 命令:");
-    println!("{}", serde_json::to_string_pretty(&update_issue_cmd).unwrap());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&update_issue_cmd).unwrap()
+    );
 
     // 查询 issues 命令示例
     let query_issues_cmd = json!({
@@ -56,7 +62,10 @@ fn main() {
     });
 
     println!("\n3. 查询 Issues 命令:");
-    println!("{}", serde_json::to_string_pretty(&query_issues_cmd).unwrap());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&query_issues_cmd).unwrap()
+    );
 
     // 获取单个 issue 命令示例
     let get_issue_cmd = json!({
@@ -76,7 +85,10 @@ fn main() {
     });
 
     println!("\n5. 删除 Issue 命令:");
-    println!("{}", serde_json::to_string_pretty(&delete_issue_cmd).unwrap());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&delete_issue_cmd).unwrap()
+    );
 
     println!("\n支持的功能:");
     println!("- 创建 Issue (create_issue)");

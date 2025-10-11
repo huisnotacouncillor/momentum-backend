@@ -77,7 +77,7 @@ impl IssuesService {
                     .filter(t::id.eq(issue.team_id))
                     .first::<Team>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(&format!("Failed to load team: {}", e)))?
+                    .map_err(|e| AppError::internal(format!("Failed to load team: {}", e)))?
                 {
                     resp.team_key = Some(team.team_key.clone());
                     resp.team = Some(TeamBasicInfo {
@@ -93,11 +93,11 @@ impl IssuesService {
             // Determine states source
             let states = if let Some(wf_id) = issue.workflow_id {
                 WorkflowsRepo::list_states_by_workflow(conn, wf_id).map_err(|e| {
-                    AppError::internal(&format!("Failed to load workflow states: {}", e))
+                    AppError::internal(format!("Failed to load workflow states: {}", e))
                 })?
             } else {
                 WorkflowsRepo::list_team_default_states(conn, issue.team_id).map_err(|e| {
-                    AppError::internal(&format!("Failed to load team default states: {}", e))
+                    AppError::internal(format!("Failed to load team default states: {}", e))
                 })?
             };
             resp.workflow_states = states
@@ -126,7 +126,7 @@ impl IssuesService {
             parent_issue_id: req.parent_issue_id,
             title: req.title.clone(),
             description: req.description.clone(),
-            priority: req.priority.as_ref().map(|p| Self::priority_to_string(p)),
+            priority: req.priority.as_ref().map(Self::priority_to_string),
             is_changelog_candidate: Some(false),
             team_id: req.team_id,
             workflow_id: req.workflow_id,
@@ -134,7 +134,7 @@ impl IssuesService {
         };
 
         IssueRepo::insert(conn, &new_issue)
-            .map_err(|e| AppError::internal(&format!("Failed to create issue: {}", e)))
+            .map_err(|e| AppError::internal(format!("Failed to create issue: {}", e)))
     }
 
     pub fn update(
@@ -193,7 +193,7 @@ impl IssuesService {
                     .select((teams::dsl::workspace_id,))
                     .first::<(uuid::Uuid,)>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(&format!("Failed to validate team: {}", e)))?;
+                    .map_err(|e| AppError::internal(format!("Failed to validate team: {}", e)))?;
                 match owner_ws {
                     Some((ws_id,)) if ws_id == ctx.workspace_id => {}
                     _ => return Err(AppError::validation("Invalid team_id for workspace")),
@@ -208,7 +208,7 @@ impl IssuesService {
                     .first::<(uuid::Uuid,)>(conn)
                     .optional()
                     .map_err(|e| {
-                        AppError::internal(&format!("Failed to validate project: {}", e))
+                        AppError::internal(format!("Failed to validate project: {}", e))
                     })?;
                 match proj_ws {
                     Some((ws_id,)) if ws_id == ctx.workspace_id => {}
@@ -226,7 +226,7 @@ impl IssuesService {
                     .select((cycles::dsl::id,))
                     .first::<(uuid::Uuid,)>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(&format!("Failed to validate cycle: {}", e)))?;
+                    .map_err(|e| AppError::internal(format!("Failed to validate cycle: {}", e)))?;
                 if ok.is_none() {
                     return Err(AppError::validation("Invalid cycle_id for workspace"));
                 }
@@ -240,7 +240,7 @@ impl IssuesService {
                     .first::<(uuid::Uuid,)>(conn)
                     .optional()
                     .map_err(|e| {
-                        AppError::internal(&format!("Failed to validate assignee: {}", e))
+                        AppError::internal(format!("Failed to validate assignee: {}", e))
                     })?;
                 if exists.is_none() {
                     return Err(AppError::validation("Invalid assignee_id"));
@@ -261,7 +261,7 @@ impl IssuesService {
                     .first::<(Uuid,)>(conn)
                     .optional()
                     .map_err(|e| {
-                        AppError::internal(&format!("Failed to validate workflow state: {}", e))
+                        AppError::internal(format!("Failed to validate workflow state: {}", e))
                     })?;
                 if found.is_none() {
                     return Err(AppError::validation(
@@ -280,7 +280,7 @@ impl IssuesService {
                     .first::<(Uuid,)>(conn)
                     .optional()
                     .map_err(|e| {
-                        AppError::internal(&format!("Failed to validate workflow state: {}", e))
+                        AppError::internal(format!("Failed to validate workflow state: {}", e))
                     })?;
                 match found {
                     Some((wf_id,)) => {
@@ -302,7 +302,7 @@ impl IssuesService {
                 .select((w::dsl::id,))
                 .first::<(Uuid,)>(conn)
                 .optional()
-                .map_err(|e| AppError::internal(&format!("Failed to validate workflow: {}", e)))?;
+                .map_err(|e| AppError::internal(format!("Failed to validate workflow: {}", e)))?;
             if ok.is_none() {
                 return Err(AppError::validation("Invalid workflow_id for team"));
             }
@@ -331,7 +331,7 @@ impl IssuesService {
                     .count()
                     .get_result::<i64>(conn)
                     .map_err(|e| {
-                        AppError::internal(&format!("Failed to validate labels: {}", e))
+                        AppError::internal(format!("Failed to validate labels: {}", e))
                     })?;
                 if count != label_ids.len() as i64 {
                     return Err(AppError::validation("Invalid label_ids for workspace"));
@@ -341,7 +341,7 @@ impl IssuesService {
             // Replace issue labels
             diesel::delete(il::dsl::issue_labels.filter(il::dsl::issue_id.eq(issue_id)))
                 .execute(conn)
-                .map_err(|e| AppError::internal(&format!("Failed to clear issue labels: {}", e)))?;
+                .map_err(|e| AppError::internal(format!("Failed to clear issue labels: {}", e)))?;
 
             if !label_ids.is_empty() {
                 let new_rows: Vec<crate::db::models::issue::NewIssueLabel> = label_ids
@@ -355,7 +355,7 @@ impl IssuesService {
                     .values(&new_rows)
                     .execute(conn)
                     .map_err(|e| {
-                        AppError::internal(&format!("Failed to insert issue labels: {}", e))
+                        AppError::internal(format!("Failed to insert issue labels: {}", e))
                     })?;
             }
         }
@@ -376,7 +376,7 @@ impl IssuesService {
             let updated = diesel::update(i::issues.filter(i::id.eq(issue_id)))
                 .set(&cs)
                 .get_result::<Issue>(conn)
-                .map_err(|e| AppError::internal(&format!("Failed to update issue: {}", e)))?;
+                .map_err(|e| AppError::internal(format!("Failed to update issue: {}", e)))?;
             Ok(updated)
         } else {
             // No changes to issue table; return current row
@@ -398,7 +398,7 @@ impl IssuesService {
         }
 
         IssueRepo::delete_by_id(conn, issue_id)
-            .map_err(|e| AppError::internal(&format!("Failed to delete issue: {}", e)))?;
+            .map_err(|e| AppError::internal(format!("Failed to delete issue: {}", e)))?;
 
         Ok(())
     }
@@ -420,7 +420,7 @@ impl IssuesService {
                 .filter(t::id.eq(issue.team_id))
                 .first::<Team>(conn)
                 .optional()
-                .map_err(|e| AppError::internal(&format!("Failed to load team: {}", e)))?
+                .map_err(|e| AppError::internal(format!("Failed to load team: {}", e)))?
             {
                 resp.team_key = Some(team.team_key.clone());
                 resp.team = Some(TeamBasicInfo {
@@ -441,7 +441,7 @@ impl IssuesService {
                 .filter(p::id.eq(proj_id))
                 .first::<crate::db::models::project::Project>(conn)
                 .optional()
-                .map_err(|e| AppError::internal(&format!("Failed to load project: {}", e)))?
+                .map_err(|e| AppError::internal(format!("Failed to load project: {}", e)))?
             {
                 // Build ProjectInfo
                 // load status
@@ -450,7 +450,7 @@ impl IssuesService {
                     .filter(ps::id.eq(project.project_status_id))
                     .first::<crate::db::models::project_status::ProjectStatus>(conn)
                     .map_err(|e| {
-                        AppError::internal(&format!("Failed to load project status: {}", e))
+                        AppError::internal(format!("Failed to load project status: {}", e))
                     })?;
                 // load owner basic info
                 use crate::schema::users::dsl as u;
@@ -458,7 +458,7 @@ impl IssuesService {
                     .filter(u::id.eq(project.owner_id))
                     .first::<crate::db::models::auth::User>(conn)
                     .map_err(|e| {
-                        AppError::internal(&format!("Failed to load project owner: {}", e))
+                        AppError::internal(format!("Failed to load project owner: {}", e))
                     })?;
 
                 // Get all available statuses for this workspace
@@ -467,7 +467,7 @@ impl IssuesService {
                     .select(crate::db::models::project_status::ProjectStatus::as_select())
                     .load::<crate::db::models::project_status::ProjectStatus>(conn)
                     .map_err(|e| {
-                        AppError::internal(&format!("Failed to load project statuses: {}", e))
+                        AppError::internal(format!("Failed to load project statuses: {}", e))
                     })?;
 
                 let available_statuses: Vec<crate::db::models::project_status::ProjectStatusInfo> =
@@ -507,7 +507,7 @@ impl IssuesService {
                 .filter(u::id.eq(uid))
                 .first::<crate::db::models::auth::User>(conn)
                 .optional()
-                .map_err(|e| AppError::internal(&format!("Failed to load assignee: {}", e)))?
+                .map_err(|e| AppError::internal(format!("Failed to load assignee: {}", e)))?
             {
                 resp.assignee = Some(crate::db::models::auth::UserBasicInfo {
                     id: user.id,
@@ -535,7 +535,7 @@ impl IssuesService {
                 .filter(i::parent_issue_id.eq(Some(issue.id)))
                 .order(i::created_at.asc())
                 .load::<Issue>(conn)
-                .map_err(|e| AppError::internal(&format!("Failed to load child issues: {}", e)))?;
+                .map_err(|e| AppError::internal(format!("Failed to load child issues: {}", e)))?;
             resp.child_issues = children
                 .into_iter()
                 .map(crate::db::models::issue::IssueResponse::from)
@@ -545,11 +545,11 @@ impl IssuesService {
         // workflow states
         let states = if let Some(wf_id) = issue.workflow_id {
             WorkflowsRepo::list_states_by_workflow(conn, wf_id).map_err(|e| {
-                AppError::internal(&format!("Failed to load workflow states: {}", e))
+                AppError::internal(format!("Failed to load workflow states: {}", e))
             })?
         } else {
             WorkflowsRepo::list_team_default_states(conn, issue.team_id).map_err(|e| {
-                AppError::internal(&format!("Failed to load team default states: {}", e))
+                AppError::internal(format!("Failed to load team default states: {}", e))
             })?
         };
         resp.workflow_states = states
@@ -565,7 +565,7 @@ impl IssuesService {
                 .filter(il::dsl::issue_id.eq(issue.id))
                 .select(l::dsl::labels::all_columns())
                 .load::<crate::db::models::label::Label>(conn)
-                .map_err(|e| AppError::internal(&format!("Failed to load labels: {}", e)))?;
+                .map_err(|e| AppError::internal(format!("Failed to load labels: {}", e)))?;
             resp.labels = labels;
         }
 
@@ -576,7 +576,7 @@ impl IssuesService {
                 .filter(c::id.eq(cycle_id))
                 .first::<crate::db::models::cycle::Cycle>(conn)
                 .optional()
-                .map_err(|e| AppError::internal(&format!("Failed to load cycle: {}", e)))?
+                .map_err(|e| AppError::internal(format!("Failed to load cycle: {}", e)))?
             {
                 resp.cycle = Some(cycle);
             }

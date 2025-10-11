@@ -208,7 +208,7 @@ async fn run_connection_storm_test(config: &StressTestConfig) -> TestResults {
     let test_duration = start_time.elapsed();
     let successful = successful_connections.load(Ordering::Relaxed);
     let failed = failed_connections.load(Ordering::Relaxed);
-    let total_time = total_connection_time.lock().unwrap().clone();
+    let total_time = *total_connection_time.lock().unwrap();
 
     results.total_connections_attempted = config.num_connections;
     results.successful_connections = successful;
@@ -274,7 +274,7 @@ async fn run_message_throughput_test(config: &StressTestConfig) -> TestResults {
                                 while let Ok(Some(msg)) =
                                     timeout(Duration::from_secs(1), ws_receiver.next()).await
                                 {
-                                    if let Ok(_) = msg {
+                                    if msg.is_ok() {
                                         messages_received_clone_inner
                                             .fetch_add(1, Ordering::Relaxed);
                                     }
@@ -396,7 +396,7 @@ async fn run_sustained_load_test(config: &StressTestConfig) -> TestResults {
                                 while let Ok(Some(msg)) =
                                     timeout(Duration::from_secs(1), ws_receiver.next()).await
                                 {
-                                    if let Ok(_) = msg {
+                                    if msg.is_ok() {
                                         messages_received_clone_inner
                                             .fetch_add(1, Ordering::Relaxed);
                                     }
@@ -493,6 +493,7 @@ async fn run_sustained_load_test(config: &StressTestConfig) -> TestResults {
 }
 
 #[tokio::main]
+#[allow(clippy::field_reassign_with_default)]
 async fn main() {
     let matches = Command::new("WebSocket Stress Test")
         .version("1.0")
@@ -554,6 +555,7 @@ async fn main() {
         )
         .get_matches();
 
+    #[allow(clippy::field_reassign_with_default)]
     let mut config = StressTestConfig::default();
     config.websocket_url = matches.get_one::<String>("url").unwrap().clone();
     config.num_connections = matches

@@ -1,3 +1,4 @@
+use crate::validation::rules::{validate_password_strength, validate_username_format};
 use axum::async_trait;
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
@@ -6,7 +7,6 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
-use crate::validation::rules::{validate_password_strength, validate_username_format};
 
 // User models
 #[derive(Queryable, Selectable, Serialize, Deserialize, Clone, Debug)]
@@ -97,7 +97,11 @@ pub struct RegisterRequest {
     #[validate(custom(function = "validate_username_format"))]
     pub username: String,
 
-    #[validate(length(min = 1, max = 100, message = "Name must be between 1 and 100 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 100,
+        message = "Name must be between 1 and 100 characters"
+    ))]
     pub name: String,
 
     #[validate(custom(function = "validate_password_strength"))]
@@ -152,36 +156,61 @@ pub struct UserProfile {
 impl User {
     /// 获取处理后的头像 URL
     /// 如果 avatar_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
-    pub fn get_processed_avatar_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
-        self.avatar_url.as_ref().map(|url| asset_helper.process_url(url))
+    pub fn get_processed_avatar_url(
+        &self,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<String> {
+        self.avatar_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url))
     }
 
     /// 优化的头像 URL 处理方法，避免不必要的字符串分配
-    pub fn get_processed_avatar_url_ref<'a>(&'a self, asset_helper: &'a crate::utils::AssetUrlHelper) -> Option<std::borrow::Cow<'a, str>> {
-        self.avatar_url.as_ref().map(|url| asset_helper.process_url_ref(url))
+    pub fn get_processed_avatar_url_ref<'a>(
+        &'a self,
+        asset_helper: &'a crate::utils::AssetUrlHelper,
+    ) -> Option<std::borrow::Cow<'a, str>> {
+        self.avatar_url
+            .as_ref()
+            .map(|url| asset_helper.process_url_ref(url))
     }
 }
 
 impl AuthUser {
     /// 获取处理后的头像 URL
     /// 如果 avatar_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
-    pub fn get_processed_avatar_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
-        self.avatar_url.as_ref().map(|url| asset_helper.process_url(url))
+    pub fn get_processed_avatar_url(
+        &self,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<String> {
+        self.avatar_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url))
     }
 }
 
 impl UserBasicInfo {
     /// 获取处理后的头像 URL
     /// 如果 avatar_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
-    pub fn get_processed_avatar_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
-        self.avatar_url.as_ref().map(|url| asset_helper.process_url(url))
+    pub fn get_processed_avatar_url(
+        &self,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<String> {
+        self.avatar_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url))
     }
 }
 
 impl UserProfile {
     /// 获取处理后的头像 URL
     /// 如果 avatar_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
-    pub fn get_processed_avatar_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
-        self.avatar_url.as_ref().map(|url| asset_helper.process_url(url))
+    pub fn get_processed_avatar_url(
+        &self,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<String> {
+        self.avatar_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url))
     }
 }

@@ -1,9 +1,9 @@
 use redis::{AsyncCommands, RedisResult};
 use serde::{Deserialize, Serialize};
 
-use uuid::Uuid;
-use crate::db::models::auth::{AuthUser, UserProfile, UserBasicInfo};
+use crate::db::models::auth::{AuthUser, UserBasicInfo, UserProfile};
 use crate::error::AppError;
+use uuid::Uuid;
 
 /// 用户缓存键前缀
 const USER_CACHE_PREFIX: &str = "user:";
@@ -45,7 +45,8 @@ impl UserCache {
         let user_json = serde_json::to_string(user)
             .map_err(|e| AppError::Internal(format!("Failed to serialize user: {}", e)))?;
 
-        let _: () = conn.set_ex(&key, user_json, USER_CACHE_TTL)
+        let _: () = conn
+            .set_ex(&key, user_json, USER_CACHE_TTL)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to cache user: {}", e)))?;
 
@@ -57,14 +58,16 @@ impl UserCache {
         let mut conn = self.get_connection().await?;
         let key = format!("{}{}", USER_CACHE_PREFIX, user_id);
 
-        let user_json: Option<String> = conn.get(&key)
+        let user_json: Option<String> = conn
+            .get(&key)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to get cached user: {}", e)))?;
 
         match user_json {
             Some(json) => {
-                let user = serde_json::from_str(&json)
-                    .map_err(|e| AppError::Internal(format!("Failed to deserialize user: {}", e)))?;
+                let user = serde_json::from_str(&json).map_err(|e| {
+                    AppError::Internal(format!("Failed to deserialize user: {}", e))
+                })?;
                 Ok(Some(user))
             }
             None => Ok(None),
@@ -79,7 +82,8 @@ impl UserCache {
         let profile_json = serde_json::to_string(profile)
             .map_err(|e| AppError::Internal(format!("Failed to serialize user profile: {}", e)))?;
 
-        let _: () = conn.set_ex(&key, profile_json, USER_PROFILE_CACHE_TTL)
+        let _: () = conn
+            .set_ex(&key, profile_json, USER_PROFILE_CACHE_TTL)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to cache user profile: {}", e)))?;
 
@@ -91,14 +95,16 @@ impl UserCache {
         let mut conn = self.get_connection().await?;
         let key = format!("{}{}", USER_PROFILE_CACHE_PREFIX, user_id);
 
-        let profile_json: Option<String> = conn.get(&key)
+        let profile_json: Option<String> = conn
+            .get(&key)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to get cached user profile: {}", e)))?;
 
         match profile_json {
             Some(json) => {
-                let profile = serde_json::from_str(&json)
-                    .map_err(|e| AppError::Internal(format!("Failed to deserialize user profile: {}", e)))?;
+                let profile = serde_json::from_str(&json).map_err(|e| {
+                    AppError::Internal(format!("Failed to deserialize user profile: {}", e))
+                })?;
                 Ok(Some(profile))
             }
             None => Ok(None),
@@ -106,14 +112,19 @@ impl UserCache {
     }
 
     /// 缓存用户当前工作空间ID
-    pub async fn cache_user_workspace(&self, user_id: Uuid, workspace_id: Option<Uuid>) -> Result<(), AppError> {
+    pub async fn cache_user_workspace(
+        &self,
+        user_id: Uuid,
+        workspace_id: Option<Uuid>,
+    ) -> Result<(), AppError> {
         let mut conn = self.get_connection().await?;
         let key = format!("{}{}", USER_WORKSPACE_CACHE_PREFIX, user_id);
 
         let workspace_json = serde_json::to_string(&workspace_id)
             .map_err(|e| AppError::Internal(format!("Failed to serialize workspace ID: {}", e)))?;
 
-        let _: () = conn.set_ex(&key, workspace_json, USER_WORKSPACE_CACHE_TTL)
+        let _: () = conn
+            .set_ex(&key, workspace_json, USER_WORKSPACE_CACHE_TTL)
             .await
             .map_err(|e| AppError::Internal(format!("Failed to cache user workspace: {}", e)))?;
 
@@ -121,18 +132,22 @@ impl UserCache {
     }
 
     /// 获取缓存的用户当前工作空间ID
-    pub async fn get_user_workspace(&self, user_id: Uuid) -> Result<Option<Option<Uuid>>, AppError> {
+    pub async fn get_user_workspace(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<Option<Uuid>>, AppError> {
         let mut conn = self.get_connection().await?;
         let key = format!("{}{}", USER_WORKSPACE_CACHE_PREFIX, user_id);
 
-        let workspace_json: Option<String> = conn.get(&key)
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to get cached user workspace: {}", e)))?;
+        let workspace_json: Option<String> = conn.get(&key).await.map_err(|e| {
+            AppError::Internal(format!("Failed to get cached user workspace: {}", e))
+        })?;
 
         match workspace_json {
             Some(json) => {
-                let workspace_id = serde_json::from_str(&json)
-                    .map_err(|e| AppError::Internal(format!("Failed to deserialize workspace ID: {}", e)))?;
+                let workspace_id = serde_json::from_str(&json).map_err(|e| {
+                    AppError::Internal(format!("Failed to deserialize workspace ID: {}", e))
+                })?;
                 Ok(Some(workspace_id))
             }
             None => Ok(None),
@@ -195,15 +210,18 @@ impl UserCache {
             .map_err(|e| AppError::Internal(format!("Failed to get Redis info: {}", e)))?;
 
         // 计算用户相关键的数量
-        let user_keys: Vec<String> = conn.keys(format!("{}*", USER_CACHE_PREFIX))
+        let user_keys: Vec<String> = conn
+            .keys(format!("{}*", USER_CACHE_PREFIX))
             .await
             .map_err(|e| AppError::Internal(format!("Failed to get user keys: {}", e)))?;
 
-        let profile_keys: Vec<String> = conn.keys(format!("{}*", USER_PROFILE_CACHE_PREFIX))
+        let profile_keys: Vec<String> = conn
+            .keys(format!("{}*", USER_PROFILE_CACHE_PREFIX))
             .await
             .map_err(|e| AppError::Internal(format!("Failed to get profile keys: {}", e)))?;
 
-        let workspace_keys: Vec<String> = conn.keys(format!("{}*", USER_WORKSPACE_CACHE_PREFIX))
+        let workspace_keys: Vec<String> = conn
+            .keys(format!("{}*", USER_WORKSPACE_CACHE_PREFIX))
             .await
             .map_err(|e| AppError::Internal(format!("Failed to get workspace keys: {}", e)))?;
 

@@ -8,5 +8,3 @@ fn validate_create_workspace_rules() {
     assert!(validate_create_workspace("Acme", "-acme").is_err());
     assert!(validate_create_workspace("Acme", "acme-").is_err());
 }
-
-

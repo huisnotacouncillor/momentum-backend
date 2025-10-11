@@ -1,8 +1,8 @@
 use crate::config::Config;
 use chrono::Utc;
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use hmac::{Hmac, Mac};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -56,7 +56,8 @@ impl MessageSigner {
         let nonce = Uuid::new_v4().to_string();
 
         // 创建签名数据
-        let signature_data = self.create_signature_data(&message_id, timestamp, &nonce, payload, user_id);
+        let signature_data =
+            self.create_signature_data(&message_id, timestamp, &nonce, payload, user_id);
 
         // 生成签名
         let signature = self.generate_signature(&signature_data);
@@ -153,12 +154,7 @@ impl MessageSigner {
 
         format!(
             "{}:{}:{}:{}:{}:{}",
-            message_id,
-            timestamp,
-            nonce,
-            payload_str,
-            user_id,
-            self.secret_key
+            message_id, timestamp, nonce, payload_str, user_id, self.secret_key
         )
     }
 
@@ -186,7 +182,11 @@ impl MessageSigner {
         let mut processed = self.processed_messages.write().await;
         if processed.len() > 10000 {
             // 如果缓存太大，清理一半
-            let to_remove: Vec<String> = processed.iter().take(processed.len() / 2).cloned().collect();
+            let to_remove: Vec<String> = processed
+                .iter()
+                .take(processed.len() / 2)
+                .cloned()
+                .collect();
             for id in to_remove {
                 processed.remove(&id);
             }
@@ -217,9 +217,7 @@ pub enum SecurityError {
         allowed_window: i64,
     },
     /// 重放攻击检测
-    ReplayAttack {
-        message_id: String,
-    },
+    ReplayAttack { message_id: String },
     /// 无效签名
     InvalidSignature {
         provided: String,
@@ -227,9 +225,7 @@ pub enum SecurityError {
         message_id: String,
     },
     /// 消息格式错误
-    InvalidMessageFormat {
-        reason: String,
-    },
+    InvalidMessageFormat { reason: String },
 }
 
 impl std::fmt::Display for SecurityError {
@@ -239,27 +235,26 @@ impl std::fmt::Display for SecurityError {
                 message_timestamp,
                 server_timestamp,
                 time_difference,
-                allowed_window
+                allowed_window,
             } => {
                 write!(
                     f,
                     "Message expired: message_timestamp={}, server_timestamp={}, time_difference={}, allowed_window={}",
-                    message_timestamp,
-                    server_timestamp,
-                    time_difference,
-                    allowed_window
+                    message_timestamp, server_timestamp, time_difference, allowed_window
                 )
             }
             SecurityError::ReplayAttack { message_id } => {
                 write!(f, "Replay attack detected: message_id={}", message_id)
             }
-            SecurityError::InvalidSignature { provided, expected, message_id } => {
+            SecurityError::InvalidSignature {
+                provided,
+                expected,
+                message_id,
+            } => {
                 write!(
                     f,
                     "Invalid signature: provided={}, expected={}, message_id={}",
-                    provided,
-                    expected,
-                    message_id
+                    provided, expected, message_id
                 )
             }
             SecurityError::InvalidMessageFormat { reason } => {
@@ -384,6 +379,9 @@ mod tests {
         tampered_message.signature = "tampered_signature".to_string();
 
         let result = signer.verify_message(&tampered_message).await;
-        assert!(matches!(result, Err(SecurityError::InvalidSignature { .. })));
+        assert!(matches!(
+            result,
+            Err(SecurityError::InvalidSignature { .. })
+        ));
     }
 }

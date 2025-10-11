@@ -5,13 +5,19 @@ use crate::db::models::cycle::{Cycle, NewCycle};
 pub struct CyclesRepo;
 
 impl CyclesRepo {
-    pub fn insert(conn: &mut PgConnection, new_cycle: &NewCycle) -> Result<Cycle, diesel::result::Error> {
+    pub fn insert(
+        conn: &mut PgConnection,
+        new_cycle: &NewCycle,
+    ) -> Result<Cycle, diesel::result::Error> {
         diesel::insert_into(crate::schema::cycles::table)
             .values(new_cycle)
             .get_result(conn)
     }
 
-    pub fn list_by_workspace(conn: &mut PgConnection, ws_id: uuid::Uuid) -> Result<Vec<Cycle>, diesel::result::Error> {
+    pub fn list_by_workspace(
+        conn: &mut PgConnection,
+        ws_id: uuid::Uuid,
+    ) -> Result<Vec<Cycle>, diesel::result::Error> {
         use crate::schema::{cycles, teams};
         cycles::table
             .inner_join(teams::table.on(cycles::team_id.eq(teams::id)))
@@ -36,14 +42,23 @@ impl CyclesRepo {
             .optional()
     }
 
-    pub fn delete_by_id(conn: &mut PgConnection, cycle_id_val: uuid::Uuid) -> Result<usize, diesel::result::Error> {
+    pub fn delete_by_id(
+        conn: &mut PgConnection,
+        cycle_id_val: uuid::Uuid,
+    ) -> Result<usize, diesel::result::Error> {
         use crate::schema::cycles::dsl::*;
         diesel::delete(cycles.filter(id.eq(cycle_id_val))).execute(conn)
     }
 
-    pub fn find_by_id(conn: &mut PgConnection, cycle_id: uuid::Uuid) -> Result<Option<Cycle>, diesel::result::Error> {
+    pub fn find_by_id(
+        conn: &mut PgConnection,
+        cycle_id: uuid::Uuid,
+    ) -> Result<Option<Cycle>, diesel::result::Error> {
         use crate::schema::cycles::dsl::*;
-        cycles.filter(id.eq(cycle_id)).first::<Cycle>(conn).optional()
+        cycles
+            .filter(id.eq(cycle_id))
+            .first::<Cycle>(conn)
+            .optional()
     }
 
     pub fn update_fields(
@@ -88,5 +103,3 @@ impl CyclesRepo {
         c::cycles.filter(c::id.eq(cycle_id)).first::<Cycle>(conn)
     }
 }
-
-

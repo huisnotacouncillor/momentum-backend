@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 
-use crate::db::models::auth::{User, NewUser, UserCredential, NewUserCredential};
+use crate::db::models::auth::{NewUser, NewUserCredential, User, UserCredential};
 
 pub struct AuthRepo;
 
@@ -10,7 +10,10 @@ impl AuthRepo {
         target_email: &str,
     ) -> Result<Option<User>, diesel::result::Error> {
         use crate::schema::users::dsl::*;
-        users.filter(email.eq(target_email)).first::<User>(conn).optional()
+        users
+            .filter(email.eq(target_email))
+            .first::<User>(conn)
+            .optional()
     }
 
     pub fn find_by_username(
@@ -18,7 +21,10 @@ impl AuthRepo {
         target_username: &str,
     ) -> Result<Option<User>, diesel::result::Error> {
         use crate::schema::users::dsl::*;
-        users.filter(username.eq(target_username)).first::<User>(conn).optional()
+        users
+            .filter(username.eq(target_username))
+            .first::<User>(conn)
+            .optional()
     }
 
     pub fn find_by_id(
@@ -34,10 +40,7 @@ impl AuthRepo {
         target_email: &str,
     ) -> Result<bool, diesel::result::Error> {
         use crate::schema::users::dsl::*;
-        diesel::select(diesel::dsl::exists(
-            users.filter(email.eq(target_email))
-        ))
-        .get_result(conn)
+        diesel::select(diesel::dsl::exists(users.filter(email.eq(target_email)))).get_result(conn)
     }
 
     pub fn exists_by_username(
@@ -46,7 +49,7 @@ impl AuthRepo {
     ) -> Result<bool, diesel::result::Error> {
         use crate::schema::users::dsl::*;
         diesel::select(diesel::dsl::exists(
-            users.filter(username.eq(target_username))
+            users.filter(username.eq(target_username)),
         ))
         .get_result(conn)
     }
@@ -74,13 +77,21 @@ impl AuthRepo {
         target_user_id: uuid::Uuid,
     ) -> Result<Option<UserCredential>, diesel::result::Error> {
         use crate::schema::user_credentials::dsl::*;
-        user_credentials.filter(user_id.eq(target_user_id)).first::<UserCredential>(conn).optional()
+        user_credentials
+            .filter(user_id.eq(target_user_id))
+            .first::<UserCredential>(conn)
+            .optional()
     }
 
     pub fn update_user_fields(
         conn: &mut PgConnection,
         user_id: uuid::Uuid,
-        changes: (Option<String>, Option<String>, Option<String>, Option<String>),
+        changes: (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ),
     ) -> Result<User, diesel::result::Error> {
         use crate::schema::users::dsl as u;
 
@@ -92,17 +103,24 @@ impl AuthRepo {
             changes.3.clone(),
         ) {
             return diesel::update(u::users.filter(u::id.eq(user_id)))
-                .set((u::name.eq(name_val), u::username.eq(username_val), u::email.eq(email_val), u::avatar_url.eq(avatar_url_val)))
+                .set((
+                    u::name.eq(name_val),
+                    u::username.eq(username_val),
+                    u::email.eq(email_val),
+                    u::avatar_url.eq(avatar_url_val),
+                ))
                 .get_result(conn);
         }
 
-        if let (Some(name_val), Some(username_val), Some(email_val)) = (
-            changes.0.clone(),
-            changes.1.clone(),
-            changes.2.clone(),
-        ) {
+        if let (Some(name_val), Some(username_val), Some(email_val)) =
+            (changes.0.clone(), changes.1.clone(), changes.2.clone())
+        {
             return diesel::update(u::users.filter(u::id.eq(user_id)))
-                .set((u::name.eq(name_val), u::username.eq(username_val), u::email.eq(email_val)))
+                .set((
+                    u::name.eq(name_val),
+                    u::username.eq(username_val),
+                    u::email.eq(email_val),
+                ))
                 .get_result(conn);
         }
 

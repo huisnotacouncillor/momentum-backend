@@ -10,10 +10,10 @@ pub mod utils;
 pub mod validation;
 pub mod websocket;
 
-use crate::db::DbPool;
 use crate::config::Config;
+use crate::db::DbPool;
+use crate::middleware::auth::{AuthConfig, AuthService};
 use crate::utils::AssetUrlHelper;
-use crate::middleware::auth::{AuthService, AuthConfig};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -55,13 +55,10 @@ pub fn init_tracing(config: &Config) {
 
     match config.log_format.as_str() {
         "json" => {
-            tracing_subscriber::fmt()
-                .json()
-                .init();
-        },
+            tracing_subscriber::fmt().json().init();
+        }
         _ => {
-            tracing_subscriber::fmt()
-                .init();
+            tracing_subscriber::fmt().init();
         }
     }
 }

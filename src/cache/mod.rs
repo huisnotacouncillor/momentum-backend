@@ -1,15 +1,14 @@
-pub mod user_cache;
 pub mod redis;
+pub mod user_cache;
 
-pub use user_cache::{UserCache, CacheStats, CacheConfig};
+pub use user_cache::{CacheConfig, CacheStats, UserCache};
 
-use ::redis::{AsyncCommands, RedisResult, Client, cmd};
-use uuid::Uuid;
 use crate::error::AppError;
+use ::redis::{AsyncCommands, Client, RedisResult, cmd};
+use uuid::Uuid;
 
 /// 全局缓存操作函数
 /// 这些函数提供了简化的缓存操作接口
-
 /// 设置用户当前工作空间ID到缓存
 pub async fn set_user_current_workspace_id(
     redis_client: &Client,
@@ -25,7 +24,8 @@ pub async fn set_user_current_workspace_id(
     let workspace_json = serde_json::to_string(&workspace_id)
         .map_err(|e| AppError::Internal(format!("Failed to serialize workspace ID: {}", e)))?;
 
-    let _: () = conn.set_ex(&key, workspace_json, 7200)
+    let _: () = conn
+        .set_ex(&key, workspace_json, 7200)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to cache user workspace: {}", e)))?;
 
@@ -50,8 +50,9 @@ pub async fn get_user_current_workspace_id(
 
     match workspace_json {
         Some(json) => {
-            let workspace_id = serde_json::from_str(&json)
-                .map_err(|e| AppError::Internal(format!("Failed to deserialize workspace ID: {}", e)))?;
+            let workspace_id = serde_json::from_str(&json).map_err(|e| {
+                AppError::Internal(format!("Failed to deserialize workspace ID: {}", e))
+            })?;
             Ok(Some(workspace_id))
         }
         None => Ok(None),
@@ -90,7 +91,8 @@ pub async fn cache_session(
     let user_json = serde_json::to_string(&user_id)
         .map_err(|e| AppError::Internal(format!("Failed to serialize user ID: {}", e)))?;
 
-    let _: () = conn.set_ex(&key, user_json, ttl)
+    let _: () = conn
+        .set_ex(&key, user_json, ttl)
         .await
         .map_err(|e| AppError::Internal(format!("Failed to cache session: {}", e)))?;
 
@@ -124,10 +126,7 @@ pub async fn get_session(
 }
 
 /// 删除会话缓存
-pub async fn delete_session(
-    redis_client: &Client,
-    session_id: &str,
-) -> Result<(), AppError> {
+pub async fn delete_session(redis_client: &Client, session_id: &str) -> Result<(), AppError> {
     let mut conn = redis_client
         .get_multiplexed_async_connection()
         .await

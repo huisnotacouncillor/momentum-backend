@@ -1,5 +1,5 @@
-use diesel::prelude::*;
 use chrono::Utc;
+use diesel::prelude::*;
 use uuid::Uuid;
 
 use crate::{
@@ -20,7 +20,7 @@ impl CommentsService {
         include_deleted: bool,
     ) -> Result<Vec<Comment>, AppError> {
         CommentRepo::list_by_issue(conn, issue_id, include_deleted)
-            .map_err(|e| AppError::internal(&format!("Failed to list comments: {}", e)))
+            .map_err(|e| AppError::internal(format!("Failed to list comments: {}", e)))
     }
 
     pub fn create(
@@ -41,7 +41,7 @@ impl CommentsService {
         };
 
         CommentRepo::insert(conn, &new_comment)
-            .map_err(|e| AppError::internal(&format!("Failed to create comment: {}", e)))
+            .map_err(|e| AppError::internal(format!("Failed to create comment: {}", e)))
     }
 
     pub fn update(
@@ -54,7 +54,7 @@ impl CommentsService {
 
         // Check if comment exists and belongs to user
         let comment = CommentRepo::find_by_id(conn, comment_id)
-            .map_err(|e| AppError::internal(&format!("Failed to find comment: {}", e)))?
+            .map_err(|e| AppError::internal(format!("Failed to find comment: {}", e)))?
             .ok_or_else(|| AppError::not_found("comment"))?;
 
         if comment.author_id != ctx.user_id {
@@ -62,7 +62,7 @@ impl CommentsService {
         }
 
         CommentRepo::update_content(conn, comment_id, content)
-            .map_err(|e| AppError::internal(&format!("Failed to update comment: {}", e)))
+            .map_err(|e| AppError::internal(format!("Failed to update comment: {}", e)))
     }
 
     pub fn delete(
@@ -72,7 +72,7 @@ impl CommentsService {
     ) -> Result<(), AppError> {
         // Check if comment exists and belongs to user
         let comment = CommentRepo::find_by_id(conn, comment_id)
-            .map_err(|e| AppError::internal(&format!("Failed to find comment: {}", e)))?
+            .map_err(|e| AppError::internal(format!("Failed to find comment: {}", e)))?
             .ok_or_else(|| AppError::not_found("comment"))?;
 
         if comment.author_id != ctx.user_id {
@@ -80,7 +80,7 @@ impl CommentsService {
         }
 
         CommentRepo::soft_delete(conn, comment_id)
-            .map_err(|e| AppError::internal(&format!("Failed to delete comment: {}", e)))?;
+            .map_err(|e| AppError::internal(format!("Failed to delete comment: {}", e)))?;
 
         Ok(())
     }
@@ -91,7 +91,7 @@ impl CommentsService {
         comment_id: Uuid,
     ) -> Result<Comment, AppError> {
         CommentRepo::find_by_id(conn, comment_id)
-            .map_err(|e| AppError::internal(&format!("Failed to find comment: {}", e)))?
+            .map_err(|e| AppError::internal(format!("Failed to find comment: {}", e)))?
             .ok_or_else(|| AppError::not_found("comment"))
     }
 }

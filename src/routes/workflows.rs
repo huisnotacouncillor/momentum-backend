@@ -1,9 +1,9 @@
 use crate::AppState;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -36,7 +36,11 @@ pub async fn get_workflows(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -71,7 +75,11 @@ pub async fn get_workflow_by_id(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -114,7 +122,11 @@ pub async fn create_workflow(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -125,7 +137,14 @@ pub async fn create_workflow(
         }
     };
 
-    match WorkflowsService::create_workflow(&mut conn, &ctx, team_id, &payload.name, payload.description.clone(), payload.is_default.unwrap_or(false)) {
+    match WorkflowsService::create_workflow(
+        &mut conn,
+        &ctx,
+        team_id,
+        &payload.name,
+        payload.description.clone(),
+        payload.is_default.unwrap_or(false),
+    ) {
         Ok(workflow) => {
             let response = ApiResponse::created(workflow, "Workflow created successfully");
             (StatusCode::CREATED, Json(response)).into_response()
@@ -157,7 +176,11 @@ pub async fn update_workflow(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -192,7 +215,11 @@ pub async fn delete_workflow(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -227,7 +254,11 @@ pub async fn get_workflow_states(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -262,7 +293,11 @@ pub async fn get_team_default_workflow_states(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -275,7 +310,8 @@ pub async fn get_team_default_workflow_states(
 
     match WorkflowsService::get_team_default_states(&mut conn, &ctx, team_id) {
         Ok(states) => {
-            let response = ApiResponse::success(states, "Default workflow states retrieved successfully");
+            let response =
+                ApiResponse::success(states, "Default workflow states retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => err.into_response(),
@@ -308,7 +344,11 @@ pub async fn create_workflow_state(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -363,7 +403,11 @@ pub async fn create_team_default_workflow_state(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -392,7 +436,12 @@ pub async fn create_team_default_workflow_state(
         position: payload.position,
     };
 
-    match WorkflowsService::create_team_default_state(&mut conn, &ctx, team_id, &team_default_request) {
+    match WorkflowsService::create_team_default_state(
+        &mut conn,
+        &ctx,
+        team_id,
+        &team_default_request,
+    ) {
         Ok(state) => {
             let response = ApiResponse::created(state, "Workflow state created successfully");
             (StatusCode::CREATED, Json(response)).into_response()
@@ -427,7 +476,11 @@ pub async fn update_team_default_workflow_state(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -438,8 +491,10 @@ pub async fn update_team_default_workflow_state(
         }
     };
 
-    let category_enum = payload.category.as_ref().and_then(|cat| {
-        match cat.as_str() {
+    let category_enum = payload
+        .category
+        .as_ref()
+        .and_then(|cat| match cat.as_str() {
             "backlog" => Some(crate::db::models::workflow::WorkflowStateCategory::Backlog),
             "unstarted" => Some(crate::db::models::workflow::WorkflowStateCategory::Unstarted),
             "started" => Some(crate::db::models::workflow::WorkflowStateCategory::Started),
@@ -447,8 +502,7 @@ pub async fn update_team_default_workflow_state(
             "canceled" => Some(crate::db::models::workflow::WorkflowStateCategory::Canceled),
             "triage" => Some(crate::db::models::workflow::WorkflowStateCategory::Triage),
             _ => None,
-        }
-    });
+        });
 
     let team_default_request = crate::routes::workflows::UpdateTeamDefaultStateRequest {
         name: payload.name,
@@ -458,7 +512,13 @@ pub async fn update_team_default_workflow_state(
         position: payload.position,
     };
 
-    match WorkflowsService::update_team_default_state(&mut conn, &ctx, team_id, state_id, &team_default_request) {
+    match WorkflowsService::update_team_default_state(
+        &mut conn,
+        &ctx,
+        team_id,
+        state_id,
+        &team_default_request,
+    ) {
         Ok(state) => {
             let response = ApiResponse::success(state, "Workflow state updated successfully");
             (StatusCode::OK, Json(response)).into_response()
@@ -482,7 +542,11 @@ pub async fn get_issue_transitions(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -495,7 +559,8 @@ pub async fn get_issue_transitions(
 
     match WorkflowsService::get_issue_transitions(&mut conn, &ctx, issue_id) {
         Ok(transitions) => {
-            let response = ApiResponse::success(transitions, "Available transitions retrieved successfully");
+            let response =
+                ApiResponse::success(transitions, "Available transitions retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => err.into_response(),
@@ -527,4 +592,3 @@ pub struct IssueTransition {
     pub to_state_name: String,
     pub to_state_color: Option<String>,
 }
-

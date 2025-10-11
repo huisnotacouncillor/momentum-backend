@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod websocket_tests {
     // use super::*;
     use crate::websocket::{
         RateLimitConfig, RetryConfig, RetryTimeoutManager, TimeoutConfig, WebSocketCommand,

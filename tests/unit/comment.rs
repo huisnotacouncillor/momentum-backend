@@ -10,5 +10,3 @@ fn validate_comment_create_and_update() {
     assert!(validate_update_comment("edit").is_ok());
     assert!(validate_update_comment(" ").is_err());
 }
-
-

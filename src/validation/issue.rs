@@ -1,5 +1,5 @@
-use crate::error::AppError;
 use crate::db::enums::IssuePriority;
+use crate::error::AppError;
 
 pub fn validate_create_issue(
     title: &str,
@@ -11,12 +11,16 @@ pub fn validate_create_issue(
     }
 
     if title.len() > 255 {
-        return Err(AppError::validation("Issue title is too long (max 255 characters)"));
+        return Err(AppError::validation(
+            "Issue title is too long (max 255 characters)",
+        ));
     }
 
     if let Some(desc) = description {
         if desc.len() > 10000 {
-            return Err(AppError::validation("Issue description is too long (max 10000 characters)"));
+            return Err(AppError::validation(
+                "Issue description is too long (max 10000 characters)",
+            ));
         }
     }
 
@@ -37,13 +41,17 @@ pub fn validate_update_issue(
         }
 
         if title.len() > 255 {
-            return Err(AppError::validation("Issue title is too long (max 255 characters)"));
+            return Err(AppError::validation(
+                "Issue title is too long (max 255 characters)",
+            ));
         }
     }
 
     if let Some(description) = description {
         if description.len() > 10000 {
-            return Err(AppError::validation("Issue description is too long (max 10000 characters)"));
+            return Err(AppError::validation(
+                "Issue description is too long (max 10000 characters)",
+            ));
         }
     }
 

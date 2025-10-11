@@ -1,14 +1,9 @@
 use crate::AppState;
 use crate::db::models::api::ApiResponse;
 use crate::middleware::auth::AuthUserInfo;
-use crate::services::context::RequestContext;
 use crate::services::auth_service::AuthService;
-use axum::{
-    Json,
-    extract::{State},
-    http::StatusCode,
-    response::IntoResponse,
-};
+use crate::services::context::RequestContext;
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -40,12 +35,17 @@ pub async fn update_profile(
         idempotency_key: None,
     };
 
-    match AuthService::update_profile(&mut conn, &ctx, &crate::routes::auth::UpdateProfileRequest {
-        name: payload.name.clone(),
-        username: payload.username.clone(),
-        email: payload.email.clone(),
-        avatar_url: payload.avatar_url.clone(),
-    }, &state.asset_helper) {
+    match AuthService::update_profile(
+        &mut conn,
+        &ctx,
+        &crate::routes::auth::UpdateProfileRequest {
+            name: payload.name.clone(),
+            username: payload.username.clone(),
+            email: payload.email.clone(),
+            avatar_url: payload.avatar_url.clone(),
+        },
+        &state.asset_helper,
+    ) {
         Ok(profile) => {
             let response = ApiResponse::success(profile, "Profile updated successfully");
             (StatusCode::OK, Json(response)).into_response()

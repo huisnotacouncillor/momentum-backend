@@ -27,7 +27,7 @@ impl ProjectStatusCategory {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse_from_string(s: &str) -> Self {
         match s {
             "backlog" => ProjectStatusCategory::Backlog,
             "planned" => ProjectStatusCategory::Planned,
@@ -51,7 +51,7 @@ impl<'de> serde::Deserialize<'de> for ProjectStatusCategory {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(ProjectStatusCategory::from_str(&s))
+        Ok(ProjectStatusCategory::parse_from_string(&s))
     }
 }
 
@@ -107,7 +107,7 @@ where
     D: serde::Deserializer<'de>,
 {
     let s = String::deserialize(deserializer)?;
-    Ok(ProjectStatusCategory::from_str(&s))
+    Ok(ProjectStatusCategory::parse_from_string(&s))
 }
 
 fn serialize_category<S>(category: &ProjectStatusCategory, serializer: S) -> Result<S::Ok, S::Error>

@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests {
+mod command_tests {
     use super::super::types::*;
     use crate::db::enums::LabelLevel;
 

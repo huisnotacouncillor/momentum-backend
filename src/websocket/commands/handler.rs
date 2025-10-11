@@ -509,7 +509,7 @@ impl WebSocketCommandHandler {
             Some(ws) => ws,
             None => {
                 return WebSocketCommandResponse::error(
-                    &command_type,
+                    command_type,
                     &idempotency_key,
                     request_id,
                     WebSocketCommandError::business_error(
@@ -639,9 +639,7 @@ impl WebSocketCommandHandler {
             WebSocketCommand::QueryProjects { filters, .. } => {
                 self.handle_query_projects(ctx, filters).await
             }
-            WebSocketCommand::CreateIssue { data, .. } => {
-                self.handle_create_issue(ctx, data).await
-            }
+            WebSocketCommand::CreateIssue { data, .. } => self.handle_create_issue(ctx, data).await,
             WebSocketCommand::UpdateIssue { issue_id, data, .. } => {
                 self.handle_update_issue(ctx, issue_id, data).await
             }
@@ -658,10 +656,10 @@ impl WebSocketCommandHandler {
 
         match result {
             Ok(data) => {
-                WebSocketCommandResponse::success(&command_type, &idempotency_key, request_id, data)
+                WebSocketCommandResponse::success(command_type, &idempotency_key, request_id, data)
             }
             Err(app_error) => WebSocketCommandResponse::error(
-                &command_type,
+                command_type,
                 &idempotency_key,
                 request_id,
                 WebSocketCommandError::business_error("COMMAND_ERROR", &app_error.to_string()),
@@ -791,7 +789,7 @@ impl WebSocketCommandHandler {
             message_queue_size: 0,
             state: "connected".to_string(),
         };
-        Ok(serde_json::to_value(connection_info).map_err(|e| AppError::Internal(e.to_string()))?)
+        serde_json::to_value(connection_info).map_err(|e| AppError::Internal(e.to_string()))
     }
 
     // Team handlers

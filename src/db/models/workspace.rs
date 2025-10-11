@@ -17,8 +17,13 @@ pub struct Workspace {
 
 impl Workspace {
     /// 如果 logo_url 存在，则使用 AssetUrlHelper 处理；否则返回 None
-    pub fn get_processed_logo_url(&self, asset_helper: &crate::utils::AssetUrlHelper) -> Option<String> {
-        self.logo_url.as_ref().map(|url| asset_helper.process_url(url))
+    pub fn get_processed_logo_url(
+        &self,
+        asset_helper: &crate::utils::AssetUrlHelper,
+    ) -> Option<String> {
+        self.logo_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url))
     }
 }
 

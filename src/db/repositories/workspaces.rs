@@ -1,25 +1,36 @@
 use diesel::prelude::*;
 
-use crate::db::models::workspace::{Workspace, NewWorkspace};
+use crate::db::models::workspace::{NewWorkspace, Workspace};
 
 pub struct WorkspacesRepo;
 
 impl WorkspacesRepo {
-    pub fn insert(conn: &mut PgConnection, new_ws: &NewWorkspace) -> Result<Workspace, diesel::result::Error> {
+    pub fn insert(
+        conn: &mut PgConnection,
+        new_ws: &NewWorkspace,
+    ) -> Result<Workspace, diesel::result::Error> {
         diesel::insert_into(crate::schema::workspaces::table)
             .values(new_ws)
             .get_result(conn)
     }
 
-    pub fn exists_url_key(conn: &mut PgConnection, url: &str) -> Result<bool, diesel::result::Error> {
+    pub fn exists_url_key(
+        conn: &mut PgConnection,
+        url: &str,
+    ) -> Result<bool, diesel::result::Error> {
         use crate::schema::workspaces::dsl::*;
-        diesel::select(diesel::dsl::exists(workspaces.filter(url_key.eq(url))))
-            .get_result(conn)
+        diesel::select(diesel::dsl::exists(workspaces.filter(url_key.eq(url)))).get_result(conn)
     }
 
-    pub fn find_by_id(conn: &mut PgConnection, workspace_id: uuid::Uuid) -> Result<Option<Workspace>, diesel::result::Error> {
+    pub fn find_by_id(
+        conn: &mut PgConnection,
+        workspace_id: uuid::Uuid,
+    ) -> Result<Option<Workspace>, diesel::result::Error> {
         use crate::schema::workspaces::dsl::*;
-        workspaces.filter(id.eq(workspace_id)).first::<Workspace>(conn).optional()
+        workspaces
+            .filter(id.eq(workspace_id))
+            .first::<Workspace>(conn)
+            .optional()
     }
 
     pub fn update_fields(
@@ -49,13 +60,16 @@ impl WorkspacesRepo {
         }
 
         // Return the updated workspace
-        w::workspaces.filter(w::id.eq(workspace_id)).first::<Workspace>(conn)
+        w::workspaces
+            .filter(w::id.eq(workspace_id))
+            .first::<Workspace>(conn)
     }
 
-    pub fn delete_by_id(conn: &mut PgConnection, workspace_id: uuid::Uuid) -> Result<usize, diesel::result::Error> {
+    pub fn delete_by_id(
+        conn: &mut PgConnection,
+        workspace_id: uuid::Uuid,
+    ) -> Result<usize, diesel::result::Error> {
         use crate::schema::workspaces::dsl::*;
         diesel::delete(workspaces.filter(id.eq(workspace_id))).execute(conn)
     }
 }
-
-

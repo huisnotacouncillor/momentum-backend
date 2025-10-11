@@ -1,29 +1,50 @@
 use diesel::prelude::*;
 
 use crate::{
-    db::models::workflow::{Workflow, NewWorkflow, WorkflowState, NewWorkflowState},
+    db::models::workflow::{NewWorkflow, NewWorkflowState, Workflow, WorkflowState},
     db::repositories::workflows::WorkflowsRepo,
     error::AppError,
     services::context::RequestContext,
-    validation::workflow::{validate_create_workflow, validate_create_state},
+    validation::workflow::{validate_create_state, validate_create_workflow},
 };
 
 pub struct WorkflowsService;
 
 impl WorkflowsService {
-    pub fn list_by_team(conn: &mut PgConnection, _ctx: &RequestContext, team_id: uuid::Uuid) -> Result<Vec<Workflow>, AppError> {
+    pub fn list_by_team(
+        conn: &mut PgConnection,
+        _ctx: &RequestContext,
+        team_id: uuid::Uuid,
+    ) -> Result<Vec<Workflow>, AppError> {
         let list = WorkflowsRepo::list_by_team(conn, team_id)?;
         Ok(list)
     }
 
-    pub fn create_workflow(conn: &mut PgConnection, _ctx: &RequestContext, team_id: uuid::Uuid, name: &str, description: Option<String>, is_default: bool) -> Result<Workflow, AppError> {
+    pub fn create_workflow(
+        conn: &mut PgConnection,
+        _ctx: &RequestContext,
+        team_id: uuid::Uuid,
+        name: &str,
+        description: Option<String>,
+        is_default: bool,
+    ) -> Result<Workflow, AppError> {
         validate_create_workflow(name)?;
-        let new_wf = NewWorkflow { name: name.to_string(), description, team_id, is_default };
+        let new_wf = NewWorkflow {
+            name: name.to_string(),
+            description,
+            team_id,
+            is_default,
+        };
         let wf = WorkflowsRepo::insert_workflow(conn, &new_wf)?;
         Ok(wf)
     }
 
-    pub fn add_state(conn: &mut PgConnection, _ctx: &RequestContext, workflow_id: uuid::Uuid, req: &crate::db::models::workflow::CreateWorkflowStateRequest) -> Result<WorkflowState, AppError> {
+    pub fn add_state(
+        conn: &mut PgConnection,
+        _ctx: &RequestContext,
+        workflow_id: uuid::Uuid,
+        req: &crate::db::models::workflow::CreateWorkflowStateRequest,
+    ) -> Result<WorkflowState, AppError> {
         validate_create_state(&req.name, req.position)?;
         let new_state = NewWorkflowState {
             workflow_id,
@@ -69,8 +90,8 @@ impl WorkflowsService {
         let updated = WorkflowsRepo::update_fields(
             conn,
             workflow_id,
-            req.name.as_ref().map(|s| s.as_str()),
-            req.description.as_ref().map(|s| s.as_str()),
+            req.name.as_deref(),
+            req.description.as_deref(),
             req.is_default,
         )?;
         Ok(updated)
@@ -142,9 +163,9 @@ impl WorkflowsService {
         let updated = WorkflowsRepo::update_team_default_state_fields(
             conn,
             state_id,
-            req.name.as_ref().map(|s| s.as_str()),
-            req.description.as_ref().map(|s| s.as_str()),
-            req.color.as_ref().map(|s| s.as_str()),
+            req.name.as_deref(),
+            req.description.as_deref(),
+            req.color.as_deref(),
             req.category.as_ref(),
             req.position,
         )?;
@@ -158,7 +179,7 @@ impl WorkflowsService {
     ) -> Result<Vec<crate::db::models::workflow::IssueTransitionResponse>, AppError> {
         // This would typically involve complex logic to determine valid transitions
         // For now, return a simple implementation
-        use crate::schema::{issues, workflows, workflow_states};
+        use crate::schema::{issues, workflow_states, workflows};
 
         let issue = issues::table
             .filter(issues::id.eq(issue_id))
@@ -180,8 +201,8 @@ impl WorkflowsService {
                     .filter(workflow_states::id.eq(sid))
                     .first::<WorkflowState>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(&format!("Failed to load from_state: {}", e)))?
-                    .map(|s| crate::db::models::workflow::WorkflowStateResponse::from(s)),
+                    .map_err(|e| AppError::internal(format!("Failed to load from_state: {}", e)))?
+                    .map(crate::db::models::workflow::WorkflowStateResponse::from),
                 None => None,
             };
 
@@ -201,5 +222,3 @@ impl WorkflowsService {
         Ok(result)
     }
 }
-
-

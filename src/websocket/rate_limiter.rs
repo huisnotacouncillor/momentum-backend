@@ -64,7 +64,7 @@ impl UserRequestRecord {
         if let Some(cmd_type) = command_type {
             self.command_counts
                 .entry(cmd_type.to_string())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(now);
         }
     }
@@ -84,7 +84,8 @@ impl UserRequestRecord {
         if let Some(cmd_type) = command_type {
             if let Some(command_limit) = config.command_limits.get(cmd_type) {
                 if let Some(command_times) = self.command_counts.get(cmd_type) {
-                    let recent_command_requests = command_times.iter().filter(|&&time| time > cutoff).count();
+                    let recent_command_requests =
+                        command_times.iter().filter(|&&time| time > cutoff).count();
                     if recent_command_requests >= *command_limit as usize {
                         return true;
                     }
@@ -117,7 +118,9 @@ impl WebSocketRateLimiter {
         let mut records = self.user_records.write().await;
 
         // 获取或创建用户记录
-        let record = records.entry(user_id).or_insert_with(UserRequestRecord::new);
+        let record = records
+            .entry(user_id)
+            .or_insert_with(UserRequestRecord::new);
 
         // 清理过期记录
         record.cleanup_expired(Duration::from_secs(self.config.window_seconds));
@@ -141,7 +144,11 @@ impl WebSocketRateLimiter {
         let window_duration = Duration::from_secs(self.config.window_seconds);
         let cutoff = Instant::now() - window_duration;
 
-        let total_requests = record.requests.iter().filter(|&&time| time > cutoff).count();
+        let total_requests = record
+            .requests
+            .iter()
+            .filter(|&&time| time > cutoff)
+            .count();
         let mut command_stats = HashMap::new();
 
         for (cmd_type, times) in &record.command_counts {

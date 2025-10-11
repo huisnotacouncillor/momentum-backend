@@ -1,9 +1,6 @@
 use rust_backend::{
     routes::teams::{CreateTeamRequest, UpdateTeamRequest},
-    services::{
-        team_members_service::TeamMembersService,
-        teams_service::TeamsService,
-    },
+    services::{team_members_service::TeamMembersService, teams_service::TeamsService},
 };
 
 #[test]

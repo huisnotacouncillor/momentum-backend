@@ -1,12 +1,14 @@
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::io::Write;
+use uuid::Uuid;
 
-use crate::schema::{workspace_members};
+use crate::schema::workspace_members;
 
 // WorkspaceMemberRole枚举定义
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, diesel::FromSqlRow, diesel::AsExpression)]
+#[derive(
+    Debug, Clone, PartialEq, Serialize, Deserialize, diesel::FromSqlRow, diesel::AsExpression,
+)]
 #[diesel(sql_type = crate::schema::sql_types::WorkspaceUserRole)]
 pub enum WorkspaceMemberRole {
     Owner,
@@ -15,8 +17,13 @@ pub enum WorkspaceMemberRole {
     Guest,
 }
 
-impl diesel::serialize::ToSql<crate::schema::sql_types::WorkspaceUserRole, diesel::pg::Pg> for WorkspaceMemberRole {
-    fn to_sql<'b>(&'b self, out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>) -> diesel::serialize::Result {
+impl diesel::serialize::ToSql<crate::schema::sql_types::WorkspaceUserRole, diesel::pg::Pg>
+    for WorkspaceMemberRole
+{
+    fn to_sql<'b>(
+        &'b self,
+        out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
+    ) -> diesel::serialize::Result {
         match *self {
             WorkspaceMemberRole::Owner => out.write_all(b"owner")?,
             WorkspaceMemberRole::Admin => out.write_all(b"admin")?,
@@ -27,8 +34,12 @@ impl diesel::serialize::ToSql<crate::schema::sql_types::WorkspaceUserRole, diese
     }
 }
 
-impl diesel::deserialize::FromSql<crate::schema::sql_types::WorkspaceUserRole, diesel::pg::Pg> for WorkspaceMemberRole {
-    fn from_sql(bytes: <diesel::pg::Pg as diesel::backend::Backend>::RawValue<'_>) -> diesel::deserialize::Result<Self> {
+impl diesel::deserialize::FromSql<crate::schema::sql_types::WorkspaceUserRole, diesel::pg::Pg>
+    for WorkspaceMemberRole
+{
+    fn from_sql(
+        bytes: <diesel::pg::Pg as diesel::backend::Backend>::RawValue<'_>,
+    ) -> diesel::deserialize::Result<Self> {
         match <String as diesel::deserialize::FromSql<diesel::sql_types::Text, diesel::pg::Pg>>::from_sql(bytes)?.as_str() {
             "owner" => Ok(WorkspaceMemberRole::Owner),
             "admin" => Ok(WorkspaceMemberRole::Admin),

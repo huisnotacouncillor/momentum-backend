@@ -1,20 +1,19 @@
 pub mod auth;
 pub mod comment;
+pub mod cycle;
+pub mod invitation;
 pub mod issue;
 pub mod label;
-pub mod project_status;
 pub mod project;
+pub mod project_status;
 pub mod workflow;
-pub mod invitation;
-pub mod workspace_member;
-pub mod cycle;
 pub mod workspace;
+pub mod workspace_member;
 
 use axum::{
-    async_trait,
+    Json, async_trait,
     extract::FromRequest,
     http::{Request, StatusCode},
-    Json,
 };
 use serde::de::DeserializeOwned;
 use validator::Validate;
@@ -35,10 +34,16 @@ where
 {
     type Rejection = AppError;
 
-    async fn from_request(req: Request<axum::body::Body>, state: &S) -> Result<Self, Self::Rejection> {
-        let Json(value) = Json::<T>::from_request(req, state)
-            .await
-            .map_err(|_| AppError::Validation { message: "Invalid JSON format".to_string() })?;
+    async fn from_request(
+        req: Request<axum::body::Body>,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let Json(value) =
+            Json::<T>::from_request(req, state)
+                .await
+                .map_err(|_| AppError::Validation {
+                    message: "Invalid JSON format".to_string(),
+                })?;
 
         value.validate().map_err(|errors| {
             let error_details: Vec<ErrorDetail> = errors
@@ -48,14 +53,18 @@ where
                     field_errors.iter().map(move |error| ErrorDetail {
                         field: Some(field.to_string()),
                         code: error.code.to_string(),
-                        message: error.message.as_ref()
+                        message: error
+                            .message
+                            .as_ref()
                             .map(|m| m.to_string())
                             .unwrap_or_else(|| format!("Validation failed for field: {}", field)),
                     })
                 })
                 .collect();
 
-            AppError::Validation { message: format!("Validation failed with {} errors", error_details.len()) }
+            AppError::Validation {
+                message: format!("Validation failed with {} errors", error_details.len()),
+            }
         })?;
 
         Ok(ValidatedJson(value))
@@ -97,7 +106,10 @@ pub mod rules {
         }
 
         // 包含特殊字符
-        if password.chars().any(|c| "!@#$%^&*()_+-=[]{}|;:,.<>?".contains(c)) {
+        if password
+            .chars()
+            .any(|c| "!@#$%^&*()_+-=[]{}|;:,.<>?".contains(c))
+        {
             score += 1;
         }
 
@@ -111,12 +123,15 @@ pub mod rules {
     /// 验证用户名格式
     pub fn validate_username_format(username: &str) -> Result<(), ValidationError> {
         // 只允许字母、数字、下划线和连字符
-        if !username.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+        if !username
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
             return Err(ValidationError::new("invalid_username_format"));
         }
 
         // 不能以数字开头
-        if username.chars().next().map_or(false, |c| c.is_numeric()) {
+        if username.chars().next().is_some_and(|c| c.is_numeric()) {
             return Err(ValidationError::new("username_starts_with_number"));
         }
 
@@ -126,7 +141,10 @@ pub mod rules {
     /// 验证工作空间URL键格式
     pub fn validate_workspace_url_key(url_key: &str) -> Result<(), ValidationError> {
         // 只允许小写字母、数字和连字符
-        if !url_key.chars().all(|c| c.is_ascii_lowercase() || c.is_numeric() || c == '-') {
+        if !url_key
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_numeric() || c == '-')
+        {
             return Err(ValidationError::new("invalid_url_key_format"));
         }
 

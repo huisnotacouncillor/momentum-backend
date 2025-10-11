@@ -1,9 +1,9 @@
 use crate::AppState;
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    Json
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -43,7 +43,11 @@ pub async fn create_workspace(
     };
 
     let _ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -54,7 +58,12 @@ pub async fn create_workspace(
         }
     };
 
-    match WorkspacesService::create(&mut conn, &payload.name, &payload.url_key, payload.logo_url.clone()) {
+    match WorkspacesService::create(
+        &mut conn,
+        &payload.name,
+        &payload.url_key,
+        payload.logo_url.clone(),
+    ) {
         Ok(workspace) => {
             let response = ApiResponse::created(workspace, "Workspace created successfully");
             (StatusCode::CREATED, Json(response)).into_response()
@@ -77,7 +86,11 @@ pub async fn get_current_workspace(
     };
 
     let _ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -90,7 +103,8 @@ pub async fn get_current_workspace(
 
     match WorkspacesService::get_current(&mut conn, &_ctx, &state.asset_helper) {
         Ok(workspace) => {
-            let response = ApiResponse::success(workspace, "Current workspace retrieved successfully");
+            let response =
+                ApiResponse::success(workspace, "Current workspace retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => err.into_response(),
@@ -113,7 +127,11 @@ pub async fn update_workspace(
     };
 
     let _ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -148,7 +166,11 @@ pub async fn delete_workspace(
     };
 
     let _ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,

@@ -13,24 +13,44 @@ fn validate_create_project_status_rules() {
 
 #[test]
 fn validate_update_project_status_rules() {
-    use rust_backend::validation::project_status::{validate_update_project_status, UpdateProjectStatusChanges};
     use rust_backend::db::models::project_status::ProjectStatusCategory;
+    use rust_backend::validation::project_status::{
+        UpdateProjectStatusChanges, validate_update_project_status,
+    };
 
     // no fields
-    let ch = UpdateProjectStatusChanges { name: None, description_present: false, color: None, category: None };
+    let ch = UpdateProjectStatusChanges {
+        name: None,
+        description_present: false,
+        color: None,
+        category: None,
+    };
     assert!(validate_update_project_status(&ch).is_err());
 
     // empty name
-    let ch = UpdateProjectStatusChanges { name: Some("  "), description_present: false, color: None, category: None };
+    let ch = UpdateProjectStatusChanges {
+        name: Some("  "),
+        description_present: false,
+        color: None,
+        category: None,
+    };
     assert!(validate_update_project_status(&ch).is_err());
 
     // bad color
-    let ch = UpdateProjectStatusChanges { name: None, description_present: false, color: Some("red"), category: None };
+    let ch = UpdateProjectStatusChanges {
+        name: None,
+        description_present: false,
+        color: Some("red"),
+        category: None,
+    };
     assert!(validate_update_project_status(&ch).is_err());
 
     // valid combos
-    let ch = UpdateProjectStatusChanges { name: Some("In Progress"), description_present: true, color: Some("#00FF00"), category: Some(ProjectStatusCategory::InProgress) };
+    let ch = UpdateProjectStatusChanges {
+        name: Some("In Progress"),
+        description_present: true,
+        color: Some("#00FF00"),
+        category: Some(ProjectStatusCategory::InProgress),
+    };
     assert!(validate_update_project_status(&ch).is_ok());
 }
-
-

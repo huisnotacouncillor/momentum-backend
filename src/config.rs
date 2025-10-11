@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use crate::error::{AppError, AppResult};
+use serde::Deserialize;
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Config {
@@ -82,20 +82,48 @@ pub struct AssetsConfig {
 }
 
 // Default value functions
-fn default_max_connections() -> u32 { 20 }
-fn default_min_connections() -> u32 { 5 }
-fn default_connection_timeout() -> u64 { 30 }
-fn default_redis_pool_size() -> u32 { 20 }
-fn default_host() -> String { "127.0.0.1".to_string() }
-fn default_port() -> u16 { 8000 }
-fn default_cors_origins() -> Vec<String> { vec!["*".to_string()] }
-fn default_jwt_secret() -> String { "your-secret-key".to_string() }
-fn default_access_token_expires() -> u64 { 3600 } // 1 hour
-fn default_refresh_token_expires() -> u64 { 604800 } // 7 days
-fn default_log_level() -> String { "info".to_string() }
-fn default_log_format() -> String { "json".to_string() }
-fn default_assets_url() -> String { "http://localhost:8000/assets".to_string() }
-fn default_bcrypt_cost() -> u32 { 4 } // Further reduce cost for better performance, use 12+ for production
+fn default_max_connections() -> u32 {
+    20
+}
+fn default_min_connections() -> u32 {
+    5
+}
+fn default_connection_timeout() -> u64 {
+    30
+}
+fn default_redis_pool_size() -> u32 {
+    20
+}
+fn default_host() -> String {
+    "127.0.0.1".to_string()
+}
+fn default_port() -> u16 {
+    8000
+}
+fn default_cors_origins() -> Vec<String> {
+    vec!["*".to_string()]
+}
+fn default_jwt_secret() -> String {
+    "your-secret-key".to_string()
+}
+fn default_access_token_expires() -> u64 {
+    3600
+} // 1 hour
+fn default_refresh_token_expires() -> u64 {
+    604800
+} // 7 days
+fn default_log_level() -> String {
+    "info".to_string()
+}
+fn default_log_format() -> String {
+    "json".to_string()
+}
+fn default_assets_url() -> String {
+    "http://localhost:8000/assets".to_string()
+}
+fn default_bcrypt_cost() -> u32 {
+    4
+} // Further reduce cost for better performance, use 12+ for production
 
 impl Config {
     pub fn from_env() -> AppResult<Self> {
@@ -110,11 +138,16 @@ impl Config {
 
     fn validate(&self) -> AppResult<()> {
         if self.database_max_connections == 0 {
-            return Err(AppError::Config("DATABASE_MAX_CONNECTIONS must be > 0".to_string()));
+            return Err(AppError::Config(
+                "DATABASE_MAX_CONNECTIONS must be > 0".to_string(),
+            ));
         }
 
         if self.database_min_connections > self.database_max_connections {
-            return Err(AppError::Config("DATABASE_MIN_CONNECTIONS cannot be greater than DATABASE_MAX_CONNECTIONS".to_string()));
+            return Err(AppError::Config(
+                "DATABASE_MIN_CONNECTIONS cannot be greater than DATABASE_MAX_CONNECTIONS"
+                    .to_string(),
+            ));
         }
 
         if self.redis_pool_size == 0 {
@@ -122,11 +155,15 @@ impl Config {
         }
 
         if self.jwt_secret == "your-secret-key" {
-            return Err(AppError::Config("JWT_SECRET must be set to a secure value".to_string()));
+            return Err(AppError::Config(
+                "JWT_SECRET must be set to a secure value".to_string(),
+            ));
         }
 
         if self.jwt_access_token_expires_in == 0 {
-            return Err(AppError::Config("JWT_ACCESS_TOKEN_EXPIRES_IN must be > 0".to_string()));
+            return Err(AppError::Config(
+                "JWT_ACCESS_TOKEN_EXPIRES_IN must be > 0".to_string(),
+            ));
         }
 
         Ok(())

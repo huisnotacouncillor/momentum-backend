@@ -1,6 +1,6 @@
-use std::time::Instant;
 use reqwest::Client;
 use serde_json::json;
+use std::time::Instant;
 use tokio::time::sleep;
 
 #[tokio::main]
@@ -24,9 +24,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
 
     // 测量DNS解析和连接建立时间
-    let dns_start = Instant::now();
+    let _dns_start = Instant::now();
     let response = client
-        .post(&format!("{}/auth/login", base_url))
+        .post(format!("{}/auth/login", base_url))
         .json(&login_data)
         .send()
         .await?;
@@ -42,7 +42,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 解析响应以检查是否有性能信息
     if let Ok(response_json) = serde_json::from_str::<serde_json::Value>(&response_text) {
-        println!("响应结构: {}", serde_json::to_string_pretty(&response_json)?);
+        println!(
+            "响应结构: {}",
+            serde_json::to_string_pretty(&response_json)?
+        );
     }
 
     println!();
@@ -54,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 1..=5 {
         let start = Instant::now();
         let response = client
-            .post(&format!("{}/auth/login", base_url))
+            .post(format!("{}/auth/login", base_url))
             .json(&login_data)
             .send()
             .await?;

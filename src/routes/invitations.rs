@@ -1,9 +1,9 @@
 use crate::AppState;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -61,7 +61,11 @@ pub async fn invite_member(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -81,7 +85,6 @@ pub async fn invite_member(
     }
 }
 
-
 /// 获取当前用户的邀请列表
 pub async fn get_user_invitations(
     State(state): State<Arc<AppState>>,
@@ -97,7 +100,11 @@ pub async fn get_user_invitations(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -108,19 +115,24 @@ pub async fn get_user_invitations(
         }
     };
 
-    let status_enum = params.status.as_ref().and_then(|s| {
-        match s.as_str() {
-            "pending" => Some(crate::db::models::invitation::InvitationStatus::Pending),
-            "accepted" => Some(crate::db::models::invitation::InvitationStatus::Accepted),
-            "declined" => Some(crate::db::models::invitation::InvitationStatus::Declined),
-            "cancelled" => Some(crate::db::models::invitation::InvitationStatus::Cancelled),
-            _ => None,
-        }
+    let status_enum = params.status.as_ref().and_then(|s| match s.as_str() {
+        "pending" => Some(crate::db::models::invitation::InvitationStatus::Pending),
+        "accepted" => Some(crate::db::models::invitation::InvitationStatus::Accepted),
+        "declined" => Some(crate::db::models::invitation::InvitationStatus::Declined),
+        "cancelled" => Some(crate::db::models::invitation::InvitationStatus::Cancelled),
+        _ => None,
     });
 
-    match InvitationsService::get_user_invitations(&mut conn, &ctx, &state.asset_helper, status_enum, params.email) {
+    match InvitationsService::get_user_invitations(
+        &mut conn,
+        &ctx,
+        &state.asset_helper,
+        status_enum,
+        params.email,
+    ) {
         Ok(invitations) => {
-            let response = ApiResponse::success(invitations, "User invitations retrieved successfully");
+            let response =
+                ApiResponse::success(invitations, "User invitations retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => err.into_response(),
@@ -142,7 +154,11 @@ pub async fn get_invitation_by_id(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -177,7 +193,11 @@ pub async fn accept_invitation(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -212,7 +232,11 @@ pub async fn decline_invitation(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,
@@ -249,7 +273,11 @@ pub async fn revoke_invitation(
     };
 
     let ctx = match auth_info.current_workspace_id {
-        Some(ws) => RequestContext { user_id: auth_info.user.id, workspace_id: ws, idempotency_key: None },
+        Some(ws) => RequestContext {
+            user_id: auth_info.user.id,
+            workspace_id: ws,
+            idempotency_key: None,
+        },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
                 field: None,

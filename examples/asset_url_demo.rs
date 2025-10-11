@@ -1,9 +1,8 @@
 use rust_backend::config::Config;
+use rust_backend::db::models::auth::User;
+use rust_backend::db::models::team::Team;
 use rust_backend::utils::AssetUrlHelper;
-use rust_backend::db::models::auth::{User, AuthUser, UserBasicInfo, UserProfile};
-use rust_backend::db::models::team::{Team, TeamInfo, TeamBasicInfo};
 use uuid::Uuid;
-use chrono::NaiveDateTime;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 加载配置
@@ -55,8 +54,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 检查是否为外部链接
     println!("是否为外部链接:");
-    println!("  {}: {}", external_url, asset_helper.is_external_url(external_url));
-    println!("  {}: {}", internal_path, asset_helper.is_external_url(internal_path));
+    println!(
+        "  {}: {}",
+        external_url,
+        asset_helper.is_external_url(external_url)
+    );
+    println!(
+        "  {}: {}",
+        internal_path,
+        asset_helper.is_external_url(internal_path)
+    );
 
     println!();
 
@@ -71,8 +78,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         username: "zhangsan".to_string(),
         avatar_url: Some("avatars/zhangsan.jpg".to_string()),
         is_active: true,
-        created_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
-        updated_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
+        created_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
+        updated_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
         current_workspace_id: None,
     };
 
@@ -91,13 +102,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         username: "lisi".to_string(),
         avatar_url: Some("https://gravatar.com/avatar/lisi.jpg".to_string()),
         is_active: true,
-        created_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
-        updated_at: NaiveDateTime::from_timestamp_opt(1640995200, 0).unwrap(),
+        created_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
+        updated_at: chrono::DateTime::from_timestamp(1640995200, 0)
+            .unwrap()
+            .naive_utc(),
         current_workspace_id: None,
     };
 
-    if let Some(processed_avatar_url) = user_with_external_avatar.get_processed_avatar_url(&asset_helper) {
-        println!("用户 {} 的头像 URL: {}", user_with_external_avatar.name, processed_avatar_url);
+    if let Some(processed_avatar_url) =
+        user_with_external_avatar.get_processed_avatar_url(&asset_helper)
+    {
+        println!(
+            "用户 {} 的头像 URL: {}",
+            user_with_external_avatar.name, processed_avatar_url
+        );
     }
 
     println!();

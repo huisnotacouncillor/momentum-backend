@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use tracing::{error, warn, info};
+use tracing::{error, info, warn};
 
 /// 错误严重程度
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -106,15 +106,29 @@ impl WebSocketError {
     fn get_error_metadata(code: &WebSocketErrorCode) -> (ErrorSeverity, ErrorCategory) {
         match code {
             // 认证相关错误 - 高严重程度
-            WebSocketErrorCode::AuthenticationFailed => (ErrorSeverity::High, ErrorCategory::Authentication),
-            WebSocketErrorCode::TokenExpired => (ErrorSeverity::Medium, ErrorCategory::Authentication),
-            WebSocketErrorCode::TokenInvalid => (ErrorSeverity::Medium, ErrorCategory::Authentication),
-            WebSocketErrorCode::UserNotFound => (ErrorSeverity::Medium, ErrorCategory::Authentication),
-            WebSocketErrorCode::NoWorkspace => (ErrorSeverity::Medium, ErrorCategory::Authentication),
+            WebSocketErrorCode::AuthenticationFailed => {
+                (ErrorSeverity::High, ErrorCategory::Authentication)
+            }
+            WebSocketErrorCode::TokenExpired => {
+                (ErrorSeverity::Medium, ErrorCategory::Authentication)
+            }
+            WebSocketErrorCode::TokenInvalid => {
+                (ErrorSeverity::Medium, ErrorCategory::Authentication)
+            }
+            WebSocketErrorCode::UserNotFound => {
+                (ErrorSeverity::Medium, ErrorCategory::Authentication)
+            }
+            WebSocketErrorCode::NoWorkspace => {
+                (ErrorSeverity::Medium, ErrorCategory::Authentication)
+            }
 
             // 命令相关错误 - 中等严重程度
-            WebSocketErrorCode::CommandNotFound => (ErrorSeverity::Medium, ErrorCategory::Validation),
-            WebSocketErrorCode::CommandInvalid => (ErrorSeverity::Medium, ErrorCategory::Validation),
+            WebSocketErrorCode::CommandNotFound => {
+                (ErrorSeverity::Medium, ErrorCategory::Validation)
+            }
+            WebSocketErrorCode::CommandInvalid => {
+                (ErrorSeverity::Medium, ErrorCategory::Validation)
+            }
             WebSocketErrorCode::CommandTimeout => (ErrorSeverity::High, ErrorCategory::System),
             WebSocketErrorCode::CommandFailed => (ErrorSeverity::High, ErrorCategory::System),
 
@@ -124,19 +138,27 @@ impl WebSocketError {
 
             // 幂等性相关错误 - 低严重程度
             WebSocketErrorCode::DuplicateRequest => (ErrorSeverity::Low, ErrorCategory::Validation),
-            WebSocketErrorCode::IdempotencyKeyRequired => (ErrorSeverity::Low, ErrorCategory::Validation),
+            WebSocketErrorCode::IdempotencyKeyRequired => {
+                (ErrorSeverity::Low, ErrorCategory::Validation)
+            }
 
             // 业务逻辑错误 - 中等严重程度
             WebSocketErrorCode::LabelNotFound => (ErrorSeverity::Medium, ErrorCategory::Business),
             WebSocketErrorCode::LabelExists => (ErrorSeverity::Medium, ErrorCategory::Business),
-            WebSocketErrorCode::ValidationFailed => (ErrorSeverity::Medium, ErrorCategory::Validation),
-            WebSocketErrorCode::PermissionDenied => (ErrorSeverity::High, ErrorCategory::Authorization),
+            WebSocketErrorCode::ValidationFailed => {
+                (ErrorSeverity::Medium, ErrorCategory::Validation)
+            }
+            WebSocketErrorCode::PermissionDenied => {
+                (ErrorSeverity::High, ErrorCategory::Authorization)
+            }
 
             // 系统错误 - 高严重程度
             WebSocketErrorCode::InternalError => (ErrorSeverity::Critical, ErrorCategory::System),
             WebSocketErrorCode::DatabaseError => (ErrorSeverity::High, ErrorCategory::Database),
             WebSocketErrorCode::NetworkError => (ErrorSeverity::High, ErrorCategory::Network),
-            WebSocketErrorCode::ServiceUnavailable => (ErrorSeverity::Critical, ErrorCategory::System),
+            WebSocketErrorCode::ServiceUnavailable => {
+                (ErrorSeverity::Critical, ErrorCategory::System)
+            }
 
             // 连接相关错误 - 高严重程度
             WebSocketErrorCode::ConnectionLost => (ErrorSeverity::High, ErrorCategory::Network),
@@ -172,7 +194,11 @@ impl WebSocketError {
 
     /// 检查是否需要立即处理
     pub fn needs_immediate_attention(&self) -> bool {
-        self.is_critical() || matches!(self.category, ErrorCategory::System | ErrorCategory::Database)
+        self.is_critical()
+            || matches!(
+                self.category,
+                ErrorCategory::System | ErrorCategory::Database
+            )
     }
 }
 
@@ -203,30 +229,102 @@ pub struct WebSocketErrorMapper {
 impl Default for WebSocketErrorMapper {
     fn default() -> Self {
         let mut error_messages = HashMap::new();
-        error_messages.insert(WebSocketErrorCode::AuthenticationFailed, "Authentication failed".to_string());
-        error_messages.insert(WebSocketErrorCode::TokenExpired, "Token has expired".to_string());
-        error_messages.insert(WebSocketErrorCode::TokenInvalid, "Invalid token".to_string());
-        error_messages.insert(WebSocketErrorCode::UserNotFound, "User not found".to_string());
-        error_messages.insert(WebSocketErrorCode::NoWorkspace, "No workspace selected".to_string());
-        error_messages.insert(WebSocketErrorCode::CommandNotFound, "Command not found".to_string());
-        error_messages.insert(WebSocketErrorCode::CommandInvalid, "Invalid command format".to_string());
-        error_messages.insert(WebSocketErrorCode::CommandTimeout, "Command execution timeout".to_string());
-        error_messages.insert(WebSocketErrorCode::CommandFailed, "Command execution failed".to_string());
-        error_messages.insert(WebSocketErrorCode::RateLimitExceeded, "Rate limit exceeded".to_string());
-        error_messages.insert(WebSocketErrorCode::TooManyRequests, "Too many requests".to_string());
-        error_messages.insert(WebSocketErrorCode::DuplicateRequest, "Duplicate request detected".to_string());
-        error_messages.insert(WebSocketErrorCode::IdempotencyKeyRequired, "Idempotency key required".to_string());
-        error_messages.insert(WebSocketErrorCode::LabelNotFound, "Label not found".to_string());
-        error_messages.insert(WebSocketErrorCode::LabelExists, "Label already exists".to_string());
-        error_messages.insert(WebSocketErrorCode::ValidationFailed, "Validation failed".to_string());
-        error_messages.insert(WebSocketErrorCode::PermissionDenied, "Permission denied".to_string());
-        error_messages.insert(WebSocketErrorCode::InternalError, "Internal server error".to_string());
-        error_messages.insert(WebSocketErrorCode::DatabaseError, "Database error".to_string());
-        error_messages.insert(WebSocketErrorCode::NetworkError, "Network error".to_string());
-        error_messages.insert(WebSocketErrorCode::ServiceUnavailable, "Service unavailable".to_string());
-        error_messages.insert(WebSocketErrorCode::ConnectionLost, "Connection lost".to_string());
-        error_messages.insert(WebSocketErrorCode::ConnectionTimeout, "Connection timeout".to_string());
-        error_messages.insert(WebSocketErrorCode::HeartbeatTimeout, "Heartbeat timeout".to_string());
+        error_messages.insert(
+            WebSocketErrorCode::AuthenticationFailed,
+            "Authentication failed".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::TokenExpired,
+            "Token has expired".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::TokenInvalid,
+            "Invalid token".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::UserNotFound,
+            "User not found".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::NoWorkspace,
+            "No workspace selected".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::CommandNotFound,
+            "Command not found".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::CommandInvalid,
+            "Invalid command format".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::CommandTimeout,
+            "Command execution timeout".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::CommandFailed,
+            "Command execution failed".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::RateLimitExceeded,
+            "Rate limit exceeded".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::TooManyRequests,
+            "Too many requests".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::DuplicateRequest,
+            "Duplicate request detected".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::IdempotencyKeyRequired,
+            "Idempotency key required".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::LabelNotFound,
+            "Label not found".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::LabelExists,
+            "Label already exists".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::ValidationFailed,
+            "Validation failed".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::PermissionDenied,
+            "Permission denied".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::InternalError,
+            "Internal server error".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::DatabaseError,
+            "Database error".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::NetworkError,
+            "Network error".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::ServiceUnavailable,
+            "Service unavailable".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::ConnectionLost,
+            "Connection lost".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::ConnectionTimeout,
+            "Connection timeout".to_string(),
+        );
+        error_messages.insert(
+            WebSocketErrorCode::HeartbeatTimeout,
+            "Heartbeat timeout".to_string(),
+        );
 
         let mut retry_suggestions = HashMap::new();
         retry_suggestions.insert(WebSocketErrorCode::CommandTimeout, Some(5));
@@ -262,10 +360,16 @@ impl WebSocketErrorMapper {
         *stats.errors_by_code.entry(error.code.clone()).or_insert(0) += 1;
 
         // 按严重程度统计
-        *stats.errors_by_severity.entry(error.severity.clone()).or_insert(0) += 1;
+        *stats
+            .errors_by_severity
+            .entry(error.severity.clone())
+            .or_insert(0) += 1;
 
         // 按分类统计
-        *stats.errors_by_category.entry(error.category.clone()).or_insert(0) += 1;
+        *stats
+            .errors_by_category
+            .entry(error.category.clone())
+            .or_insert(0) += 1;
 
         // 记录最近的错误
         stats.recent_errors.push(error.clone());
@@ -292,7 +396,9 @@ impl WebSocketErrorMapper {
     /// 获取严重错误列表
     pub fn get_critical_errors(&self) -> Vec<WebSocketError> {
         let stats = self.error_stats.read().unwrap();
-        stats.recent_errors.iter()
+        stats
+            .recent_errors
+            .iter()
             .filter(|e| e.is_critical())
             .cloned()
             .collect()
@@ -301,7 +407,9 @@ impl WebSocketErrorMapper {
     /// 获取高优先级错误列表
     pub fn get_high_priority_errors(&self) -> Vec<WebSocketError> {
         let stats = self.error_stats.read().unwrap();
-        stats.recent_errors.iter()
+        stats
+            .recent_errors
+            .iter()
             .filter(|e| e.is_high_priority())
             .cloned()
             .collect()
@@ -312,7 +420,9 @@ impl WebSocketErrorMapper {
         let mut stats = self.error_stats.write().unwrap();
         let cutoff_time = chrono::Utc::now() - chrono::Duration::from_std(max_age).unwrap();
 
-        stats.recent_errors.retain(|error| error.timestamp > cutoff_time);
+        stats
+            .recent_errors
+            .retain(|error| error.timestamp > cutoff_time);
         stats.last_updated = chrono::Utc::now();
     }
 
@@ -340,24 +450,22 @@ impl WebSocketErrorMapper {
             AppError::Auth { message } => {
                 (WebSocketErrorCode::AuthenticationFailed, message.clone())
             }
-            AppError::Database(_) => {
-                (WebSocketErrorCode::DatabaseError, "Database error".to_string())
-            }
-            AppError::Internal(message) => {
-                (WebSocketErrorCode::InternalError, message.clone())
-            }
-            _ => {
-                (WebSocketErrorCode::InternalError, "Unknown error".to_string())
-            }
+            AppError::Database(_) => (
+                WebSocketErrorCode::DatabaseError,
+                "Database error".to_string(),
+            ),
+            AppError::Internal(message) => (WebSocketErrorCode::InternalError, message.clone()),
+            _ => (
+                WebSocketErrorCode::InternalError,
+                "Unknown error".to_string(),
+            ),
         };
 
         let mut ws_error = WebSocketError::new(code, message);
 
         // 添加重试建议
-        if let Some(retry_after) = self.retry_suggestions.get(&ws_error.code) {
-            if let Some(retry_seconds) = retry_after {
-                ws_error.retry_after = Some(*retry_seconds);
-            }
+        if let Some(Some(retry_seconds)) = self.retry_suggestions.get(&ws_error.code) {
+            ws_error.retry_after = Some(*retry_seconds);
         }
 
         // 记录错误统计
@@ -370,7 +478,8 @@ impl WebSocketErrorMapper {
     pub fn map_rate_limit_error(&self, retry_after: Option<u64>) -> WebSocketError {
         let mut error = WebSocketError::new(
             WebSocketErrorCode::RateLimitExceeded,
-            self.error_messages.get(&WebSocketErrorCode::RateLimitExceeded)
+            self.error_messages
+                .get(&WebSocketErrorCode::RateLimitExceeded)
                 .unwrap_or(&"Rate limit exceeded".to_string())
                 .clone(),
         );
@@ -403,7 +512,10 @@ impl WebSocketErrorMapper {
     pub fn map_retry_error(&self, operation: &str, max_retries: u32) -> WebSocketError {
         let mut error = WebSocketError::new(
             WebSocketErrorCode::CommandFailed,
-            format!("Operation '{}' failed after {} retries", operation, max_retries),
+            format!(
+                "Operation '{}' failed after {} retries",
+                operation, max_retries
+            ),
         );
         error.retry_after = Some(10);
 
@@ -414,26 +526,35 @@ impl WebSocketErrorMapper {
     }
 
     /// 从认证错误映射
-    pub fn map_auth_error(&self, auth_error: &crate::websocket::auth::WebSocketAuthError) -> WebSocketError {
+    pub fn map_auth_error(
+        &self,
+        auth_error: &crate::websocket::auth::WebSocketAuthError,
+    ) -> WebSocketError {
         let (code, message) = match auth_error {
-            crate::websocket::auth::WebSocketAuthError::MissingToken => {
-                (WebSocketErrorCode::TokenInvalid, "Missing authentication token".to_string())
-            }
-            crate::websocket::auth::WebSocketAuthError::InvalidToken => {
-                (WebSocketErrorCode::TokenInvalid, "Invalid authentication token".to_string())
-            }
-            crate::websocket::auth::WebSocketAuthError::ExpiredToken => {
-                (WebSocketErrorCode::TokenExpired, "Token has expired".to_string())
-            }
-            crate::websocket::auth::WebSocketAuthError::UserNotFound => {
-                (WebSocketErrorCode::UserNotFound, "User not found".to_string())
-            }
-            crate::websocket::auth::WebSocketAuthError::InvalidUserId => {
-                (WebSocketErrorCode::AuthenticationFailed, "Invalid user ID format".to_string())
-            }
-            crate::websocket::auth::WebSocketAuthError::DatabaseError => {
-                (WebSocketErrorCode::DatabaseError, "Database error during authentication".to_string())
-            }
+            crate::websocket::auth::WebSocketAuthError::MissingToken => (
+                WebSocketErrorCode::TokenInvalid,
+                "Missing authentication token".to_string(),
+            ),
+            crate::websocket::auth::WebSocketAuthError::InvalidToken => (
+                WebSocketErrorCode::TokenInvalid,
+                "Invalid authentication token".to_string(),
+            ),
+            crate::websocket::auth::WebSocketAuthError::ExpiredToken => (
+                WebSocketErrorCode::TokenExpired,
+                "Token has expired".to_string(),
+            ),
+            crate::websocket::auth::WebSocketAuthError::UserNotFound => (
+                WebSocketErrorCode::UserNotFound,
+                "User not found".to_string(),
+            ),
+            crate::websocket::auth::WebSocketAuthError::InvalidUserId => (
+                WebSocketErrorCode::AuthenticationFailed,
+                "Invalid user ID format".to_string(),
+            ),
+            crate::websocket::auth::WebSocketAuthError::DatabaseError => (
+                WebSocketErrorCode::DatabaseError,
+                "Database error during authentication".to_string(),
+            ),
         };
 
         WebSocketError::new(code, message)
@@ -441,7 +562,8 @@ impl WebSocketErrorMapper {
 
     /// 获取用户友好的错误消息
     pub fn get_user_friendly_message(&self, code: &WebSocketErrorCode) -> String {
-        self.error_messages.get(code)
+        self.error_messages
+            .get(code)
             .cloned()
             .unwrap_or_else(|| "Unknown error occurred".to_string())
     }
@@ -473,17 +595,9 @@ impl WebSocketErrorMapper {
 }
 
 /// 错误处理器
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct WebSocketErrorHandler {
     mapper: WebSocketErrorMapper,
-}
-
-impl Default for WebSocketErrorHandler {
-    fn default() -> Self {
-        Self {
-            mapper: WebSocketErrorMapper::default(),
-        }
-    }
 }
 
 impl WebSocketErrorHandler {
@@ -512,7 +626,10 @@ impl WebSocketErrorHandler {
     }
 
     /// 处理认证错误
-    pub fn handle_auth_error(&self, auth_error: &crate::websocket::auth::WebSocketAuthError) -> WebSocketError {
+    pub fn handle_auth_error(
+        &self,
+        auth_error: &crate::websocket::auth::WebSocketAuthError,
+    ) -> WebSocketError {
         self.mapper.map_auth_error(auth_error)
     }
 
@@ -583,10 +700,14 @@ mod tests {
     fn test_should_retry_logic() {
         let mapper = WebSocketErrorMapper::default();
 
-        let retryable_error = WebSocketError::new(WebSocketErrorCode::DatabaseError, "DB error".to_string());
+        let retryable_error =
+            WebSocketError::new(WebSocketErrorCode::DatabaseError, "DB error".to_string());
         assert!(mapper.should_retry(&retryable_error));
 
-        let non_retryable_error = WebSocketError::new(WebSocketErrorCode::ValidationFailed, "Validation error".to_string());
+        let non_retryable_error = WebSocketError::new(
+            WebSocketErrorCode::ValidationFailed,
+            "Validation error".to_string(),
+        );
         assert!(!mapper.should_retry(&non_retryable_error));
     }
 
@@ -594,10 +715,16 @@ mod tests {
     fn test_should_disconnect_logic() {
         let mapper = WebSocketErrorMapper::default();
 
-        let disconnect_error = WebSocketError::new(WebSocketErrorCode::TokenExpired, "Token expired".to_string());
+        let disconnect_error = WebSocketError::new(
+            WebSocketErrorCode::TokenExpired,
+            "Token expired".to_string(),
+        );
         assert!(mapper.should_disconnect(&disconnect_error));
 
-        let non_disconnect_error = WebSocketError::new(WebSocketErrorCode::ValidationFailed, "Validation error".to_string());
+        let non_disconnect_error = WebSocketError::new(
+            WebSocketErrorCode::ValidationFailed,
+            "Validation error".to_string(),
+        );
         assert!(!mapper.should_disconnect(&non_disconnect_error));
     }
 
