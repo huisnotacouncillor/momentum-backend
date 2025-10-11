@@ -330,9 +330,7 @@ impl IssuesService {
                     .filter(l::dsl::id.eq_any(label_ids))
                     .count()
                     .get_result::<i64>(conn)
-                    .map_err(|e| {
-                        AppError::internal(format!("Failed to validate labels: {}", e))
-                    })?;
+                    .map_err(|e| AppError::internal(format!("Failed to validate labels: {}", e)))?;
                 if count != label_ids.len() as i64 {
                     return Err(AppError::validation("Invalid label_ids for workspace"));
                 }
@@ -544,9 +542,8 @@ impl IssuesService {
 
         // workflow states
         let states = if let Some(wf_id) = issue.workflow_id {
-            WorkflowsRepo::list_states_by_workflow(conn, wf_id).map_err(|e| {
-                AppError::internal(format!("Failed to load workflow states: {}", e))
-            })?
+            WorkflowsRepo::list_states_by_workflow(conn, wf_id)
+                .map_err(|e| AppError::internal(format!("Failed to load workflow states: {}", e)))?
         } else {
             WorkflowsRepo::list_team_default_states(conn, issue.team_id).map_err(|e| {
                 AppError::internal(format!("Failed to load team default states: {}", e))

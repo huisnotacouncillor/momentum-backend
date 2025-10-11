@@ -538,9 +538,7 @@ mod user_tests {
         let team_id = Uuid::new_v4();
 
         // Test request structure
-        let switch_request = SwitchWorkspaceRequest {
-            workspace_id,
-        };
+        let switch_request = SwitchWorkspaceRequest { workspace_id };
 
         assert_eq!(switch_request.workspace_id, workspace_id);
 

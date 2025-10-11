@@ -182,11 +182,8 @@ impl ProjectsService {
             req.description.as_deref(),
             None, // project_key not available in update request
             req.project_status_id,
-            req.target_date.map(|opt_date| {
-                opt_date.map(|d| {
-                    d.and_hms_opt(0, 0, 0).unwrap_or_default()
-                })
-            }),
+            req.target_date
+                .map(|opt_date| opt_date.map(|d| d.and_hms_opt(0, 0, 0).unwrap_or_default())),
             req.priority.as_ref(),
             req.roadmap_id,
         )?;
