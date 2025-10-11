@@ -7,7 +7,7 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() {
     // Load environment variables
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     // Create database connection pool
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
