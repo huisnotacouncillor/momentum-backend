@@ -1,0 +1,48 @@
+# Git
+.git
+.gitignore
+
+# Target directory (compiled artifacts)
+target/
+**/*.rs.bk
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+.env.*
+!env.example
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests
+tests/
+
+# Examples
+examples/
+
+# Scripts
+scripts/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# Other
+.dockerignore
+Dockerfile
+docker-compose.yml
+rust-analyzer.toml
+
