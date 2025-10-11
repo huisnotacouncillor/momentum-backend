@@ -114,7 +114,7 @@ async fn test_websocket_manager_connection_lifecycle() {
 
     // Add connection
     manager
-        .add_connection(connection_id.clone(), user.clone())
+        .add_connection(connection_id.clone(), user.clone(), None, None)
         .await;
     assert_eq!(manager.get_connection_count().await, 1);
 
@@ -160,7 +160,7 @@ async fn test_websocket_manager_cleanup_stale_connections() {
     };
 
     manager
-        .add_connection(connection_id.clone(), stale_user)
+        .add_connection(connection_id.clone(), stale_user, None, None)
         .await;
     assert_eq!(manager.get_connection_count().await, 1);
 
@@ -222,7 +222,9 @@ async fn test_websocket_manager_send_to_user() {
         current_workspace_id: Some(Uuid::new_v4()),
     };
 
-    manager.add_connection(connection_id, user).await;
+    manager
+        .add_connection(connection_id, user, None, None)
+        .await;
 
     let test_message = WebSocketMessage {
         id: Some(Uuid::new_v4().to_string()),
@@ -260,7 +262,9 @@ async fn test_websocket_manager_multiple_users() {
         };
 
         users.push((connection_id.clone(), user_id));
-        manager.add_connection(connection_id, user).await;
+        manager
+            .add_connection(connection_id, user, None, None)
+            .await;
     }
 
     assert_eq!(manager.get_connection_count().await, 5);
@@ -361,7 +365,9 @@ async fn test_websocket_manager_performance() {
             current_workspace_id: Some(Uuid::new_v4()),
         };
 
-        manager.add_connection(connection_id, user).await;
+        manager
+            .add_connection(connection_id, user, None, None)
+            .await;
     }
 
     let add_duration = start_time.elapsed();
@@ -574,7 +580,9 @@ mod integration_tests {
 
     #[tokio::test]
     async fn test_project_websocket_command_serialization() {
-        use rust_backend::websocket::commands::types::{CreateProjectCommand, UpdateProjectCommand, ProjectFilters, WebSocketCommand};
+        use rust_backend::websocket::commands::types::{
+            CreateProjectCommand, ProjectFilters, UpdateProjectCommand, WebSocketCommand,
+        };
 
         // Test create project command
         let create_command = WebSocketCommand::CreateProject {
@@ -618,10 +626,15 @@ mod integration_tests {
         };
 
         let update_serialized = serde_json::to_string(&update_command).unwrap();
-        let update_deserialized: WebSocketCommand = serde_json::from_str(&update_serialized).unwrap();
+        let update_deserialized: WebSocketCommand =
+            serde_json::from_str(&update_serialized).unwrap();
 
         match update_deserialized {
-            WebSocketCommand::UpdateProject { project_id: pid, data, request_id } => {
+            WebSocketCommand::UpdateProject {
+                project_id: pid,
+                data,
+                request_id,
+            } => {
                 assert_eq!(pid, project_id);
                 assert_eq!(data.name, Some("Updated Project".to_string()));
                 assert_eq!(data.description, Some("Updated description".to_string()));
@@ -644,7 +657,10 @@ mod integration_tests {
         let query_deserialized: WebSocketCommand = serde_json::from_str(&query_serialized).unwrap();
 
         match query_deserialized {
-            WebSocketCommand::QueryProjects { filters, request_id } => {
+            WebSocketCommand::QueryProjects {
+                filters,
+                request_id,
+            } => {
                 assert_eq!(filters.search, Some("test".to_string()));
                 assert!(filters.owner_id.is_some());
                 assert_eq!(request_id, Some("query_projects_123".to_string()));

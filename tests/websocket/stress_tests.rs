@@ -80,7 +80,7 @@ async fn stress_test_websocket_manager_concurrent_connections() {
 
             // Add connection
             manager_clone
-                .add_connection(connection_id.clone(), user)
+                .add_connection(connection_id.clone(), user, None, None)
                 .await;
             success_count_clone.fetch_add(1, Ordering::Relaxed);
 
@@ -141,7 +141,9 @@ async fn stress_test_websocket_manager_message_broadcasting() {
             current_workspace_id: Some(Uuid::new_v4()),
         };
 
-        manager.add_connection(connection_id, user).await;
+        manager
+            .add_connection(connection_id, user, None, None)
+            .await;
     }
 
     assert_eq!(manager.get_connection_count().await, num_connections);
@@ -236,7 +238,7 @@ async fn stress_test_websocket_manager_rapid_connect_disconnect() {
                 };
 
                 manager_clone
-                    .add_connection(connection_id.clone(), user)
+                    .add_connection(connection_id.clone(), user, None, None)
                     .await;
 
                 // Very short connection lifetime
@@ -301,7 +303,9 @@ async fn stress_test_websocket_manager_memory_usage() {
             current_workspace_id: Some(Uuid::new_v4()),
         };
 
-        manager.add_connection(connection_id, user).await;
+        manager
+            .add_connection(connection_id, user, None, None)
+            .await;
 
         // Periodic memory pressure test
         if i % 500 == 0 {
@@ -371,7 +375,9 @@ async fn stress_test_websocket_manager_ping_updates() {
             current_workspace_id: Some(Uuid::new_v4()),
         };
 
-        manager.add_connection(connection_id, user).await;
+        manager
+            .add_connection(connection_id, user, None, None)
+            .await;
     }
 
     let start_time = Instant::now();
@@ -458,7 +464,9 @@ async fn stress_test_websocket_manager_concurrent_operations() {
                         metadata: std::collections::HashMap::new(),
                         current_workspace_id: Some(Uuid::new_v4()),
                     };
-                    manager_clone.add_connection(connection_id, user).await;
+                    manager_clone
+                        .add_connection(connection_id, user, None, None)
+                        .await;
                 }
                 1 => {
                     // Get connection count

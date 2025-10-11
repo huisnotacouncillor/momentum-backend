@@ -1,25 +1,10 @@
-use diesel::prelude::*;
-use uuid::Uuid;
-
 use rust_backend::{
-    db::models::team::{NewTeam, Team},
-    error::AppError,
     routes::teams::{CreateTeamRequest, UpdateTeamRequest},
-    schema,
     services::{
-        context::RequestContext, team_members_service::TeamMembersService,
+        team_members_service::TeamMembersService,
         teams_service::TeamsService,
     },
 };
-
-// Helper to create test context
-fn create_test_context() -> RequestContext {
-    RequestContext {
-        user_id: Uuid::new_v4(),
-        workspace_id: Uuid::new_v4(),
-        idempotency_key: None,
-    }
-}
 
 #[test]
 fn test_teams_service_validate_name() {
