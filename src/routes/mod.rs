@@ -27,6 +27,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/labels/:label_id", put(labels::update_label))
         .route("/labels/:label_id", delete(labels::delete_label))
         .route("/auth/profile", get(auth::get_profile))
+        .route("/auth/logout", post(auth::logout))
         .route("/auth/switch-workspace", post(auth::switch_workspace))
         .route("/workspaces", post(workspaces::create_workspace))
         .route(

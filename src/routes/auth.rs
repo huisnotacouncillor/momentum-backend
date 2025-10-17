@@ -41,9 +41,9 @@ pub async fn register(
         }
     };
 
-    match AuthService::register(&mut conn, &payload) {
-        Ok(user) => {
-            let response = ApiResponse::created(user, "User registered successfully");
+    match AuthService::register(&mut conn, &payload, &state.asset_helper) {
+        Ok(login_response) => {
+            let response = ApiResponse::created(login_response, "User registered successfully");
             (StatusCode::CREATED, Json(response)).into_response()
         }
         Err(err) => err.into_response(),
@@ -156,4 +156,57 @@ pub async fn switch_workspace(
         }
         Err(err) => err.into_response(),
     }
+}
+
+// 用户登出
+pub async fn logout(
+    State(state): State<Arc<AppState>>,
+    auth_info: AuthUserInfo,
+) -> impl IntoResponse {
+    let mut conn = match state.db.get() {
+        Ok(conn) => conn,
+        Err(_) => {
+            let response = ApiResponse::<()>::internal_error("Database connection failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+        }
+    };
+
+    let ctx = RequestContext {
+        user_id: auth_info.user.id,
+        workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
+        idempotency_key: None,
+    };
+
+    // 使所有会话失效
+    if let Err(err) = AuthService::logout(&mut conn, &ctx) {
+        return err.into_response();
+    }
+
+    // 清除 Redis 中的所有用户相关缓存
+    let user_id = ctx.user_id;
+
+    // 清除用户缓存的各个键
+    if let Ok(mut redis_conn) = state.redis.get_multiplexed_async_connection().await {
+        use redis::AsyncCommands;
+
+        // 定义所有需要清除的键
+        let cache_keys = vec![
+            format!("user:{}", user_id),           // 用户基本信息
+            format!("user_profile:{}", user_id),   // 用户详细资料
+            format!("user_workspace:{}", user_id), // 用户工作空间
+        ];
+
+        // 批量删除缓存键
+        for key in cache_keys {
+            let _: Result<(), redis::RedisError> = redis_conn.del(&key).await;
+        }
+
+        tracing::info!("Cleared Redis cache for user {} on logout", user_id);
+    } else {
+        tracing::warn!("Failed to get Redis connection for cache cleanup on logout");
+        // 即使 Redis 清理失败，登出操作仍然成功（数据库会话已失效）
+    }
+
+    let response = ApiResponse::<()>::success((), "Logout successful");
+    (StatusCode::OK, Json(response)).into_response()
 }

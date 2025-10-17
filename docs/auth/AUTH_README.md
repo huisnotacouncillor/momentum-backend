@@ -137,6 +137,25 @@ POST /auth/logout
 Authorization: Bearer <access_token>
 ```
 
+响应：
+```json
+{
+  "success": true,
+  "message": "Logout successful",
+  "data": null,
+  "code": null,
+  "field": null
+}
+```
+
+登出操作会：
+- 使数据库中的所有用户会话失效（`is_active = false`）
+- 清除 Redis 中的用户缓存（`user:{user_id}`）
+- 清除 Redis 中的用户资料缓存（`user_profile:{user_id}`）
+- 清除 Redis 中的工作空间缓存（`user_workspace:{user_id}`）
+
+详细文档请参见 [LOGOUT_API.md](LOGOUT_API.md)
+
 ## 安全特性
 
 1. **密码安全**: 使用bcrypt进行密码哈希，成本因子为12
@@ -243,6 +262,17 @@ GITHUB_CLIENT_SECRET=your_github_client_secret
    ```bash
    curl -X GET http://localhost:8000/auth/profile \
      -H "Authorization: Bearer <your_access_token>"
+   ```
+
+4. **登出**:
+   ```bash
+   curl -X POST http://localhost:8000/auth/logout \
+     -H "Authorization: Bearer <your_access_token>"
+   ```
+
+5. **运行登出演示示例**:
+   ```bash
+   cargo run --example logout_demo
    ```
 
 ## 注意事项

@@ -23,7 +23,11 @@ use crate::{
 pub struct AuthService;
 
 impl AuthService {
-    pub fn register(conn: &mut PgConnection, req: &RegisterRequest) -> Result<User, AppError> {
+    pub fn register(
+        conn: &mut PgConnection,
+        req: &RegisterRequest,
+        asset_helper: &AssetUrlHelper,
+    ) -> Result<LoginResponse, AppError> {
         validate_register_request(&req.name, &req.username, &req.email, &req.password)?;
 
         // Check if email already exists
@@ -72,7 +76,47 @@ impl AuthService {
 
         AuthRepo::insert_credential(conn, &new_credential)?;
 
-        Ok(user)
+        // Generate JWT tokens
+        let auth_config = AuthConfig::default();
+        let jwt_service = JwtAuthService::new(auth_config);
+
+        let auth_user = AuthUser {
+            id: user.id,
+            email: user.email.clone(),
+            username: user.username.clone(),
+            name: user.name.clone(),
+            avatar_url: user.get_processed_avatar_url(asset_helper),
+        };
+
+        let access_token = jwt_service
+            .generate_access_token(&auth_user)
+            .map_err(|_| AppError::internal("Failed to generate access token"))?;
+
+        let refresh_token = jwt_service
+            .generate_refresh_token(user.id)
+            .map_err(|_| AppError::internal("Failed to generate refresh token"))?;
+
+        // 获取当前工作空间的 url_key (注册时通常没有工作空间)
+        let current_workspace_url_key = if let Some(workspace_id) = user.current_workspace_id {
+            use crate::schema::workspaces;
+            workspaces::table
+                .filter(workspaces::id.eq(workspace_id))
+                .select(workspaces::url_key)
+                .first::<String>(conn)
+                .optional()
+                .map_err(|_| AppError::internal("Failed to get workspace url_key"))?
+        } else {
+            None
+        };
+
+        Ok(LoginResponse {
+            access_token,
+            refresh_token,
+            token_type: "Bearer".to_string(),
+            expires_in: 3600,
+            user: auth_user,
+            current_workspace_url_key,
+        })
     }
 
     pub fn login(
@@ -115,12 +159,26 @@ impl AuthService {
             .generate_refresh_token(user.id)
             .map_err(|_| AppError::internal("Failed to generate refresh token"))?;
 
+        // 获取当前工作空间的 url_key
+        let current_workspace_url_key = if let Some(workspace_id) = user.current_workspace_id {
+            use crate::schema::workspaces;
+            workspaces::table
+                .filter(workspaces::id.eq(workspace_id))
+                .select(workspaces::url_key)
+                .first::<String>(conn)
+                .optional()
+                .map_err(|_| AppError::internal("Failed to get workspace url_key"))?
+        } else {
+            None
+        };
+
         Ok(LoginResponse {
             access_token,
             refresh_token,
             token_type: "Bearer".to_string(),
             expires_in: 3600,
             user: auth_user,
+            current_workspace_url_key,
         })
     }
 
@@ -302,5 +360,18 @@ impl AuthService {
                 },
             )
             .collect())
+    }
+
+    /// Logout user - invalidate all active sessions
+    pub fn logout(conn: &mut PgConnection, ctx: &RequestContext) -> Result<(), AppError> {
+        use crate::schema::user_sessions::dsl::*;
+
+        // Set all active sessions for this user to inactive
+        diesel::update(user_sessions.filter(user_id.eq(ctx.user_id).and(is_active.eq(true))))
+            .set(is_active.eq(false))
+            .execute(conn)
+            .map_err(|_| AppError::internal("Failed to logout user"))?;
+
+        Ok(())
     }
 }

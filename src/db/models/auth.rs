@@ -124,6 +124,7 @@ pub struct LoginResponse {
     pub token_type: String,
     pub expires_in: i64,
     pub user: AuthUser,
+    pub current_workspace_url_key: Option<String>,
 }
 
 #[derive(Deserialize)]
