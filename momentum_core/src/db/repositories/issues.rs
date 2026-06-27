@@ -49,9 +49,59 @@ impl IssueRepo {
         limit: i64,
         cursor: Option<IssueCursor>,
     ) -> Result<Vec<Issue>, diesel::result::Error> {
-        use crate::schema::issues::dsl::*;
+        Self::list_by_team_filtered(
+            conn,
+            Some(target_team_id),
+            None,
+            None,
+            None,
+            None,
+            limit,
+            cursor,
+        )
+    }
 
-        let mut query = issues.filter(team_id.eq(target_team_id)).into_boxed();
+    pub fn list_by_team_filtered(
+        conn: &mut PgConnection,
+        p_team_id: Option<uuid::Uuid>,
+        p_project_id: Option<uuid::Uuid>,
+        p_assignee_id: Option<uuid::Uuid>,
+        p_priority: Option<String>,
+        p_search: Option<String>,
+        limit: i64,
+        cursor: Option<IssueCursor>,
+    ) -> Result<Vec<Issue>, diesel::result::Error> {
+        use crate::schema::issues::dsl::*;
+        use diesel::BoolExpressionMethods;
+
+        // Pre-compute search pattern strings to avoid lifetime issues with boxed queries
+        let (title_pattern, desc_pattern) = if let Some(ref s) = p_search {
+            (Some(format!("%{}%", s)), Some(format!("%{}%", s)))
+        } else {
+            (None, None)
+        };
+
+        let mut query = issues.into_boxed();
+
+        if let Some(tid) = p_team_id {
+            query = query.filter(team_id.eq(tid));
+        }
+        if let Some(pid) = p_project_id {
+            query = query.filter(project_id.eq(pid));
+        }
+        if let Some(aid) = p_assignee_id {
+            query = query.filter(assignee_id.eq(aid));
+        }
+        if let Some(p) = p_priority {
+            query = query.filter(priority.eq(p));
+        }
+        if let Some(ref tp) = title_pattern {
+            if let Some(ref dp) = desc_pattern {
+                query = query.filter(
+                    title.ilike(tp.as_str()).or(description.ilike(dp.as_str())),
+                );
+            }
+        }
 
         if let Some(cur) = cursor {
             query = query

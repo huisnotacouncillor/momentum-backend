@@ -63,7 +63,18 @@ impl IssuesService {
 
         // Query issues with pagination
         let mut issues = if let Some(team_id) = filters.team_id {
-            IssueRepo::list_by_team(conn, team_id, limit + 1, cursor)?
+            // Push filters to DB layer when team_id is provided
+            let priority_str = filters.priority.as_ref().map(|p| Self::priority_to_string(p));
+            IssueRepo::list_by_team_filtered(
+                conn,
+                Some(team_id),
+                filters.project_id,
+                filters.assignee_id,
+                priority_str,
+                filters.search.clone(),
+                limit + 1,
+                cursor,
+            )?
         } else {
             // No team_id filter, load workspace issues and apply pagination in-memory
             let all_issues = IssueRepo::list_by_workspace(conn, ctx.workspace_id)?;
@@ -89,23 +100,28 @@ impl IssuesService {
             issues.truncate(limit as usize);
         }
 
-        // Apply other filters in-memory
-        if let Some(project_id) = filters.project_id {
-            issues.retain(|issue| issue.project_id == Some(project_id));
-        }
+        // Apply other filters in-memory for non-team queries
+        if filters.team_id.is_none() {
+            if let Some(project_id) = filters.project_id {
+                issues.retain(|issue| issue.project_id == Some(project_id));
+            }
 
-        if let Some(assignee_id) = filters.assignee_id {
-            issues.retain(|issue| issue.assignee_id == Some(assignee_id));
-        }
+            if let Some(assignee_id) = filters.assignee_id {
+                issues.retain(|issue| issue.assignee_id == Some(assignee_id));
+            }
 
-        if let Some(priority) = &filters.priority {
-            let pri = Self::priority_to_string(priority);
-            issues.retain(|issue| issue.priority == pri);
-        }
+            if let Some(priority) = &filters.priority {
+                let pri = Self::priority_to_string(priority);
+                issues.retain(|issue| issue.priority == pri);
+            }
 
-        if let Some(search) = &filters.search {
-            let search_lower = search.to_lowercase();
-            issues.retain(|issue| issue.title.to_lowercase().contains(&search_lower));
+            if let Some(search) = &filters.search {
+                let search_lower = search.to_lowercase();
+                issues.retain(|issue| {
+                    issue.title.to_lowercase().contains(&search_lower)
+                        || issue.description.as_ref().map(|d| d.to_lowercase().contains(&search_lower)).unwrap_or(false)
+                });
+            }
         }
 
         // Enrich with workflow states and map to response
