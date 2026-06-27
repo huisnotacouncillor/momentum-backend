@@ -25,6 +25,8 @@ pub struct IssueQueryParams {
     pub assignee_id: Option<Uuid>,
     pub priority: Option<String>,
     pub search: Option<String>,
+    pub limit: Option<i64>,
+    pub cursor: Option<String>,
 }
 
 // 获取问题列表
@@ -84,11 +86,24 @@ pub async fn get_issues(
         assignee_id: params.assignee_id,
         priority,
         search: params.search,
+        limit: params.limit,
+        cursor: params.cursor,
     };
 
     match IssuesService::list(&mut conn, &ctx, &filters) {
-        Ok(issues) => {
-            let response = ApiResponse::success(issues, "Issues retrieved successfully");
+        Ok(paginated) => {
+            #[derive(serde::Serialize)]
+            struct PaginatedResponse {
+                items: Vec<momentum_core::db::models::issue::IssueResponse>,
+                next_cursor: Option<String>,
+                has_more: bool,
+            }
+            let resp = PaginatedResponse {
+                items: paginated.items,
+                next_cursor: paginated.next_cursor,
+                has_more: paginated.has_more,
+            };
+            let response = ApiResponse::success(resp, "Issues retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => AppErrorResponse(err).into_response(),

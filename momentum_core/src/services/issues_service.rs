@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::{
     db::enums::IssuePriority,
-    db::models::issue::{Issue, NewIssue},
+    db::models::issue::{Issue, IssueCursor, NewIssue},
     db::models::team::{Team, TeamBasicInfo},
     db::models::workflow::WorkflowStateResponse,
     db::repositories::issue_field_values::IssueFieldValueRepo,
@@ -16,6 +16,13 @@ use crate::{
 };
 
 pub struct IssuesService;
+
+/// Paginated issues response
+pub struct PaginatedIssues {
+    pub items: Vec<crate::db::models::issue::IssueResponse>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
 
 impl IssuesService {
     fn priority_to_string(priority: &IssuePriority) -> String {
@@ -43,38 +50,71 @@ impl IssuesService {
         conn: &mut PgConnection,
         ctx: &RequestContext,
         filters: &IssueFilters,
-    ) -> Result<Vec<crate::db::models::issue::IssueResponse>, AppError> {
-        let mut query = IssueRepo::list_by_workspace(conn, ctx.workspace_id)?;
+    ) -> Result<PaginatedIssues, AppError> {
+        let limit = filters.limit.unwrap_or(50).min(100);
 
-        // Apply filters
-        if let Some(team_id) = filters.team_id {
-            query.retain(|issue| issue.team_id == team_id);
+        // Parse cursor if provided
+        let cursor = if let Some(ref cursor_str) = filters.cursor {
+            Some(IssueCursor::decode(cursor_str)
+                .map_err(|e| AppError::validation(format!("Invalid cursor: {}", e)))?)
+        } else {
+            None
+        };
+
+        // Query issues with pagination
+        let mut issues = if let Some(team_id) = filters.team_id {
+            IssueRepo::list_by_team(conn, team_id, limit + 1, cursor)?
+        } else {
+            // No team_id filter, load workspace issues and apply pagination in-memory
+            let all_issues = IssueRepo::list_by_workspace(conn, ctx.workspace_id)?;
+            // Apply cursor-based filtering in-memory (for non-team queries)
+            if let Some(cur) = cursor {
+                let cursor_pos = all_issues.iter().position(|i| {
+                    i.created_at < cur.created_at ||
+                    (i.created_at == cur.created_at && i.id < cur.id)
+                });
+                if let Some(pos) = cursor_pos {
+                    all_issues[pos..].to_vec()
+                } else {
+                    vec![]
+                }
+            } else {
+                all_issues
+            }
+        };
+
+        // Determine if there are more results
+        let has_more = issues.len() as i64 > limit;
+        if has_more {
+            issues.truncate(limit as usize);
         }
 
+        // Apply other filters in-memory
         if let Some(project_id) = filters.project_id {
-            query.retain(|issue| issue.project_id == Some(project_id));
+            issues.retain(|issue| issue.project_id == Some(project_id));
         }
 
         if let Some(assignee_id) = filters.assignee_id {
-            query.retain(|issue| issue.assignee_id == Some(assignee_id));
+            issues.retain(|issue| issue.assignee_id == Some(assignee_id));
         }
 
         if let Some(priority) = &filters.priority {
             let pri = Self::priority_to_string(priority);
-            query.retain(|issue| issue.priority == pri);
+            issues.retain(|issue| issue.priority == pri);
         }
 
         if let Some(search) = &filters.search {
-            query.retain(|issue| issue.title.to_lowercase().contains(&search.to_lowercase()));
+            let search_lower = search.to_lowercase();
+            issues.retain(|issue| issue.title.to_lowercase().contains(&search_lower));
         }
 
         // Enrich with workflow states and map to response
-        let ids: Vec<Uuid> = query.iter().map(|i| i.id).collect();
+        let ids: Vec<Uuid> = issues.iter().map(|i| i.id).collect();
         let field_values_map = IssueFieldValueRepo::list_by_issues(conn, &ids)
             .unwrap_or_default();
 
-        let mut responses = Vec::with_capacity(query.len());
-        for issue in query {
+        let mut responses = Vec::with_capacity(issues.len());
+        for issue in issues {
             let mut resp = crate::db::models::issue::IssueResponse::from(issue.clone());
             // Populate team info (and team_key)
             {
@@ -114,7 +154,19 @@ impl IssuesService {
             responses.push(resp);
         }
 
-        Ok(responses)
+        // Generate next cursor from last item
+        let next_cursor = responses.last().map(|resp| {
+            IssueCursor {
+                created_at: resp.created_at,
+                id: resp.id,
+            }.encode()
+        });
+
+        Ok(PaginatedIssues {
+            items: responses,
+            next_cursor,
+            has_more,
+        })
     }
 
     pub fn create(
@@ -666,4 +718,20 @@ pub struct IssueFilters {
     pub assignee_id: Option<Uuid>,
     pub priority: Option<IssuePriority>,
     pub search: Option<String>,
+    pub limit: Option<i64>,
+    pub cursor: Option<String>,
+}
+
+impl Default for IssueFilters {
+    fn default() -> Self {
+        Self {
+            team_id: None,
+            project_id: None,
+            assignee_id: None,
+            priority: None,
+            search: None,
+            limit: Some(50),
+            cursor: None,
+        }
+    }
 }

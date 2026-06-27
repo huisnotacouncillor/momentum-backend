@@ -1,8 +1,27 @@
 use crate::db::enums::IssuePriority;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
+
+/// Cursor for paginating issues using created_at + id
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueCursor {
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub id: Uuid,
+}
+
+impl IssueCursor {
+    pub fn encode(&self) -> String {
+        BASE64.encode(serde_json::to_string(self).unwrap())
+    }
+
+    pub fn decode(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let json = BASE64.decode(s)?;
+        Ok(serde_json::from_slice(&json)?)
+    }
+}
 
 // Issue models
 #[derive(Queryable, Selectable, Serialize, Deserialize, Clone)]

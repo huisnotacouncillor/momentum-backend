@@ -19,6 +19,7 @@ thiserror = { workspace = true }
 validator = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
+base64 = { workspace = true }
 
 # Config
 dotenvy = { workspace = true }
@@ -37,6 +38,13 @@ tracing = { workspace = true }
 # Auth re-exports
 bcrypt = { workspace = true }
 jsonwebtoken = { workspace = true }
+
+# Plugin Manifest parsing
+serde_yaml = "0.9"
+semver = { version = "1.0", features = ["serde"] }
+
+# Plugin Registry 内存状态
+tokio = { workspace = true }
 
 [dev-dependencies]
 diesel_migrations = "1.4"

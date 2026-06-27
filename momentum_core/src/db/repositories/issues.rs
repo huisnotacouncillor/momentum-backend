@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 
-use crate::db::models::issue::{Issue, NewIssue};
+use crate::db::models::issue::{Issue, IssueCursor, NewIssue};
 
 pub struct IssueRepo;
 
@@ -46,11 +46,22 @@ impl IssueRepo {
     pub fn list_by_team(
         conn: &mut PgConnection,
         target_team_id: uuid::Uuid,
+        limit: i64,
+        cursor: Option<IssueCursor>,
     ) -> Result<Vec<Issue>, diesel::result::Error> {
         use crate::schema::issues::dsl::*;
-        issues
-            .filter(team_id.eq(target_team_id))
-            .order(created_at.desc())
+
+        let mut query = issues.filter(team_id.eq(target_team_id)).into_boxed();
+
+        if let Some(cur) = cursor {
+            query = query
+                .filter(created_at.lt(cur.created_at))
+                .or_filter(created_at.eq(cur.created_at).and(id.lt(cur.id)));
+        }
+
+        query
+            .order((created_at.desc().nulls_last(), id.desc().nulls_last()))
+            .limit(limit + 1)
             .load::<Issue>(conn)
     }
 
