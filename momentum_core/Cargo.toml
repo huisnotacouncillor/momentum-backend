@@ -1,0 +1,42 @@
+[package]
+name = "momentum_core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# DB
+diesel = { workspace = true }
+r2d2 = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Utils
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+validator = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Config
+dotenvy = { workspace = true }
+envy = { workspace = true }
+
+# Cache (needed for error.rs)
+redis = { workspace = true }
+
+# gRPC / Plugin (no HTTP dependencies)
+tonic = { workspace = true }
+prost = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Auth re-exports
+bcrypt = { workspace = true }
+jsonwebtoken = { workspace = true }
+
+[dev-dependencies]
+diesel_migrations = "1.4"

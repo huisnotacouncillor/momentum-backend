@@ -1,0 +1,61 @@
+[package]
+name = "momentum_api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+momentum_core = { path = "../momentum_core" }
+momentum_plugin_host = { path = "../momentum_plugin_host" }
+
+# HTTP
+axum = { workspace = true }
+tokio = { workspace = true }
+tower-http = { workspace = true }
+headers = { workspace = true }
+axum-extra = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# DB
+diesel = { workspace = true }
+r2d2 = { workspace = true }
+
+# Auth
+bcrypt = { workspace = true }
+jsonwebtoken = { workspace = true }
+
+# Config
+dotenvy = { workspace = true }
+envy = { workspace = true }
+
+# Cache
+redis = { workspace = true }
+
+# Utils
+uuid = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+url = { workspace = true }
+hex = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+base64 = { workspace = true }
+semver = { workspace = true }
+serde_yaml = { workspace = true }
+which = { workspace = true }
+thiserror = { workspace = true }
+validator = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+reqwest = { workspace = true }
+tokio-test = { workspace = true }
+tungstenite = { workspace = true }
