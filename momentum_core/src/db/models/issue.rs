@@ -37,6 +37,7 @@ pub struct NewIssue {
     pub creator_id: Uuid,
     pub assignee_id: Option<Uuid>,
     pub parent_issue_id: Option<Uuid>,
+    pub issue_number: i32,
     pub title: String,
     pub description: Option<String>,
     pub priority: Option<String>,

@@ -5,6 +5,25 @@ use crate::db::models::issue::{Issue, NewIssue};
 pub struct IssueRepo;
 
 impl IssueRepo {
+    pub fn get_next_issue_number(
+        conn: &mut PgConnection,
+        _team_id: uuid::Uuid,
+    ) -> Result<i32, diesel::result::Error> {
+        use crate::schema::issues::dsl::*;
+
+        // Get max issue_number for this team, with 0 as default if no issues exist
+        let max_number = issues
+            .filter(team_id.eq(_team_id))
+            .select(issue_number)
+            .order(issue_number.desc())
+            .limit(1)
+            .first::<i32>(conn)
+            .optional()?
+            .unwrap_or(0);
+
+        Ok(max_number + 1)
+    }
+
     pub fn find_by_id(
         conn: &mut PgConnection,
         issue_id: uuid::Uuid,

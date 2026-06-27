@@ -125,12 +125,18 @@ impl IssuesService {
         validate_create_issue(&req.title, &req.description, &req.team_id)?;
 
         let _now = Utc::now().naive_utc();
+
+        // Get next issue_number for this team
+        let issue_number = IssueRepo::get_next_issue_number(conn, req.team_id)
+            .map_err(|e| AppError::internal(format!("Failed to get next issue number: {}", e)))?;
+
         let new_issue = NewIssue {
             project_id: req.project_id,
             cycle_id: req.cycle_id,
             creator_id: ctx.user_id,
             assignee_id: req.assignee_id,
             parent_issue_id: req.parent_issue_id,
+            issue_number,
             title: req.title.clone(),
             description: req.description.clone(),
             priority: req.priority.as_ref().map(Self::priority_to_string),
