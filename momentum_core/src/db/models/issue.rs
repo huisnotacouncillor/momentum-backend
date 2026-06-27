@@ -1,6 +1,7 @@
 use crate::db::enums::IssuePriority;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 // Issue models
@@ -25,6 +26,7 @@ pub struct Issue {
     pub team_id: Uuid,
     pub workflow_id: Option<Uuid>,
     pub workflow_state_id: Option<Uuid>,
+    pub version: i32,
 }
 
 #[derive(Insertable)]
@@ -42,6 +44,7 @@ pub struct NewIssue {
     pub team_id: Uuid,
     pub workflow_id: Option<Uuid>,
     pub workflow_state_id: Option<Uuid>,
+    pub version: Option<i32>,
 }
 
 // Issue update model
@@ -59,6 +62,7 @@ pub struct UpdateIssue {
     pub team_id: Option<Uuid>,
     pub workflow_id: Option<Option<Uuid>>,
     pub workflow_state_id: Option<Option<Uuid>>,
+    pub version: Option<i32>,
 }
 
 // Issue Label models (many-to-many relationship)
@@ -124,6 +128,7 @@ pub struct IssueResponse {
     pub team_key: Option<String>,
     pub workflow_id: Option<Uuid>,
     pub workflow_state_id: Option<Uuid>,
+    pub version: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assignee: Option<crate::db::models::auth::UserBasicInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -140,6 +145,8 @@ pub struct IssueResponse {
     pub project: Option<crate::db::models::project::ProjectInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cycle: Option<crate::db::models::cycle::Cycle>,
+    #[serde(default)]
+    pub field_values: HashMap<String, serde_json::Value>,
 }
 
 fn serialize_priority<S>(priority: &IssuePriority, serializer: S) -> Result<S::Ok, S::Error>
@@ -185,6 +192,7 @@ impl From<Issue> for IssueResponse {
             team_key: None, // Will be populated by the API handler
             workflow_id: issue.workflow_id,
             workflow_state_id: issue.workflow_state_id,
+            version: issue.version,
             assignee: None,
             team: None, // Will be populated by the API handler
             parent_issue: None,
@@ -193,6 +201,7 @@ impl From<Issue> for IssueResponse {
             labels: Vec::new(), // Will be populated by the API handler
             project: None,      // Will be populated by the API handler
             cycle: None,        // Will be populated by the API handler
+            field_values: HashMap::new(), // Will be populated by the API handler
         }
     }
 }
