@@ -178,80 +178,8 @@ impl IssuesService {
             }
         }
 
-        // Build IssueResponse with relations
-        let mut resp = crate::db::models::issue::IssueResponse::from(issue.clone());
-
-        // team info + team_key
-        {
-            use crate::schema::teams::dsl as t;
-            if let Some(team) = t::teams
-                .filter(t::id.eq(resp.team_id))
-                .first::<Team>(conn)
-                .optional()
-                .map_err(|e| AppError::internal(format!("Failed to load team: {}", e)))?
-            {
-                resp.team_key = Some(team.team_key.clone());
-                resp.team = Some(TeamBasicInfo {
-                    id: team.id,
-                    name: team.name,
-                    team_key: team.team_key,
-                    description: team.description,
-                    icon_url: team.icon_url,
-                    is_private: team.is_private,
-                });
-            }
-        }
-
-        // assignee info
-        if let Some(uid) = resp.assignee_id {
-            use crate::schema::users::dsl as u;
-            if let Some(user) = u::users
-                .filter(u::id.eq(uid))
-                .first::<crate::db::models::auth::User>(conn)
-                .optional()
-                .map_err(|e| AppError::internal(format!("Failed to load assignee: {}", e)))?
-            {
-                resp.assignee = Some(crate::db::models::auth::UserBasicInfo {
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    avatar_url: user.avatar_url,
-                });
-            }
-        }
-
-        // workflow states
-        let states = if let Some(wf_id) = resp.workflow_id {
-            WorkflowsRepo::list_states_by_workflow(conn, wf_id)
-                .map_err(|e| AppError::internal(format!("Failed to load workflow states: {}", e)))?
-        } else {
-            WorkflowsRepo::list_team_default_states(conn, resp.team_id).map_err(|e| {
-                AppError::internal(format!("Failed to load team default states: {}", e))
-            })?
-        };
-        resp.workflow_states = states
-            .into_iter()
-            .map(WorkflowStateResponse::from)
-            .collect();
-
-        // labels
-        {
-            use crate::schema::{issue_labels as il, labels as l};
-            let labels = il::dsl::issue_labels
-                .inner_join(l::dsl::labels.on(il::dsl::label_id.eq(l::dsl::id)))
-                .filter(il::dsl::issue_id.eq(issue.id))
-                .select(l::dsl::labels::all_columns())
-                .load::<crate::db::models::label::Label>(conn)
-                .map_err(|e| AppError::internal(format!("Failed to load labels: {}", e)))?;
-            resp.labels = labels;
-        }
-
-        // field_values
-        resp.field_values = IssueFieldValueRepo::list_by_issue(conn, issue.id)
-            .unwrap_or_default();
-
-        Ok(resp)
+        // Build IssueResponse with relations using the shared method
+        Self::build_issue_response(conn, ctx, issue)
     }
 
     pub fn update(
@@ -543,17 +471,31 @@ impl IssuesService {
                 let status = ps::project_statuses
                     .filter(ps::id.eq(project.project_status_id))
                     .first::<crate::db::models::project_status::ProjectStatus>(conn)
-                    .map_err(|e| AppError::internal(format!("Failed to load project status: {}", e)))?;
+                    .optional()
+                    .map_err(|e| AppError::internal(format!("Failed to load project status: {}", e)))?
+                    .unwrap_or_else(|| crate::db::models::project_status::ProjectStatus {
+                        id: uuid::Uuid::new_v4(),
+                        name: "Unknown".to_string(),
+                        description: None,
+                        color: Some("#999999".to_string()),
+                        category: crate::db::models::project_status::ProjectStatusCategory::Backlog,
+                        workspace_id: ctx.workspace_id,
+                        created_at: chrono::Utc::now(),
+                        updated_at: chrono::Utc::now(),
+                    });
                 use crate::schema::users::dsl as u;
                 let owner = u::users
                     .filter(u::id.eq(project.owner_id))
                     .first::<crate::db::models::auth::User>(conn)
+                    .optional()
                     .map_err(|e| AppError::internal(format!("Failed to load project owner: {}", e)))?;
                 let all_statuses = ps::project_statuses
                     .filter(ps::workspace_id.eq(ctx.workspace_id))
                     .select(crate::db::models::project_status::ProjectStatus::as_select())
                     .load::<crate::db::models::project_status::ProjectStatus>(conn)
-                    .map_err(|e| AppError::internal(format!("Failed to load project statuses: {}", e)))?;
+                    .optional()
+                    .map_err(|e| AppError::internal(format!("Failed to load project statuses: {}", e)))?
+                    .unwrap_or_default();
                 let available_statuses: Vec<crate::db::models::project_status::ProjectStatusInfo> =
                     all_statuses
                         .into_iter()
@@ -561,6 +503,19 @@ impl IssuesService {
                             crate::db::models::project_status::ProjectStatusInfo::from(status)
                         })
                         .collect();
+                let owner_info = owner.map(|o| crate::db::models::auth::UserBasicInfo {
+                    id: o.id,
+                    name: o.name,
+                    username: o.username,
+                    email: o.email,
+                    avatar_url: o.avatar_url,
+                }).unwrap_or_else(|| crate::db::models::auth::UserBasicInfo {
+                    id: uuid::Uuid::new_v4(),
+                    name: "Unknown".to_string(),
+                    username: "unknown".to_string(),
+                    email: "unknown@unknown.com".to_string(),
+                    avatar_url: None,
+                });
                 resp.project = Some(crate::db::models::project::ProjectInfo {
                     id: project.id,
                     name: project.name,
@@ -568,13 +523,7 @@ impl IssuesService {
                     description: project.description,
                     status: crate::db::models::project_status::ProjectStatusInfo::from(status),
                     available_statuses,
-                    owner: crate::db::models::auth::UserBasicInfo {
-                        id: owner.id,
-                        name: owner.name,
-                        username: owner.username,
-                        email: owner.email,
-                        avatar_url: owner.avatar_url,
-                    },
+                    owner: owner_info,
                     target_date: project.target_date,
                     priority: project.priority,
                     created_at: project.created_at,
@@ -618,7 +567,9 @@ impl IssuesService {
                 .filter(i::parent_issue_id.eq(Some(issue.id)))
                 .order(i::created_at.asc())
                 .load::<Issue>(conn)
-                .map_err(|e| AppError::internal(format!("Failed to load child issues: {}", e)))?;
+                .optional()
+                .map_err(|e| AppError::internal(format!("Failed to load child issues: {}", e)))?
+                .unwrap_or_default();
             resp.child_issues = children
                 .into_iter()
                 .map(crate::db::models::issue::IssueResponse::from)
@@ -647,7 +598,9 @@ impl IssuesService {
                 .filter(il::dsl::issue_id.eq(issue.id))
                 .select(l::dsl::labels::all_columns())
                 .load::<crate::db::models::label::Label>(conn)
-                .map_err(|e| AppError::internal(format!("Failed to load labels: {}", e)))?;
+                .optional()
+                .map_err(|e| AppError::internal(format!("Failed to load labels: {}", e)))?
+                .unwrap_or_default();
             resp.labels = labels;
         }
 
@@ -666,7 +619,7 @@ impl IssuesService {
 
         // field_values
         resp.field_values = IssueFieldValueRepo::list_by_issue(conn, issue.id)
-            .unwrap_or_default();
+            .map_err(|e| AppError::internal(format!("Failed to load field values: {}", e)))?;
 
         Ok(resp)
     }
@@ -696,182 +649,7 @@ impl IssuesService {
         let issue = IssueRepo::find_by_id_in_workspace(conn, ctx.workspace_id, issue_id)?
             .ok_or_else(|| AppError::not_found("issue"))?;
 
-        let mut resp = crate::db::models::issue::IssueResponse::from(issue.clone());
-
-        // team info + team_key
-        {
-            use crate::schema::teams::dsl as t;
-            if let Some(team) = t::teams
-                .filter(t::id.eq(issue.team_id))
-                .first::<Team>(conn)
-                .optional()
-                .map_err(|e| AppError::internal(format!("Failed to load team: {}", e)))?
-            {
-                resp.team_key = Some(team.team_key.clone());
-                resp.team = Some(TeamBasicInfo {
-                    id: team.id,
-                    name: team.name,
-                    team_key: team.team_key,
-                    description: team.description,
-                    icon_url: team.icon_url,
-                    is_private: team.is_private,
-                });
-            }
-        }
-
-        // project info
-        if let Some(proj_id) = issue.project_id {
-            use crate::schema::projects::dsl as p;
-            if let Some(project) = p::projects
-                .filter(p::id.eq(proj_id))
-                .first::<crate::db::models::project::Project>(conn)
-                .optional()
-                .map_err(|e| AppError::internal(format!("Failed to load project: {}", e)))?
-            {
-                // Build ProjectInfo
-                // load status
-                use crate::schema::project_statuses::dsl as ps;
-                let status = ps::project_statuses
-                    .filter(ps::id.eq(project.project_status_id))
-                    .first::<crate::db::models::project_status::ProjectStatus>(conn)
-                    .map_err(|e| {
-                        AppError::internal(format!("Failed to load project status: {}", e))
-                    })?;
-                // load owner basic info
-                use crate::schema::users::dsl as u;
-                let owner = u::users
-                    .filter(u::id.eq(project.owner_id))
-                    .first::<crate::db::models::auth::User>(conn)
-                    .map_err(|e| {
-                        AppError::internal(format!("Failed to load project owner: {}", e))
-                    })?;
-
-                // Get all available statuses for this workspace
-                let all_statuses = ps::project_statuses
-                    .filter(ps::workspace_id.eq(ctx.workspace_id))
-                    .select(crate::db::models::project_status::ProjectStatus::as_select())
-                    .load::<crate::db::models::project_status::ProjectStatus>(conn)
-                    .map_err(|e| {
-                        AppError::internal(format!("Failed to load project statuses: {}", e))
-                    })?;
-
-                let available_statuses: Vec<crate::db::models::project_status::ProjectStatusInfo> =
-                    all_statuses
-                        .into_iter()
-                        .map(|status| {
-                            crate::db::models::project_status::ProjectStatusInfo::from(status)
-                        })
-                        .collect();
-
-                resp.project = Some(crate::db::models::project::ProjectInfo {
-                    id: project.id,
-                    name: project.name,
-                    project_key: project.project_key,
-                    description: project.description,
-                    status: crate::db::models::project_status::ProjectStatusInfo::from(status),
-                    available_statuses,
-                    owner: crate::db::models::auth::UserBasicInfo {
-                        id: owner.id,
-                        name: owner.name,
-                        username: owner.username,
-                        email: owner.email,
-                        avatar_url: owner.avatar_url,
-                    },
-                    target_date: project.target_date,
-                    priority: project.priority,
-                    created_at: project.created_at,
-                    updated_at: project.updated_at,
-                });
-            }
-        }
-
-        // assignee info
-        if let Some(uid) = issue.assignee_id {
-            use crate::schema::users::dsl as u;
-            if let Some(user) = u::users
-                .filter(u::id.eq(uid))
-                .first::<crate::db::models::auth::User>(conn)
-                .optional()
-                .map_err(|e| AppError::internal(format!("Failed to load assignee: {}", e)))?
-            {
-                resp.assignee = Some(crate::db::models::auth::UserBasicInfo {
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    avatar_url: user.avatar_url,
-                });
-            }
-        }
-
-        // parent issue
-        #[allow(clippy::collapsible_if)]
-        if let Some(pid) = issue.parent_issue_id {
-            if let Some(parent) = IssueRepo::find_by_id(conn, pid)? {
-                resp.parent_issue = Some(Box::new(crate::db::models::issue::IssueResponse::from(
-                    parent,
-                )));
-            }
-        }
-
-        // child issues
-        {
-            use crate::schema::issues::dsl as i;
-            let children = i::issues
-                .filter(i::parent_issue_id.eq(Some(issue.id)))
-                .order(i::created_at.asc())
-                .load::<Issue>(conn)
-                .map_err(|e| AppError::internal(format!("Failed to load child issues: {}", e)))?;
-            resp.child_issues = children
-                .into_iter()
-                .map(crate::db::models::issue::IssueResponse::from)
-                .collect();
-        }
-
-        // workflow states
-        let states = if let Some(wf_id) = issue.workflow_id {
-            WorkflowsRepo::list_states_by_workflow(conn, wf_id)
-                .map_err(|e| AppError::internal(format!("Failed to load workflow states: {}", e)))?
-        } else {
-            WorkflowsRepo::list_team_default_states(conn, issue.team_id).map_err(|e| {
-                AppError::internal(format!("Failed to load team default states: {}", e))
-            })?
-        };
-        resp.workflow_states = states
-            .into_iter()
-            .map(WorkflowStateResponse::from)
-            .collect();
-
-        // labels
-        {
-            use crate::schema::{issue_labels as il, labels as l};
-            let labels = il::dsl::issue_labels
-                .inner_join(l::dsl::labels.on(il::dsl::label_id.eq(l::dsl::id)))
-                .filter(il::dsl::issue_id.eq(issue.id))
-                .select(l::dsl::labels::all_columns())
-                .load::<crate::db::models::label::Label>(conn)
-                .map_err(|e| AppError::internal(format!("Failed to load labels: {}", e)))?;
-            resp.labels = labels;
-        }
-
-        // cycle
-        if let Some(cycle_id) = issue.cycle_id {
-            use crate::schema::cycles::dsl as c;
-            if let Some(cycle) = c::cycles
-                .filter(c::id.eq(cycle_id))
-                .first::<crate::db::models::cycle::Cycle>(conn)
-                .optional()
-                .map_err(|e| AppError::internal(format!("Failed to load cycle: {}", e)))?
-            {
-                resp.cycle = Some(cycle);
-            }
-        }
-
-        // field_values
-        resp.field_values = IssueFieldValueRepo::list_by_issue(conn, issue.id)
-            .unwrap_or_default();
-
-        Ok(resp)
+        Self::build_issue_response(conn, ctx, issue)
     }
 }
 
