@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod automation;
 pub mod comments;
 pub mod cycles;
 pub mod invitations;
@@ -186,6 +187,27 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/workspaces/:workspace_id/fields",
             get(plugins::list_workspace_fields),
+        )
+        // Automation rules routes
+        .route(
+            "/workspaces/:workspace_id/automation-rules",
+            get(automation::list_rules),
+        )
+        .route(
+            "/workspaces/:workspace_id/automation-rules",
+            post(automation::create_rule),
+        )
+        .route(
+            "/workspaces/:workspace_id/automation-rules/:rule_id",
+            get(automation::get_rule),
+        )
+        .route(
+            "/workspaces/:workspace_id/automation-rules/:rule_id",
+            patch(automation::update_rule),
+        )
+        .route(
+            "/workspaces/:workspace_id/automation-rules/:rule_id",
+            delete(automation::delete_rule),
         )
         .with_state(state.clone());
 

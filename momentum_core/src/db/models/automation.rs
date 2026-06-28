@@ -21,7 +21,7 @@ pub struct AutomationRule {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Insertable)]
+#[derive(Debug, Clone, Deserialize, Insertable)]
 #[diesel(table_name = crate::schema::automation_rules)]
 pub struct NewAutomationRule {
     pub workspace_id: Uuid,
@@ -35,7 +35,7 @@ pub struct NewAutomationRule {
     pub actions: serde_json::Value,
 }
 
-#[derive(Debug, Clone, AsChangeset)]
+#[derive(Debug, Clone, Deserialize, AsChangeset)]
 #[diesel(table_name = crate::schema::automation_rules)]
 pub struct UpdateAutomationRule {
     pub name: Option<String>,
