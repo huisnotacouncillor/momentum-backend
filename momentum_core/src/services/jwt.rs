@@ -9,7 +9,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::AuthConfig;
 use crate::db::models::auth::AuthUser;
-use crate::error::AppError;
 
 /// JWT Claims for access tokens
 #[derive(Debug, Serialize, Deserialize, Clone)]

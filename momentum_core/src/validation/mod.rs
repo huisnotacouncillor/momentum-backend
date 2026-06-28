@@ -17,7 +17,6 @@ pub mod workspace;
 pub mod workspace_member;
 
 use serde::Serialize;
-use validator::Validate;
 
 /// Validation error detail
 #[derive(Debug, Clone, Serialize)]

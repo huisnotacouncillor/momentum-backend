@@ -1,4 +1,3 @@
-use crate::schema::agent_runs;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

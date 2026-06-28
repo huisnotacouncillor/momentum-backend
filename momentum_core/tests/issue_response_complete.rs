@@ -12,8 +12,8 @@ use momentum_core::*;
 
 /// Test that IssuesService::create returns IssueResponse with relations populated.
 /// This test will fail to compile if create() returns Issue instead of IssueResponse.
-#[test]
-fn test_create_returns_issue_response_with_relations() {
+#[tokio::test]
+async fn test_create_returns_issue_response_with_relations() {
     let database_url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,
         Err(_) => {
@@ -176,8 +176,8 @@ fn test_create_returns_issue_response_with_relations() {
 }
 
 /// Test that IssuesService::update returns IssueResponse with relations populated.
-#[test]
-fn test_update_returns_issue_response_with_relations() {
+#[tokio::test]
+async fn test_update_returns_issue_response_with_relations() {
     let database_url = match std::env::var("DATABASE_URL") {
         Ok(url) => url,
         Err(_) => {
