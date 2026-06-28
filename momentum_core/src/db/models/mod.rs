@@ -1,6 +1,7 @@
 // Sub-modules organized by functional domain
 pub mod agent_run;
 pub mod api;
+pub mod automation;
 pub mod auth;
 pub mod comment;
 pub mod cycle;
@@ -28,6 +29,9 @@ pub mod workspace_user;
 
 // API response structures
 pub use api::*;
+
+// Automation models
+pub use automation::*;
 
 // Authentication and user models
 pub use auth::*;
