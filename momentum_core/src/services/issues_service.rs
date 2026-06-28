@@ -1,5 +1,6 @@
 use chrono::Utc;
 use diesel::prelude::*;
+use diesel::result::DatabaseErrorKind::UniqueViolation;
 use uuid::Uuid;
 
 use crate::{
@@ -55,8 +56,10 @@ impl IssuesService {
 
         // Parse cursor if provided
         let cursor = if let Some(ref cursor_str) = filters.cursor {
-            Some(IssueCursor::decode(cursor_str)
-                .map_err(|e| AppError::validation(format!("Invalid cursor: {}", e)))?)
+            Some(
+                IssueCursor::decode(cursor_str)
+                    .map_err(|e| AppError::validation(format!("Invalid cursor: {}", e)))?,
+            )
         } else {
             None
         };
@@ -64,7 +67,10 @@ impl IssuesService {
         // Query issues with pagination
         let mut issues = if let Some(team_id) = filters.team_id {
             // Push filters to DB layer when team_id is provided
-            let priority_str = filters.priority.as_ref().map(|p| Self::priority_to_string(p));
+            let priority_str = filters
+                .priority
+                .as_ref()
+                .map(|p| Self::priority_to_string(p));
             IssueRepo::list_by_team_filtered(
                 conn,
                 Some(team_id),
@@ -81,8 +87,8 @@ impl IssuesService {
             // Apply cursor-based filtering in-memory (for non-team queries)
             if let Some(cur) = cursor {
                 let cursor_pos = all_issues.iter().position(|i| {
-                    i.created_at < cur.created_at ||
-                    (i.created_at == cur.created_at && i.id < cur.id)
+                    i.created_at < cur.created_at
+                        || (i.created_at == cur.created_at && i.id < cur.id)
                 });
                 if let Some(pos) = cursor_pos {
                     all_issues[pos..].to_vec()
@@ -119,15 +125,18 @@ impl IssuesService {
                 let search_lower = search.to_lowercase();
                 issues.retain(|issue| {
                     issue.title.to_lowercase().contains(&search_lower)
-                        || issue.description.as_ref().map(|d| d.to_lowercase().contains(&search_lower)).unwrap_or(false)
+                        || issue
+                            .description
+                            .as_ref()
+                            .map(|d| d.to_lowercase().contains(&search_lower))
+                            .unwrap_or(false)
                 });
             }
         }
 
         // Enrich with workflow states and map to response
         let ids: Vec<Uuid> = issues.iter().map(|i| i.id).collect();
-        let field_values_map = IssueFieldValueRepo::list_by_issues(conn, &ids)
-            .unwrap_or_default();
+        let field_values_map = IssueFieldValueRepo::list_by_issues(conn, &ids).unwrap_or_default();
 
         let mut responses = Vec::with_capacity(issues.len());
         for issue in issues {
@@ -175,7 +184,8 @@ impl IssuesService {
             IssueCursor {
                 created_at: resp.created_at,
                 id: resp.id,
-            }.encode()
+            }
+            .encode()
         });
 
         Ok(PaginatedIssues {
@@ -194,17 +204,14 @@ impl IssuesService {
 
         let _now = Utc::now().naive_utc();
 
-        // Get next issue_number for this team
-        let issue_number = IssueRepo::get_next_issue_number(conn, req.team_id)
-            .map_err(|e| AppError::internal(format!("Failed to get next issue number: {}", e)))?;
-
-        let new_issue = NewIssue {
+        let mut retries = 0;
+        let mut new_issue = NewIssue {
             project_id: req.project_id,
             cycle_id: req.cycle_id,
             creator_id: ctx.user_id,
             assignee_id: req.assignee_id,
             parent_issue_id: req.parent_issue_id,
-            issue_number,
+            issue_number: 0, // will be set in loop
             title: req.title.clone(),
             description: req.description.clone(),
             priority: req.priority.as_ref().map(Self::priority_to_string),
@@ -215,8 +222,21 @@ impl IssuesService {
             version: Some(1),
         };
 
-        let issue = IssueRepo::insert(conn, &new_issue)
-            .map_err(|e| AppError::internal(format!("Failed to create issue: {}", e)))?;
+        let issue = loop {
+            // Get next issue_number for this team
+            let issue_number = IssueRepo::get_next_issue_number(conn, req.team_id)
+                .map_err(|e| AppError::internal(format!("Failed to get next issue number: {}", e)))?;
+            new_issue.issue_number = issue_number;
+
+            match IssueRepo::insert(conn, &new_issue) {
+                Ok(issue) => break issue,
+                Err(diesel::result::Error::DatabaseError(UniqueViolation, _)) if retries < 3 => {
+                    retries += 1;
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            }
+        };
 
         // Handle labels if provided
         if let Some(ref label_ids) = req.label_ids {
@@ -546,7 +566,9 @@ impl IssuesService {
                     .filter(ps::id.eq(project.project_status_id))
                     .first::<crate::db::models::project_status::ProjectStatus>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(format!("Failed to load project status: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(format!("Failed to load project status: {}", e))
+                    })?
                     .unwrap_or_else(|| crate::db::models::project_status::ProjectStatus {
                         id: uuid::Uuid::new_v4(),
                         name: "Unknown".to_string(),
@@ -562,13 +584,17 @@ impl IssuesService {
                     .filter(u::id.eq(project.owner_id))
                     .first::<crate::db::models::auth::User>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(format!("Failed to load project owner: {}", e)))?;
+                    .map_err(|e| {
+                        AppError::internal(format!("Failed to load project owner: {}", e))
+                    })?;
                 let all_statuses = ps::project_statuses
                     .filter(ps::workspace_id.eq(ctx.workspace_id))
                     .select(crate::db::models::project_status::ProjectStatus::as_select())
                     .load::<crate::db::models::project_status::ProjectStatus>(conn)
                     .optional()
-                    .map_err(|e| AppError::internal(format!("Failed to load project statuses: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(format!("Failed to load project statuses: {}", e))
+                    })?
                     .unwrap_or_default();
                 let available_statuses: Vec<crate::db::models::project_status::ProjectStatusInfo> =
                     all_statuses
@@ -577,19 +603,21 @@ impl IssuesService {
                             crate::db::models::project_status::ProjectStatusInfo::from(status)
                         })
                         .collect();
-                let owner_info = owner.map(|o| crate::db::models::auth::UserBasicInfo {
-                    id: o.id,
-                    name: o.name,
-                    username: o.username,
-                    email: o.email,
-                    avatar_url: o.avatar_url,
-                }).unwrap_or_else(|| crate::db::models::auth::UserBasicInfo {
-                    id: uuid::Uuid::new_v4(),
-                    name: "Unknown".to_string(),
-                    username: "unknown".to_string(),
-                    email: "unknown@unknown.com".to_string(),
-                    avatar_url: None,
-                });
+                let owner_info = owner
+                    .map(|o| crate::db::models::auth::UserBasicInfo {
+                        id: o.id,
+                        name: o.name,
+                        username: o.username,
+                        email: o.email,
+                        avatar_url: o.avatar_url,
+                    })
+                    .unwrap_or_else(|| crate::db::models::auth::UserBasicInfo {
+                        id: uuid::Uuid::new_v4(),
+                        name: "Unknown".to_string(),
+                        username: "unknown".to_string(),
+                        email: "unknown@unknown.com".to_string(),
+                        avatar_url: None,
+                    });
                 resp.project = Some(crate::db::models::project::ProjectInfo {
                     id: project.id,
                     name: project.name,
