@@ -9,6 +9,7 @@ pub mod issue_field_values;
 pub mod issues;
 pub mod labels;
 pub mod notifications;
+pub mod oauth;
 pub mod plugin_audit;
 pub mod plugin_installations;
 pub mod plugin_storage;
