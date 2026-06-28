@@ -1,11 +1,12 @@
 use axum::{Router, Server, middleware::from_fn};
 use momentum_api::middleware::{performance_monitoring_middleware, request_tracking_middleware};
-use momentum_api::{AppState, websocket, AppConfig};
+use momentum_api::{AppConfig, AppState, websocket};
+use momentum_core::config::Config;
 use momentum_core::db as core_db;
+use momentum_core::utils::AssetUrlHelper;
+use momentum_plugin_host::Supervisor;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
-use momentum_core::config::Config;
-use momentum_core::utils::AssetUrlHelper;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -33,7 +34,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Application state
-    let state = Arc::new(AppState::new(db_pool, redis, asset_helper));
+    let plugin_host = Supervisor::new();
+    let state = Arc::new(AppState::new(db_pool, redis, asset_helper, plugin_host));
 
     // CORS configuration
     let cors = if config.cors_origins.contains(&"*".to_string()) {
@@ -73,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/auth/login",
             axum::routing::post(momentum_api::routes::auth::login),
         )
+        .merge(momentum_api::routes::oauth::routes())
         .with_state(state.clone());
 
     // Build router - apply auth middleware only to routes that need it

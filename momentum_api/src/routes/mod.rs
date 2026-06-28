@@ -6,6 +6,7 @@ pub mod invitations;
 pub mod issues;
 pub mod labels;
 pub mod notifications;
+pub mod oauth;
 pub mod plugins;
 pub mod project_statuses;
 pub mod projects;
