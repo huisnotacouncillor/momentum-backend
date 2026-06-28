@@ -16,6 +16,7 @@ pub mod plugin_storage;
 pub mod plugins;
 pub mod project_statuses;
 pub mod projects;
+pub mod users;
 pub mod workflows;
 pub mod workspace_members;
 pub mod workspaces;

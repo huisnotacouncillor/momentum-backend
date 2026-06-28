@@ -7,6 +7,7 @@ pub mod invitations_service;
 pub mod issues_service;
 pub mod jwt;
 pub mod labels_service;
+pub mod oauth_service;
 pub mod project_statuses_service;
 pub mod projects_service;
 pub mod team_members_service;

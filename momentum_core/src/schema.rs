@@ -277,6 +277,8 @@ diesel::table! {
         client_id -> Varchar,
         #[max_length = 255]
         client_secret -> Varchar,
+        #[max_length = 500]
+        redirect_uri -> Nullable<Varchar>,
         auth_url -> Text,
         token_url -> Text,
         user_info_url -> Text,
