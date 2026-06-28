@@ -1,22 +1,26 @@
 // @generated automatically by Diesel CLI.
 
 pub mod sql_types {
-    #[derive(diesel::sql_types::SqlType, diesel::query_builder::QueryId, Clone)]
+    #[derive(diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "invitation_status"))]
     pub struct InvitationStatus;
 
-    #[derive(diesel::sql_types::SqlType, diesel::query_builder::QueryId, Clone)]
+    #[derive(diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "label_level_enum"))]
     pub struct LabelLevelEnum;
 
-    #[derive(diesel::sql_types::SqlType, diesel::query_builder::QueryId, Clone)]
+    #[derive(diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "workspace_user_role"))]
     pub struct WorkspaceUserRole;
+
+    #[derive(diesel::sql_types::SqlType)]
+    #[diesel(postgres_type(name = "tsvector"))]
+    pub struct Tsvector;
 }
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     agent_runs (id) {
         id -> Uuid,
@@ -39,29 +43,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
-
-    automation_rules (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        team_id -> Nullable<Uuid>,
-        #[max_length = 255]
-        name -> Varchar,
-        description -> Nullable<Text>,
-        is_enabled -> Bool,
-        #[max_length = 50]
-        trigger_type -> Varchar,
-        trigger_config -> Nullable<Jsonb>,
-        conditions -> Jsonb,
-        actions -> Jsonb,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     comment_attachments (id) {
         id -> Uuid,
@@ -78,7 +60,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     comment_mentions (id) {
         id -> Uuid,
@@ -90,7 +72,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     comment_reactions (id) {
         id -> Uuid,
@@ -104,7 +86,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     comments (id) {
         id -> Uuid,
@@ -123,7 +105,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     cycles (id) {
         id -> Uuid,
@@ -142,7 +124,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
     use super::sql_types::WorkspaceUserRole;
     use super::sql_types::InvitationStatus;
 
@@ -162,7 +144,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     issue_field_definitions (id) {
         id -> Uuid,
@@ -180,7 +162,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     issue_field_values (issue_id, field_id) {
         issue_id -> Uuid,
@@ -193,7 +175,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     issue_labels (issue_id, label_id) {
         issue_id -> Uuid,
@@ -203,7 +185,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     issues (id) {
         id -> Uuid,
@@ -224,12 +206,13 @@ diesel::table! {
         workflow_id -> Nullable<Uuid>,
         workflow_state_id -> Nullable<Uuid>,
         version -> Int4,
+        search_vector -> Nullable<Tsvector>,
     }
 }
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
     use super::sql_types::LabelLevelEnum;
 
     labels (id) {
@@ -247,7 +230,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     notifications (id) {
         id -> Uuid,
@@ -267,7 +250,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     oauth_providers (id) {
         id -> Int4,
@@ -277,8 +260,6 @@ diesel::table! {
         client_id -> Varchar,
         #[max_length = 255]
         client_secret -> Varchar,
-        #[max_length = 500]
-        redirect_uri -> Nullable<Varchar>,
         auth_url -> Text,
         token_url -> Text,
         user_info_url -> Text,
@@ -292,7 +273,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     outbox (id) {
         id -> Int8,
@@ -309,7 +290,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     plugin_audit (id) {
         id -> Int8,
@@ -324,7 +305,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     plugin_installations (id) {
         id -> Uuid,
@@ -340,7 +321,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     plugin_storage (plugin_id, workspace_id, namespace, key) {
         plugin_id -> Text,
@@ -355,7 +336,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     plugins (id) {
         id -> Text,
@@ -371,7 +352,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     project_statuses (id) {
         id -> Uuid,
@@ -390,7 +371,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     projects (id) {
         id -> Uuid,
@@ -412,7 +393,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     roadmaps (id) {
         id -> Uuid,
@@ -428,7 +409,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     team_members (user_id, team_id) {
         user_id -> Uuid,
@@ -441,7 +422,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     teams (id) {
         id -> Uuid,
@@ -460,7 +441,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     user_credentials (id) {
         id -> Int4,
@@ -480,7 +461,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     user_sessions (id) {
         id -> Int4,
@@ -501,7 +482,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     users (id) {
         name -> Text,
@@ -520,7 +501,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     workflow_states (id) {
         id -> Uuid,
@@ -541,7 +522,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     workflow_transitions (id) {
         id -> Uuid,
@@ -557,7 +538,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     workflows (id) {
         id -> Uuid,
@@ -573,7 +554,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
     use super::sql_types::WorkspaceUserRole;
 
     workspace_members (user_id, workspace_id) {
@@ -587,7 +568,7 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use diesel::sql_types::Uuid;
+    use uuid::Uuid;
 
     workspaces (id) {
         id -> Uuid,
@@ -603,8 +584,6 @@ diesel::table! {
 
 diesel::joinable!(agent_runs -> issues (issue_id));
 diesel::joinable!(agent_runs -> workspaces (workspace_id));
-diesel::joinable!(automation_rules -> teams (team_id));
-diesel::joinable!(automation_rules -> workspaces (workspace_id));
 diesel::joinable!(comment_attachments -> comments (comment_id));
 diesel::joinable!(comment_mentions -> comments (comment_id));
 diesel::joinable!(comment_mentions -> users (mentioned_user_id));
@@ -650,7 +629,6 @@ diesel::joinable!(workspace_members -> workspaces (workspace_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     agent_runs,
-    automation_rules,
     comment_attachments,
     comment_mentions,
     comment_reactions,
