@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
@@ -7,6 +9,8 @@ use std::time::Duration;
 use tokio::sync::{RwLock, broadcast};
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+use super::events::issue_events::IssueEvent;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebSocketMessage {
@@ -422,6 +426,38 @@ impl WebSocketManager {
     // 获取广播接收器
     pub fn get_broadcast_receiver(&self) -> broadcast::Receiver<WebSocketMessage> {
         self.broadcast_tx.subscribe()
+    }
+
+    /// 广播 Issue 事件到所有连接的客户端
+    pub async fn broadcast_issue_event(&self, event: super::events::issue_events::IssueEvent) {
+        let message = WebSocketMessage {
+            id: Some(Uuid::new_v4().to_string()),
+            message_type: MessageType::Notification,
+            data: serde_json::json!({
+                "event": event.event_name(),
+                "payload": event,
+            }),
+            timestamp: Some(chrono::Utc::now()),
+        };
+        self.broadcast_message(message).await;
+    }
+
+    /// 广播 Issue 事件到指定 workspace 的所有客户端
+    pub async fn broadcast_issue_event_to_workspace(
+        &self,
+        workspace_id: Uuid,
+        event: super::events::issue_events::IssueEvent,
+    ) {
+        let message = WebSocketMessage {
+            id: Some(Uuid::new_v4().to_string()),
+            message_type: MessageType::Notification,
+            data: serde_json::json!({
+                "event": event.event_name(),
+                "payload": event,
+            }),
+            timestamp: Some(chrono::Utc::now()),
+        };
+        self.broadcast_to_workspace(workspace_id, message).await;
     }
 
     // 清理超时连接
@@ -921,8 +957,8 @@ impl WebSocketManager {
             }
         };
 
-        use momentum_core::schema::users;
         use diesel::prelude::*;
+        use momentum_core::schema::users;
 
         match users::table
             .filter(users::id.eq(user_id))

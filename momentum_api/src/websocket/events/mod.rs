@@ -13,6 +13,8 @@ pub mod handlers;
 pub mod middleware;
 pub mod types;
 
+pub mod issue_events;
+
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;

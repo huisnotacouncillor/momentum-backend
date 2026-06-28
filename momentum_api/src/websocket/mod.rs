@@ -10,6 +10,9 @@ pub mod retry_timeout;
 pub mod security;
 pub mod tests;
 
+// Issue events handler module
+pub mod handlers;
+
 // New unified event system modules (temporarily commented out due to compilation issues)
 // pub mod batch_processor;
 // pub mod events;
@@ -18,8 +21,8 @@ pub mod tests;
 // Re-export commonly used types for convenience
 pub use auth::{AuthenticatedUser, WebSocketAuth, WebSocketAuthError, WebSocketAuthQuery};
 pub use commands::{
-    WebSocketCommand, WebSocketCommandError, WebSocketCommandHandler, WebSocketCommandResponse,
-    LabelFilters,
+    LabelFilters, WebSocketCommand, WebSocketCommandError, WebSocketCommandHandler,
+    WebSocketCommandResponse,
 };
 pub use error_mapper::{
     WebSocketError, WebSocketErrorCode, WebSocketErrorHandler, WebSocketErrorMapper,
@@ -81,12 +84,17 @@ use std::sync::Arc;
 // }
 
 /// Legacy WebSocket state (backward compatibility)
-pub fn create_websocket_state(db: Arc<DbPool>, config: &momentum_core::config::Config) -> WebSocketState {
+pub fn create_websocket_state(
+    db: Arc<DbPool>,
+    config: &momentum_core::config::Config,
+) -> WebSocketState {
     let ws_manager = WebSocketManager::new();
     let message_signer = Arc::new(MessageSigner::new(config));
-    let asset_helper = Arc::new(momentum_core::utils::AssetUrlHelper::new(&momentum_core::utils::AssetConfig {
-        base_url: config.assets_url.clone(),
-    }));
+    let asset_helper = Arc::new(momentum_core::utils::AssetUrlHelper::new(
+        &momentum_core::utils::AssetConfig {
+            base_url: config.assets_url.clone(),
+        },
+    ));
     let command_handler = WebSocketCommandHandler::new(db.clone(), asset_helper)
         .with_message_signer(message_signer.clone());
     let rate_limiter = WebSocketRateLimiter::new(RateLimitConfig::default());
