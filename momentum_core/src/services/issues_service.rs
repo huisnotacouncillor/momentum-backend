@@ -1,10 +1,12 @@
 use chrono::Utc;
 use diesel::prelude::*;
 use diesel::result::DatabaseErrorKind::UniqueViolation;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     db::enums::IssuePriority,
+    db::models::automation::TriggerType,
     db::models::issue::{Issue, IssueCursor, NewIssue},
     db::models::team::{Team, TeamBasicInfo},
     db::models::workflow::WorkflowStateResponse,
@@ -12,11 +14,14 @@ use crate::{
     db::repositories::issues::IssueRepo,
     db::repositories::workflows::WorkflowsRepo,
     error::AppError,
+    services::automation_engine::AutomationEngine,
     services::context::RequestContext,
     validation::issue::{validate_create_issue, validate_update_issue},
 };
 
-pub struct IssuesService;
+pub struct IssuesService {
+    pub automation_engine: Option<Arc<AutomationEngine>>,
+}
 
 /// Paginated issues response
 pub struct PaginatedIssues {
@@ -26,6 +31,18 @@ pub struct PaginatedIssues {
 }
 
 impl IssuesService {
+    pub fn new() -> Self {
+        Self {
+            automation_engine: None,
+        }
+    }
+
+    pub fn with_automation_engine(automation_engine: Arc<AutomationEngine>) -> Self {
+        Self {
+            automation_engine: Some(automation_engine),
+        }
+    }
+
     fn priority_to_string(priority: &IssuePriority) -> String {
         match priority {
             IssuePriority::None => "none".to_string(),
@@ -195,7 +212,8 @@ impl IssuesService {
         })
     }
 
-    pub fn create(
+    pub async fn create(
+        &self,
         conn: &mut PgConnection,
         ctx: &RequestContext,
         req: &crate::services::issues::types::CreateIssueRequest,
@@ -272,11 +290,23 @@ impl IssuesService {
             }
         }
 
+        // Trigger automation for issue creation
+        if let Some(ref engine) = self.automation_engine {
+            if let Err(e) = engine.handle_trigger(
+                TriggerType::IssueCreated,
+                &issue,
+                ctx.workspace_id,
+            ).await {
+                tracing::warn!("Automation trigger failed: {}", e);
+            }
+        }
+
         // Build IssueResponse with relations using the shared method
         Self::build_issue_response(conn, ctx, issue)
     }
 
-    pub fn update(
+    pub async fn update(
+        &self,
         conn: &mut PgConnection,
         ctx: &RequestContext,
         issue_id: Uuid,
@@ -290,6 +320,9 @@ impl IssuesService {
         // Ensure issue exists in workspace
         let existing = IssueRepo::find_by_id_in_workspace(conn, ctx.workspace_id, issue_id)?
             .ok_or_else(|| AppError::not_found("issue"))?;
+
+        // Capture old state for automation trigger
+        let old_state_id = existing.workflow_state_id;
 
         // Build changeset
         let mut cs = crate::db::models::issue::UpdateIssue::default();
@@ -519,6 +552,20 @@ impl IssuesService {
             IssueRepo::find_by_id_in_workspace(conn, ctx.workspace_id, issue_id)?
                 .ok_or_else(|| AppError::not_found("issue"))?
         };
+
+        // Trigger automation for status change
+        let new_state_id = issue.workflow_state_id;
+        if old_state_id != new_state_id {
+            if let Some(ref engine) = self.automation_engine {
+                if let Err(e) = engine.handle_trigger(
+                    TriggerType::IssueStatusChanged,
+                    &issue,
+                    ctx.workspace_id,
+                ).await {
+                    tracing::warn!("Automation trigger failed: {}", e);
+                }
+            }
+        }
 
         // Build IssueResponse with relations (same logic as get_by_id)
         Self::build_issue_response(conn, ctx, issue)
