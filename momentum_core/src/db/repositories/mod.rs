@@ -1,4 +1,5 @@
 pub mod agent_runs;
+pub mod automation;
 pub mod auth;
 pub mod comments;
 pub mod cycles;
