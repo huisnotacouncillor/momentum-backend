@@ -2,7 +2,7 @@
 //!
 //! This module defines the event types for issue-related WebSocket notifications.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
 
 /// Issue event types for WebSocket notifications

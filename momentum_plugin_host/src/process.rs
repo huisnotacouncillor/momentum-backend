@@ -3,9 +3,8 @@
 //! This module handles spawning and managing plugin processes.
 
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
-use tracing::{error, info};
+use tracing::info;
 
 pub struct ProcessManager;
 

@@ -88,7 +88,7 @@ impl AutomationEngine {
                     .execute(&mut conn)
                     .map_err(|e| AppError::internal(format!("Failed to assign: {}", e)))?;
             }
-            Action::SetPriority { priority } => {
+            Action::SetPriority { priority: _ } => {
                 use crate::schema::issues::dsl::{id, issues, priority};
                 diesel::update(issues.filter(id.eq(issue_id)))
                     .set(priority.eq(priority.clone()))

@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::info;
 
 use crate::process::ProcessManager;
 
@@ -31,7 +31,7 @@ impl Supervisor {
     pub async fn start_plugin(&self, plugin_id: &str, socket_path: &str) -> Result<(), String> {
         info!("Starting plugin supervisor for {}", plugin_id);
 
-        let child = self.process_manager.spawn_plugin(plugin_id, socket_path).await?;
+        let _child = self.process_manager.spawn_plugin(plugin_id, socket_path).await?;
 
         let instance = PluginInstance {
             plugin_id: plugin_id.to_string(),

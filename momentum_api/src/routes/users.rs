@@ -5,7 +5,6 @@ use crate::middleware::auth::AuthUserInfo;
 use momentum_core::services::auth_service::AuthService;
 use momentum_core::services::context::RequestContext;
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
-use serde::Deserialize;
 use std::sync::Arc;
 
 // Re-export types from momentum_core for backward compatibility

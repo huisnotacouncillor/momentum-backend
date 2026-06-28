@@ -12,7 +12,7 @@ impl AgentImpl {
         Self
     }
 
-    pub async fn invoke(&self, plugin_id: &str, method: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    pub async fn invoke(&self, plugin_id: &str, method: &str, _params: serde_json::Value) -> Result<serde_json::Value, String> {
         info!("Invoking plugin {} method {}", plugin_id, method);
 
         // TODO: Implement actual plugin invocation via gRPC

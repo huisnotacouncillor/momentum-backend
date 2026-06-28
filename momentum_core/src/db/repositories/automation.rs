@@ -26,7 +26,7 @@ impl AutomationRepo {
         automation_rules::table
             .filter(automation_rules::id.eq(rule_id))
             .first(conn)
-            .map_err(|e| AppError::NotFound { resource: format!("Automation rule {} not found", rule_id) })
+            .map_err(|_e| AppError::NotFound { resource: format!("Automation rule {} not found", rule_id) })
     }
 
     pub fn list_by_workspace(

@@ -7,7 +7,7 @@ use axum::{
     response::IntoResponse,
 };
 // use diesel::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 

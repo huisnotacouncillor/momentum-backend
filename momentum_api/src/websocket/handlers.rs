@@ -12,9 +12,9 @@ use super::manager::WebSocketManager;
 
 /// Handle WebSocket connections for issue events subscription
 pub async fn handle_issue_events(
-    socket: WebSocket,
-    manager: Arc<WebSocketManager>,
-    state: Arc<crate::state::AppState>,
+    _socket: WebSocket,
+    _manager: Arc<WebSocketManager>,
+    _state: Arc<crate::state::AppState>,
 ) {
     // Stub implementation for issue events WebSocket handling
     // This would handle:
