@@ -74,13 +74,6 @@ impl IssueRepo {
         use crate::schema::issues::dsl::*;
         use diesel::BoolExpressionMethods;
 
-        // Pre-compute search pattern strings to avoid lifetime issues with boxed queries
-        let (title_pattern, desc_pattern) = if let Some(ref s) = p_search {
-            (Some(format!("%{}%", s)), Some(format!("%{}%", s)))
-        } else {
-            (None, None)
-        };
-
         let mut query = issues.into_boxed();
 
         if let Some(tid) = p_team_id {
@@ -95,12 +88,16 @@ impl IssueRepo {
         if let Some(p) = p_priority {
             query = query.filter(priority.eq(p));
         }
-        if let Some(ref tp) = title_pattern {
-            if let Some(ref dp) = desc_pattern {
-                query = query.filter(
-                    title.ilike(tp.as_str()).or(description.ilike(dp.as_str())),
-                );
-            }
+        if let Some(ref search) = p_search {
+            // 使用 websearch_to_tsquery 进行全文搜索
+            // websearch_to_tsquery 支持自然语言查询，如 "bug fix" 会搜索包含 bug 和 fix 的文档
+            // 使用 || 连接 title 和 description 的 tsvector，然后与查询匹配
+            query = query.filter(
+                diesel::dsl::sql::<diesel::sql_types::Bool>(
+                    "(to_tsvector('english', title) || to_tsvector('english', description)) @@ websearch_to_tsquery('english', $1)"
+                )
+                .bind::<diesel::sql_types::Text, _>(search)
+            );
         }
 
         if let Some(cur) = cursor {
