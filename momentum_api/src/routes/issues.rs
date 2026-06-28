@@ -90,7 +90,8 @@ pub async fn get_issues(
         cursor: params.cursor,
     };
 
-    match IssuesService::list(&mut conn, &ctx, &filters) {
+    let service = IssuesService::new();
+    match service.list(&mut conn, &ctx, &filters) {
         Ok(paginated) => {
             #[derive(serde::Serialize)]
             struct PaginatedResponse {
@@ -140,7 +141,8 @@ pub async fn create_issue(
         }
     };
 
-    match IssuesService::create(&mut conn, &ctx, &payload) {
+    let service = IssuesService::new();
+    match service.create(&mut conn, &ctx, &payload).await {
         Ok(issue) => {
             let response = ApiResponse::created(issue, "Issue created successfully");
             (StatusCode::CREATED, Json(response)).into_response()
@@ -180,7 +182,8 @@ pub async fn update_issue(
         }
     };
 
-    match IssuesService::update(&mut conn, &ctx, issue_id, &payload) {
+    let service = IssuesService::new();
+    match service.update(&mut conn, &ctx, issue_id, &payload).await {
         Ok(issue) => {
             let response = ApiResponse::success(issue, "Issue updated successfully");
             (StatusCode::OK, Json(response)).into_response()
@@ -219,7 +222,8 @@ pub async fn delete_issue(
         }
     };
 
-    match IssuesService::delete(&mut conn, &ctx, issue_id) {
+    let service = IssuesService::new();
+    match service.delete(&mut conn, &ctx, issue_id) {
         Ok(()) => {
             let response = ApiResponse::<()>::ok("Issue deleted successfully");
             (StatusCode::OK, Json(response)).into_response()
@@ -258,7 +262,8 @@ pub async fn get_issue(
         }
     };
 
-    match IssuesService::get_by_id(&mut conn, &ctx, issue_id) {
+    let service = IssuesService::new();
+    match service.get_by_id(&mut conn, &ctx, issue_id) {
         Ok(issue) => {
             let response = ApiResponse::success(issue, "Issue retrieved successfully");
             (StatusCode::OK, Json(response)).into_response()

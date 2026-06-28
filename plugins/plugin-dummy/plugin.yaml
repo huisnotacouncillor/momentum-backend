@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Plugin
+id: dummy-plugin
+name: Dummy Plugin
+version: 0.1.0
+publisher: Momentum Internal
+description: First internal dummy plugin for SDK validation
+
+core_compat: ">=0.1.0"
+
+entrypoint:
+  binary: ./plugin-dummy
+
+extensions:
+  fields:
+    - key: issue.effort
+      type: number
+      label: "Effort (hours)"
+      required: false
+      min: 0
+      max: 1000
+      sort_order: 100
+
+  agents:
+    - id: dummy-agent
+      description: A dummy agent that echoes input
+      input_schema:
+        type: object
+        properties:
+          message:
+            type: string
+      output_schema:
+        type: object
+        properties:
+          reply:
+            type: string
+
+  webhooks:
+    subscribes:
+      - issue.created
+    publishes:
+      - dummy.test
+
+  storage:
+    - namespace: telemetry
+      max_size_mb: 100
+
+permissions:
+  - issue.read
+  - issue.field.read:issue.effort
+  - issue.field.write:issue.effort
+  - agent.invoke:dummy-agent
+  - event.subscribe:issue.created
+  - event.publish:dummy.test
+  - storage.read:telemetry
+  - storage.write:telemetry

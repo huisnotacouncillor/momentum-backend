@@ -65,6 +65,7 @@ impl IssuesService {
         }
     }
     pub fn list(
+        &self,
         conn: &mut PgConnection,
         ctx: &RequestContext,
         filters: &IssueFilters,
@@ -774,6 +775,7 @@ impl IssuesService {
     }
 
     pub fn delete(
+        &self,
         conn: &mut PgConnection,
         ctx: &RequestContext,
         issue_id: Uuid,
@@ -791,6 +793,7 @@ impl IssuesService {
     }
 
     pub fn get_by_id(
+        &self,
         conn: &mut PgConnection,
         ctx: &RequestContext,
         issue_id: Uuid,

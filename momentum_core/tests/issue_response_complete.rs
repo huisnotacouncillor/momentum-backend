@@ -148,7 +148,7 @@ fn test_create_returns_issue_response_with_relations() {
         parent_issue_id: None,
     };
 
-    let result = services::IssuesService::create(&mut conn, &ctx, &req);
+    let result = services::IssuesService::new().create(&mut conn, &ctx, &req).await;
 
     // ASSERT: create should succeed
     assert!(result.is_ok(), "create should succeed: {:?}", result.err());
@@ -312,7 +312,7 @@ fn test_update_returns_issue_response_with_relations() {
         parent_issue_id: None,
     };
 
-    let created = services::IssuesService::create(&mut conn, &ctx, &create_req).unwrap();
+    let created = services::IssuesService::new().create(&mut conn, &ctx, &create_req).await.unwrap();
 
     // Update the issue with new title, assignee, and labels
     let update_req = services::issues::types::UpdateIssueRequest {
@@ -329,7 +329,7 @@ fn test_update_returns_issue_response_with_relations() {
         label_ids: Some(vec![label_id]),
     };
 
-    let result = services::IssuesService::update(&mut conn, &ctx, created.id, &update_req);
+    let result = services::IssuesService::new().update(&mut conn, &ctx, created.id, &update_req).await;
 
     // ASSERT: update should succeed
     assert!(result.is_ok(), "update should succeed: {:?}", result.err());

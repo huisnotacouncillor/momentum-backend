@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package momentum.plugin.v1;
+
+// Momentum Plugin <-> Core gRPC contract
+// 通信: Unix Domain Socket (/tmp/momentum-plugins/{plugin_id}.sock)
+// 鉴权: Short-lived token (Handshake 时由 Core 颁发)
+
+import "google/protobuf/struct.proto";
+
+service PluginService {
+  // === 生命周期 ===
+  rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // === 字段 ===
+  rpc OnFieldWrite(OnFieldWriteRequest) returns (OnFieldWriteResponse);
+
+  // === Agent ===
+  rpc InvokeAgent(InvokeAgentRequest) returns (InvokeAgentResponse);
+
+  // === 存储 ===
+  rpc StorageGet(StorageGetRequest) returns (StorageGetResponse);
+  rpc StoragePut(StoragePutRequest) returns (StoragePutResponse);
+
+  // === 事件 ===
+  rpc PublishEvent(PublishEventRequest) returns (Empty);
+}
+
+// === Messages ===
+
+message HandshakeRequest {
+  string plugin_id = 1;
+  string plugin_version = 2;
+  string core_version = 3;
+  string workspace_id = 4;
+  string auth_token = 5;
+}
+
+message HandshakeResponse {
+  bool ok = 1;
+  string error = 2;
+  repeated ExtensionDefinition extensions = 3;
+}
+
+message ExtensionDefinition {
+  string type = 1;  // "field" | "agent" | "storage" | "event"
+  string key = 2;
+  google.protobuf.Struct config = 3;
+}
+
+message HeartbeatRequest { int64 ts_ms = 1; }
+message HeartbeatResponse {
+  int64 ts_ms = 1;
+  int64 server_ts_ms = 2;
+}
+
+message OnFieldWriteRequest {
+  string workspace_id = 1;
+  string issue_id = 2;
+  string field_key = 3;
+  google.protobuf.Value new_value = 4;
+  google.protobuf.Value old_value = 5;
+  string actor_id = 6;
+}
+message OnFieldWriteResponse {
+  bool ok = 1;
+  string error = 2;
+  google.protobuf.Value rejected_value = 3;
+}
+
+message InvokeAgentRequest {
+  string workspace_id = 1;
+  string issue_id = 2;
+  string agent_id = 3;
+  google.protobuf.Struct input = 4;
+  string invocation_id = 5;
+}
+message InvokeAgentResponse {
+  bool ok = 1;
+  string error = 2;
+  google.protobuf.Struct output = 3;
+  int32 tokens_in = 4;
+  int32 tokens_out = 5;
+  int32 duration_ms = 6;
+}
+
+message StorageGetRequest {
+  string workspace_id = 1;
+  string namespace = 2;
+  string key = 3;
+}
+message StorageGetResponse {
+  bool found = 1;
+  google.protobuf.Value value = 2;
+}
+message StoragePutRequest {
+  string workspace_id = 1;
+  string namespace = 2;
+  string key = 3;
+  google.protobuf.Value value = 4;
+  int64 ttl_seconds = 5;
+}
+message StoragePutResponse { bool ok = 1; }
+
+message PublishEventRequest {
+  string workspace_id = 1;
+  string event_type = 2;
+  google.protobuf.Struct payload = 3;
+}
+
+message Empty {}

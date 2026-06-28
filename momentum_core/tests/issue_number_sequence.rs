@@ -24,9 +24,9 @@ fn test_issue_number_sequence_per_team() {
     let pool = diesel::r2d2::Pool::builder()
         .max_size(1)
         .build(manager)
-        .expect("Failed to create pool");
+        .await.expect("Failed to create pool");
 
-    let mut conn = pool.get().expect("Failed to get connection");
+    let mut conn = pool.get().await.expect("Failed to get connection");
 
     let workspace_id = Uuid::new_v4();
     let user_id = Uuid::new_v4();
@@ -39,7 +39,7 @@ fn test_issue_number_sequence_per_team() {
             schema::workspaces::url_key.eq("test-ws"),
         ))
         .execute(&mut conn)
-        .expect("Failed to insert workspace");
+        .await.expect("Failed to insert workspace");
 
     // Setup: create user
     diesel::insert_into(schema::users::table)
@@ -52,7 +52,7 @@ fn test_issue_number_sequence_per_team() {
             schema::users::current_workspace_id.eq(Some(workspace_id)),
         ))
         .execute(&mut conn)
-        .expect("Failed to insert user");
+        .await.expect("Failed to insert user");
 
     // Setup: create Team A
     let team_a_id = Uuid::new_v4();
@@ -67,7 +67,7 @@ fn test_issue_number_sequence_per_team() {
             schema::teams::is_private.eq(false),
         ))
         .execute(&mut conn)
-        .expect("Failed to insert team A");
+        .await.expect("Failed to insert team A");
 
     // Setup: create Team B
     let team_b_id = Uuid::new_v4();
@@ -82,7 +82,7 @@ fn test_issue_number_sequence_per_team() {
             schema::teams::is_private.eq(false),
         ))
         .execute(&mut conn)
-        .expect("Failed to insert team B");
+        .await.expect("Failed to insert team B");
 
     // Setup: create workflow and state for Team A
     let workflow_a_id = Uuid::new_v4();
@@ -95,7 +95,7 @@ fn test_issue_number_sequence_per_team() {
             schema::workflows::is_default.eq(true),
         ))
         .execute(&mut conn)
-        .expect("Failed to insert workflow A");
+        .await.expect("Failed to insert workflow A");
 
     let state_a_id = Uuid::new_v4();
     diesel::insert_into(schema::workflow_states::table)
@@ -110,7 +110,7 @@ fn test_issue_number_sequence_per_team() {
             schema::workflow_states::is_default.eq(true),
         ))
         .execute(&mut conn)
-        .expect("Failed to insert state A");
+        .await.expect("Failed to insert state A");
 
     // Setup: create workflow and state for Team B
     let workflow_b_id = Uuid::new_v4();
@@ -123,7 +123,7 @@ fn test_issue_number_sequence_per_team() {
             schema::workflows::is_default.eq(true),
         ))
         .execute(&mut conn)
-        .expect("Failed to insert workflow B");
+        .await.expect("Failed to insert workflow B");
 
     let state_b_id = Uuid::new_v4();
     diesel::insert_into(schema::workflow_states::table)
@@ -138,7 +138,7 @@ fn test_issue_number_sequence_per_team() {
             schema::workflow_states::is_default.eq(true),
         ))
         .execute(&mut conn)
-        .expect("Failed to insert state B");
+        .await.expect("Failed to insert state B");
 
     // Create context for Team A
     let ctx_a = services::context::RequestContext {
@@ -162,8 +162,8 @@ fn test_issue_number_sequence_per_team() {
         cycle_id: None,
         parent_issue_id: None,
     };
-    let resp1 = services::IssuesService::create(&mut conn, &ctx_a, &req1)
-        .expect("Failed to create issue A-1");
+    let resp1 = services::IssuesService::new().create(&mut conn).await, &ctx_a, &req1)
+        .await.expect("Failed to create issue A-1");
     assert_eq!(resp1.issue_number, 1, "First issue in Team A should have number 1");
 
     let req2 = services::issues::types::CreateIssueRequest {
@@ -180,8 +180,8 @@ fn test_issue_number_sequence_per_team() {
         cycle_id: None,
         parent_issue_id: None,
     };
-    let resp2 = services::IssuesService::create(&mut conn, &ctx_a, &req2)
-        .expect("Failed to create issue A-2");
+    let resp2 = services::IssuesService::new().create(&mut conn).await, &ctx_a, &req2)
+        .await.expect("Failed to create issue A-2");
     assert_eq!(resp2.issue_number, 2, "Second issue in Team A should have number 2");
 
     let req3 = services::issues::types::CreateIssueRequest {
@@ -198,8 +198,8 @@ fn test_issue_number_sequence_per_team() {
         cycle_id: None,
         parent_issue_id: None,
     };
-    let resp3 = services::IssuesService::create(&mut conn, &ctx_a, &req3)
-        .expect("Failed to create issue A-3");
+    let resp3 = services::IssuesService::new().create(&mut conn).await, &ctx_a, &req3)
+        .await.expect("Failed to create issue A-3");
     assert_eq!(resp3.issue_number, 3, "Third issue in Team A should have number 3");
 
     // Create context for Team B
@@ -224,8 +224,8 @@ fn test_issue_number_sequence_per_team() {
         cycle_id: None,
         parent_issue_id: None,
     };
-    let resp4 = services::IssuesService::create(&mut conn, &ctx_b, &req4)
-        .expect("Failed to create issue B-1");
+    let resp4 = services::IssuesService::new().create(&mut conn).await, &ctx_b, &req4)
+        .await.expect("Failed to create issue B-1");
     assert_eq!(resp4.issue_number, 1, "First issue in Team B should have number 1");
 
     let req5 = services::issues::types::CreateIssueRequest {
@@ -242,8 +242,8 @@ fn test_issue_number_sequence_per_team() {
         cycle_id: None,
         parent_issue_id: None,
     };
-    let resp5 = services::IssuesService::create(&mut conn, &ctx_b, &req5)
-        .expect("Failed to create issue B-2");
+    let resp5 = services::IssuesService::new().create(&mut conn).await, &ctx_b, &req5)
+        .await.expect("Failed to create issue B-2");
     assert_eq!(resp5.issue_number, 2, "Second issue in Team B should have number 2");
 
     // Team A creates another issue - verify number 4
@@ -261,8 +261,8 @@ fn test_issue_number_sequence_per_team() {
         cycle_id: None,
         parent_issue_id: None,
     };
-    let resp6 = services::IssuesService::create(&mut conn, &ctx_a, &req6)
-        .expect("Failed to create issue A-4");
+    let resp6 = services::IssuesService::new().create(&mut conn).await, &ctx_a, &req6)
+        .await.expect("Failed to create issue A-4");
     assert_eq!(resp6.issue_number, 4, "Fourth issue in Team A should have number 4");
 
     println!("All assertions passed!");

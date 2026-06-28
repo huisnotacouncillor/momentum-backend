@@ -28,6 +28,7 @@ pub struct OAuthProvider {
     pub auth_url: String,
     pub token_url: String,
     pub user_info_url: String,
+    pub redirect_uri: Option<String>,
     pub scope: Option<String>,
     pub is_active: bool,
     pub created_at: chrono::NaiveDateTime,

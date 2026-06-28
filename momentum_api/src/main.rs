@@ -4,7 +4,6 @@ use momentum_api::{AppConfig, AppState, websocket};
 use momentum_core::config::Config;
 use momentum_core::db as core_db;
 use momentum_core::utils::AssetUrlHelper;
-use momentum_plugin_host::Supervisor;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -34,8 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Application state
-    let plugin_host = Supervisor::new();
-    let state = Arc::new(AppState::new(db_pool, redis, asset_helper, plugin_host));
+    let state = Arc::new(AppState::new(db_pool, redis, asset_helper));
 
     // CORS configuration
     let cors = if config.cors_origins.contains(&"*".to_string()) {

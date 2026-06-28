@@ -1,6 +1,7 @@
 // Momentum Core - Pure business logic, no HTTP dependencies
 pub mod config;
 pub mod error;
+pub mod plugins;
 pub mod schema;
 pub mod db;
 pub mod services;
