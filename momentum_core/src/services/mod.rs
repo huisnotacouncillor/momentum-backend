@@ -1,11 +1,12 @@
 pub mod auth_service;
+pub mod automation_engine;
 pub mod comments_service;
 pub mod context;
 pub mod cycles_service;
 pub mod invitations_service;
 pub mod issues_service;
-pub mod labels_service;
 pub mod jwt;
+pub mod labels_service;
 pub mod project_statuses_service;
 pub mod projects_service;
 pub mod team_members_service;
