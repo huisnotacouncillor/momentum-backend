@@ -1,9 +1,17 @@
+pub mod agent_runs;
 pub mod auth;
 pub mod comments;
 pub mod cycles;
 pub mod invitations;
+pub mod issue_field_definitions;
+pub mod issue_field_values;
 pub mod issues;
 pub mod labels;
+pub mod notifications;
+pub mod plugin_audit;
+pub mod plugin_installations;
+pub mod plugin_storage;
+pub mod plugins;
 pub mod project_statuses;
 pub mod projects;
 pub mod workflows;

@@ -4,6 +4,8 @@ pub mod cycles;
 pub mod invitations;
 pub mod issues;
 pub mod labels;
+pub mod notifications;
+pub mod plugins;
 pub mod project_statuses;
 pub mod projects;
 pub mod teams;
@@ -15,7 +17,7 @@ pub mod workspaces;
 use crate::state::AppState;
 use axum::{
     Router,
-    routing::{delete, get, post, put},
+    routing::{delete, get, patch, post, put},
 };
 use std::sync::Arc;
 
@@ -26,6 +28,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/labels", post(labels::create_label))
         .route("/labels/:label_id", put(labels::update_label))
         .route("/labels/:label_id", delete(labels::delete_label))
+        .route("/notifications", get(notifications::get_notifications))
+        .route("/notifications/:notification_id/read", patch(notifications::mark_notification_read))
+        .route("/notifications/read-all", post(notifications::mark_all_notifications_read))
+        .route("/notifications/unread-count", get(notifications::get_unread_count))
         .route("/auth/profile", get(auth::get_profile))
         .route("/auth/logout", post(auth::logout))
         .route("/auth/switch-workspace", post(auth::switch_workspace))
@@ -163,6 +169,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/issues/:issue_id/transitions",
             get(workflows::get_issue_transitions),
+        )
+        // Plugin routes
+        .route("/plugins", get(plugins::list_plugins))
+        .route("/plugins/install", post(plugins::install_plugin))
+        .route("/plugins/:inst_id/enable", post(plugins::enable_plugin))
+        .route("/plugins/:inst_id/disable", post(plugins::disable_plugin))
+        .route(
+            "/workspaces/:workspace_id/plugins",
+            get(plugins::list_workspace_plugins),
+        )
+        .route(
+            "/workspaces/:workspace_id/plugins/:plugin_id",
+            delete(plugins::uninstall_plugin),
+        )
+        .route(
+            "/workspaces/:workspace_id/fields",
+            get(plugins::list_workspace_fields),
         )
         .with_state(state.clone());
 
