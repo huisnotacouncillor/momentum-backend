@@ -41,6 +41,28 @@ diesel::table! {
     use diesel::sql_types::*;
     use diesel::sql_types::Uuid;
 
+    automation_rules (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        team_id -> Nullable<Uuid>,
+        #[max_length = 255]
+        name -> Varchar,
+        description -> Nullable<Text>,
+        is_enabled -> Bool,
+        #[max_length = 50]
+        trigger_type -> Varchar,
+        trigger_config -> Nullable<Jsonb>,
+        conditions -> Jsonb,
+        actions -> Jsonb,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+    use diesel::sql_types::Uuid;
+
     comment_attachments (id) {
         id -> Uuid,
         comment_id -> Uuid,
@@ -579,6 +601,8 @@ diesel::table! {
 
 diesel::joinable!(agent_runs -> issues (issue_id));
 diesel::joinable!(agent_runs -> workspaces (workspace_id));
+diesel::joinable!(automation_rules -> teams (team_id));
+diesel::joinable!(automation_rules -> workspaces (workspace_id));
 diesel::joinable!(comment_attachments -> comments (comment_id));
 diesel::joinable!(comment_mentions -> comments (comment_id));
 diesel::joinable!(comment_mentions -> users (mentioned_user_id));
@@ -624,6 +648,7 @@ diesel::joinable!(workspace_members -> workspaces (workspace_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     agent_runs,
+    automation_rules,
     comment_attachments,
     comment_mentions,
     comment_reactions,

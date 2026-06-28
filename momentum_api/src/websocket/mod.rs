@@ -12,6 +12,7 @@ pub mod tests;
 
 // Issue events handler module
 pub mod handlers;
+pub mod issue_events;
 
 // New unified event system modules (temporarily commented out due to compilation issues)
 // pub mod batch_processor;
