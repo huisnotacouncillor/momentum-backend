@@ -98,6 +98,15 @@ impl IssueRepo {
                 )
                 .bind::<diesel::sql_types::Text, _>(search)
             );
+
+            // 按相关性（ts_rank）降序排序，然后按创建时间降序
+            let rank_expr = diesel::dsl::sql::<diesel::sql_types::Float>(
+                "ts_rank((to_tsvector('english', title) || to_tsvector('english', description)), websearch_to_tsquery('english', $1))"
+            )
+            .bind::<diesel::sql_types::Text, _>(search);
+            query = query.order((rank_expr.desc(), created_at.desc()));
+        } else {
+            query = query.order(created_at.desc().nulls_last());
         }
 
         if let Some(cur) = cursor {
@@ -107,7 +116,6 @@ impl IssueRepo {
         }
 
         query
-            .order((created_at.desc().nulls_last(), id.desc().nulls_last()))
             .limit(limit + 1)
             .load::<Issue>(conn)
     }
