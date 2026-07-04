@@ -45,43 +45,45 @@ impl WorkspaceMembersService {
         ctx: &RequestContext,
         req: &crate::services::workspace_members::types::InviteMemberRequest,
     ) -> Result<WorkspaceMember, AppError> {
-        // Check if user already exists
-        let existing_user = crate::schema::users::table
-            .filter(crate::schema::users::email.eq(&req.email))
-            .first::<crate::db::models::auth::User>(conn)
-            .optional()?;
+        conn.transaction::<WorkspaceMember, AppError, _>(|conn| {
+            // Check if user already exists
+            let existing_user = crate::schema::users::table
+                .filter(crate::schema::users::email.eq(&req.email))
+                .first::<crate::db::models::auth::User>(conn)
+                .optional()?;
 
-        if let Some(user) = existing_user {
-            // User exists, add them directly
-            if WorkspaceMembersRepo::find(conn, ctx.workspace_id, user.id)?.is_some() {
-                return Err(AppError::conflict_with_code(
-                    "User already a member",
+            if let Some(user) = existing_user {
+                // User exists, add them directly
+                if WorkspaceMembersRepo::find(conn, ctx.workspace_id, user.id)?.is_some() {
+                    return Err(AppError::conflict_with_code(
+                        "User already a member",
+                        None,
+                        "ALREADY_MEMBER",
+                    ));
+                }
+                let new_member = NewWorkspaceMember {
+                    user_id: user.id,
+                    workspace_id: ctx.workspace_id,
+                    role: req.role.clone(),
+                };
+                let member = WorkspaceMembersRepo::insert(conn, &new_member)?;
+                Ok(member)
+            } else {
+                // User doesn't exist, create invitation
+                let _invitation = crate::services::InvitationsService::create(
+                    conn,
+                    ctx,
+                    &req.email,
+                    req.role.clone(),
+                )?;
+                // Return a placeholder member - in real implementation, this might be different
+                Err(AppError::conflict_with_code(
+                    "User doesn't exist, invitation sent",
                     None,
-                    "ALREADY_MEMBER",
-                ));
+                    "INVITATION_SENT",
+                ))
             }
-            let new_member = NewWorkspaceMember {
-                user_id: user.id,
-                workspace_id: ctx.workspace_id,
-                role: req.role.clone(),
-            };
-            let member = WorkspaceMembersRepo::insert(conn, &new_member)?;
-            Ok(member)
-        } else {
-            // User doesn't exist, create invitation
-            let _invitation = crate::services::InvitationsService::create(
-                conn,
-                ctx,
-                &req.email,
-                req.role.clone(),
-            )?;
-            // Return a placeholder member - in real implementation, this might be different
-            Err(AppError::conflict_with_code(
-                "User doesn't exist, invitation sent",
-                None,
-                "INVITATION_SENT",
-            ))
-        }
+        })
     }
 
     pub fn accept_invitation(

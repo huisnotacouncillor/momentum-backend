@@ -1,5 +1,4 @@
 use bcrypt::{hash, verify};
-use chrono::Utc;
 use diesel::prelude::*;
 use uuid::Uuid;
 
@@ -10,8 +9,15 @@ use crate::{
         AuthUser, LoginRequest, LoginResponse, NewUser, NewUserCredential, RegisterRequest, User,
         UserProfile,
     },
-    db::models::{team::TeamInfo, workspace::WorkspaceInfo},
+    db::models::{
+        project_status::{NewProjectStatus, ProjectStatusCategory},
+        team::TeamInfo,
+        workflow::{NewWorkflow, NewWorkflowState, WorkflowStateCategory},
+        workspace::WorkspaceInfo,
+    },
+    db::models::workspace_member::WorkspaceMemberRole,
     db::repositories::auth::AuthRepo,
+    db::repositories::workspaces::WorkspacesRepo,
     error::AppError,
     services::context::RequestContext,
     services::jwt::JwtService,
@@ -49,9 +55,6 @@ impl AuthService {
             ));
         }
 
-        let _now = Utc::now().naive_utc();
-        let user_id = Uuid::new_v4();
-
         // Hash password
         let hashed_password = hash(&req.password, bcrypt::DEFAULT_COST)
             .map_err(|_| AppError::internal("Failed to hash password"))?;
@@ -63,19 +66,146 @@ impl AuthService {
             avatar_url: None,
         };
 
-        let user = AuthRepo::insert_user(conn, &new_user)?;
+        let user = conn.transaction::<User, AppError, _>(|conn| {
+            let user = AuthRepo::insert_user(conn, &new_user)?;
 
-        // Create credential
-        let new_credential = NewUserCredential {
-            user_id,
-            credential_type: "password".to_string(),
-            credential_hash: Some(hashed_password),
-            oauth_provider_id: None,
-            oauth_user_id: None,
-            is_primary: true,
-        };
+            // Create credential
+            let new_credential = NewUserCredential {
+                user_id: user.id,
+                credential_type: "password".to_string(),
+                credential_hash: Some(hashed_password),
+                oauth_provider_id: None,
+                oauth_user_id: None,
+                is_primary: true,
+            };
 
-        AuthRepo::insert_credential(conn, &new_credential)?;
+            AuthRepo::insert_credential(conn, &new_credential)?;
+
+            // Create default workspace: "{name}'s Workspace"
+            let workspace_name = format!("{}'s Workspace", req.name);
+            let workspace_url_key = format!("{}-workspace", req.username.to_lowercase());
+
+            let new_workspace = crate::db::models::workspace::NewWorkspace {
+                name: workspace_name,
+                url_key: workspace_url_key,
+                logo_url: None,
+            };
+            let workspace = WorkspacesRepo::insert(conn, &new_workspace)?;
+
+            // Add user as Owner of the workspace
+            let new_member = crate::db::models::workspace_member::NewWorkspaceMember {
+                user_id: user.id,
+                workspace_id: workspace.id,
+                role: WorkspaceMemberRole::Owner,
+            };
+            use crate::schema::workspace_members::dsl::*;
+            diesel::insert_into(workspace_members)
+                .values(&new_member)
+                .execute(conn)
+                .map_err(|e| AppError::internal(format!("Failed to add workspace member: {}", e)))?;
+
+            // Update user's current_workspace_id
+            let user = AuthRepo::update_current_workspace(conn, user.id, workspace.id)?;
+
+            // Create default team: "{username}'s Team"
+            let team_key = format!("{}-team", req.username.to_lowercase())[..10].to_string();
+            let new_team = crate::db::models::team::NewTeam {
+                workspace_id: workspace.id,
+                name: format!("{}'s Team", req.username),
+                team_key,
+                description: None,
+                icon_url: None,
+                is_private: false,
+            };
+            let team: crate::db::models::team::Team = diesel::insert_into(crate::schema::teams::table)
+                .values(&new_team)
+                .get_result(conn)
+                .map_err(|e| AppError::internal(format!("Failed to create team: {}", e)))?;
+
+            // Add user as admin of the team
+            let new_team_member = crate::db::models::team::NewTeamMember {
+                user_id: user.id,
+                team_id: team.id,
+                role: "admin".to_string(),
+            };
+            diesel::insert_into(crate::schema::team_members::table)
+                .values(&new_team_member)
+                .execute(conn)
+                .map_err(|e| AppError::internal(format!("Failed to add team member: {}", e)))?;
+
+            // Create default workflow with states for the team
+            let new_workflow = NewWorkflow {
+                name: "Default Workflow".to_string(),
+                description: Some("Default workflow for new teams".to_string()),
+                team_id: team.id,
+                is_default: true,
+            };
+            let workflow: crate::db::models::workflow::Workflow =
+                diesel::insert_into(crate::schema::workflows::table)
+                    .values(&new_workflow)
+                    .get_result(conn)
+                    .map_err(|e| AppError::internal(format!("Failed to create workflow: {}", e)))?;
+
+            // Create default workflow states
+            let default_states = vec![
+                (1, "Backlog", "#999999", WorkflowStateCategory::Backlog, true),
+                (2, "Todo", "#999999", WorkflowStateCategory::Unstarted, false),
+                (3, "In Progress", "#F1BF00", WorkflowStateCategory::Started, false),
+                (4, "In Review", "#82E0AA", WorkflowStateCategory::Started, false),
+                (5, "Done", "#0082FF", WorkflowStateCategory::Completed, false),
+                (6, "Canceled", "#333333", WorkflowStateCategory::Canceled, false),
+                (7, "Duplicated", "#333333", WorkflowStateCategory::Canceled, false),
+            ];
+            for (pos, name, color, category, is_default) in default_states {
+                let state = NewWorkflowState {
+                    workflow_id: workflow.id,
+                    name: name.to_string(),
+                    description: None,
+                    color: Some(color.to_string()),
+                    category,
+                    position: pos,
+                    is_default,
+                };
+                diesel::insert_into(crate::schema::workflow_states::table)
+                    .values(&state)
+                    .execute(conn)
+                    .map_err(|e| AppError::internal(format!("Failed to create workflow state: {}", e)))?;
+            }
+
+            // Create default project status for the workspace
+            let new_project_status = NewProjectStatus {
+                name: "Planned".to_string(),
+                description: Some("Default project status".to_string()),
+                color: Some("#4A90D9".to_string()),
+                category: ProjectStatusCategory::Planned,
+                workspace_id: workspace.id,
+            };
+            let project_status: crate::db::models::project_status::ProjectStatus =
+                diesel::insert_into(crate::schema::project_statuses::table)
+                    .values(&new_project_status)
+                    .get_result(conn)
+                    .map_err(|e| AppError::internal(format!("Failed to create project status: {}", e)))?;
+
+            // Create default project
+            let project_key = format!("{}-1", req.username.to_lowercase())[..10].to_string();
+            let new_project = crate::db::models::project::NewProject {
+                workspace_id: workspace.id,
+                roadmap_id: None,
+                owner_id: user.id,
+                name: "My First Project".to_string(),
+                project_key,
+                description: Some("Welcome to your first project!".to_string()),
+                target_date: None,
+                project_status_id: project_status.id,
+                priority: None,
+            };
+            diesel::insert_into(crate::schema::projects::table)
+                .values(&new_project)
+                .execute(conn)
+                .map_err(|e| AppError::internal(format!("Failed to create project: {}", e)))?;
+
+            Ok(user)
+        })?;
 
         // Generate JWT tokens
         let jwt_service = JwtService::from_config(&Config::from_env()?);

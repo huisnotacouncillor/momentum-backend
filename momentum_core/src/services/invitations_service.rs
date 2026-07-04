@@ -60,16 +60,19 @@ impl InvitationsService {
         ctx: &RequestContext,
         req: &crate::services::invitations::types::InviteMemberRequest,
     ) -> Result<Vec<Invitation>, AppError> {
-        let mut invitations = Vec::new();
         let role = req
             .role
             .clone()
             .unwrap_or(crate::db::models::workspace_member::WorkspaceMemberRole::Member);
 
-        for email in &req.emails {
-            let invitation = Self::create(conn, ctx, email, role.clone())?;
-            invitations.push(invitation);
-        }
+        let invitations = conn.transaction::<Vec<Invitation>, AppError, _>(|tx| {
+            let mut invitations = Vec::new();
+            for email in &req.emails {
+                let invitation = Self::create(tx, ctx, email, role.clone())?;
+                invitations.push(invitation);
+            }
+            Ok(invitations)
+        })?;
 
         Ok(invitations)
     }

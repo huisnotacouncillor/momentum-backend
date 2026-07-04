@@ -241,65 +241,74 @@ impl IssuesService {
             version: Some(1),
         };
 
-        let issue = loop {
-            // Get next issue_number for this team
-            let issue_number = IssueRepo::get_next_issue_number(conn, req.team_id)
-                .map_err(|e| AppError::internal(format!("Failed to get next issue number: {}", e)))?;
-            new_issue.issue_number = issue_number;
+        let issue = conn.transaction::<Issue, AppError, _>(|conn| {
+            let issue = loop {
+                // Get next issue_number for this team
+                let issue_number = IssueRepo::get_next_issue_number(conn, req.team_id)
+                    .map_err(|e| AppError::internal(format!("Failed to get next issue number: {}", e)))?;
+                new_issue.issue_number = issue_number;
 
-            match IssueRepo::insert(conn, &new_issue) {
-                Ok(issue) => break issue,
-                Err(diesel::result::Error::DatabaseError(UniqueViolation, _)) if retries < 3 => {
-                    retries += 1;
-                    continue;
+                match IssueRepo::insert(conn, &new_issue) {
+                    Ok(issue) => break issue,
+                    Err(diesel::result::Error::DatabaseError(UniqueViolation, _)) if retries < 3 => {
+                        retries += 1;
+                        continue;
+                    }
+                    Err(e) => return Err(e.into()),
                 }
-                Err(e) => return Err(e.into()),
-            }
-        };
+            };
 
-        // Handle labels if provided
-        if let Some(ref label_ids) = req.label_ids {
-            if !label_ids.is_empty() {
-                use crate::schema::{issue_labels as il, labels as l};
-                use diesel::prelude::*;
+            // Handle labels if provided
+            if let Some(ref label_ids) = req.label_ids {
+                if !label_ids.is_empty() {
+                    use crate::schema::{issue_labels as il, labels as l};
+                    use diesel::prelude::*;
 
-                // Validate all labels exist in current workspace
-                let count = l::dsl::labels
-                    .filter(l::dsl::workspace_id.eq(ctx.workspace_id))
-                    .filter(l::dsl::id.eq_any(label_ids))
-                    .count()
-                    .get_result::<i64>(conn)
-                    .map_err(|e| AppError::internal(format!("Failed to validate labels: {}", e)))?;
-                if count != label_ids.len() as i64 {
-                    return Err(AppError::validation("Invalid label_ids for workspace"));
+                    // Validate all labels exist in current workspace
+                    let count = l::dsl::labels
+                        .filter(l::dsl::workspace_id.eq(ctx.workspace_id))
+                        .filter(l::dsl::id.eq_any(label_ids))
+                        .count()
+                        .get_result::<i64>(conn)
+                        .map_err(|e| AppError::internal(format!("Failed to validate labels: {}", e)))?;
+                    if count != label_ids.len() as i64 {
+                        return Err(AppError::validation("Invalid label_ids for workspace"));
+                    }
+
+                    // Insert issue labels
+                    let new_rows: Vec<crate::db::models::issue::NewIssueLabel> = label_ids
+                        .iter()
+                        .map(|lid| crate::db::models::issue::NewIssueLabel {
+                            issue_id: issue.id,
+                            label_id: *lid,
+                        })
+                        .collect();
+                    diesel::insert_into(il::dsl::issue_labels)
+                        .values(&new_rows)
+                        .execute(conn)
+                        .map_err(|e| {
+                            AppError::internal(format!("Failed to insert issue labels: {}", e))
+                        })?;
                 }
-
-                // Insert issue labels
-                let new_rows: Vec<crate::db::models::issue::NewIssueLabel> = label_ids
-                    .iter()
-                    .map(|lid| crate::db::models::issue::NewIssueLabel {
-                        issue_id: issue.id,
-                        label_id: *lid,
-                    })
-                    .collect();
-                diesel::insert_into(il::dsl::issue_labels)
-                    .values(&new_rows)
-                    .execute(conn)
-                    .map_err(|e| {
-                        AppError::internal(format!("Failed to insert issue labels: {}", e))
-                    })?;
             }
-        }
 
-        // Trigger automation for issue creation
+            Ok(issue)
+        })?;
+
+        // Trigger automation for issue creation (outside transaction - async side effect)
+        let issue_for_trigger = issue.clone();
+        let workspace_id = ctx.workspace_id;
         if let Some(ref engine) = self.automation_engine {
-            if let Err(e) = engine.handle_trigger(
-                TriggerType::IssueCreated,
-                &issue,
-                ctx.workspace_id,
-            ).await {
-                tracing::warn!("Automation trigger failed: {}", e);
-            }
+            let engine = engine.clone();
+            tokio::spawn(async move {
+                if let Err(e) = engine.handle_trigger(
+                    TriggerType::IssueCreated,
+                    &issue_for_trigger,
+                    workspace_id,
+                ).await {
+                    tracing::warn!("Automation trigger failed: {}", e);
+                }
+            });
         }
 
         // Build IssueResponse with relations using the shared method
@@ -491,46 +500,6 @@ impl IssuesService {
             cs.workflow_state_id = Some(None);
         }
 
-        // Handle labels replacement if provided
-        if let Some(ref label_ids) = changes.label_ids {
-            use crate::schema::{issue_labels as il, labels as l};
-            use diesel::prelude::*;
-
-            // Validate all labels exist in current workspace
-            if !label_ids.is_empty() {
-                let count = l::dsl::labels
-                    .filter(l::dsl::workspace_id.eq(ctx.workspace_id))
-                    .filter(l::dsl::id.eq_any(label_ids))
-                    .count()
-                    .get_result::<i64>(conn)
-                    .map_err(|e| AppError::internal(format!("Failed to validate labels: {}", e)))?;
-                if count != label_ids.len() as i64 {
-                    return Err(AppError::validation("Invalid label_ids for workspace"));
-                }
-            }
-
-            // Replace issue labels
-            diesel::delete(il::dsl::issue_labels.filter(il::dsl::issue_id.eq(issue_id)))
-                .execute(conn)
-                .map_err(|e| AppError::internal(format!("Failed to clear issue labels: {}", e)))?;
-
-            if !label_ids.is_empty() {
-                let new_rows: Vec<crate::db::models::issue::NewIssueLabel> = label_ids
-                    .iter()
-                    .map(|lid| crate::db::models::issue::NewIssueLabel {
-                        issue_id,
-                        label_id: *lid,
-                    })
-                    .collect();
-                diesel::insert_into(il::dsl::issue_labels)
-                    .values(&new_rows)
-                    .execute(conn)
-                    .map_err(|e| {
-                        AppError::internal(format!("Failed to insert issue labels: {}", e))
-                    })?;
-            }
-        }
-
         // Apply update using changeset only if any field changed; otherwise return current issue
         let has_field_changes = changes.title.is_some()
             || changes.description.is_some()
@@ -542,29 +511,76 @@ impl IssuesService {
             || changes.workflow_id.is_some()
             || changes.workflow_state_id.is_some();
 
-        let issue = if has_field_changes {
-            use crate::schema::issues::dsl as i;
-            diesel::update(i::issues.filter(i::id.eq(issue_id)))
-                .set(&cs)
-                .get_result::<Issue>(conn)
-                .map_err(|e| AppError::internal(format!("Failed to update issue: {}", e)))?
-        } else {
-            // No changes to issue table; return current row
-            IssueRepo::find_by_id_in_workspace(conn, ctx.workspace_id, issue_id)?
-                .ok_or_else(|| AppError::not_found("issue"))?
-        };
+        let issue = conn.transaction::<Issue, AppError, _>(|conn| {
+            // Handle labels replacement if provided (within transaction)
+            if let Some(ref label_ids) = changes.label_ids {
+                use crate::schema::{issue_labels as il, labels as l};
+                use diesel::prelude::*;
 
-        // Trigger automation for status change
+                // Validate all labels exist in current workspace
+                if !label_ids.is_empty() {
+                    let count = l::dsl::labels
+                        .filter(l::dsl::workspace_id.eq(ctx.workspace_id))
+                        .filter(l::dsl::id.eq_any(label_ids))
+                        .count()
+                        .get_result::<i64>(conn)
+                        .map_err(|e| AppError::internal(format!("Failed to validate labels: {}", e)))?;
+                    if count != label_ids.len() as i64 {
+                        return Err(AppError::validation("Invalid label_ids for workspace"));
+                    }
+                }
+
+                // Replace issue labels
+                diesel::delete(il::dsl::issue_labels.filter(il::dsl::issue_id.eq(issue_id)))
+                    .execute(conn)
+                    .map_err(|e| AppError::internal(format!("Failed to clear issue labels: {}", e)))?;
+
+                if !label_ids.is_empty() {
+                    let new_rows: Vec<crate::db::models::issue::NewIssueLabel> = label_ids
+                        .iter()
+                        .map(|lid| crate::db::models::issue::NewIssueLabel {
+                            issue_id,
+                            label_id: *lid,
+                        })
+                        .collect();
+                    diesel::insert_into(il::dsl::issue_labels)
+                        .values(&new_rows)
+                        .execute(conn)
+                        .map_err(|e| {
+                            AppError::internal(format!("Failed to insert issue labels: {}", e))
+                        })?;
+                }
+            }
+
+            if has_field_changes {
+                use crate::schema::issues::dsl as i;
+                diesel::update(i::issues.filter(i::id.eq(issue_id)))
+                    .set(&cs)
+                    .get_result::<Issue>(conn)
+                    .map_err(|e| AppError::internal(format!("Failed to update issue: {}", e)))
+            } else {
+                // No changes to issue table; return current row
+                IssueRepo::find_by_id_in_workspace(conn, ctx.workspace_id, issue_id)?
+                    .ok_or_else(|| AppError::not_found("issue"))
+            }
+        })?;
+
+        // Trigger automation for status change (outside transaction - async side effect)
         let new_state_id = issue.workflow_state_id;
         if old_state_id != new_state_id {
+            let issue_for_trigger = issue.clone();
+            let workspace_id = ctx.workspace_id;
             if let Some(ref engine) = self.automation_engine {
-                if let Err(e) = engine.handle_trigger(
-                    TriggerType::IssueStatusChanged,
-                    &issue,
-                    ctx.workspace_id,
-                ).await {
-                    tracing::warn!("Automation trigger failed: {}", e);
-                }
+                let engine = engine.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = engine.handle_trigger(
+                        TriggerType::IssueStatusChanged,
+                        &issue_for_trigger,
+                        workspace_id,
+                    ).await {
+                        tracing::warn!("Automation trigger failed: {}", e);
+                    }
+                });
             }
         }
 
