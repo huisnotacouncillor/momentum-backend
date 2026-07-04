@@ -1,14 +1,13 @@
-//! Handler registry (spec §3) — 最小骨架
+//! Handler registry (spec §3)
 //!
-//! 这一步**只**引入 `CommandHandler` trait 与 `HandlerRegistry` 的接口；
-//! 真正把 `WebSocketCommandHandler` 中的方法桥接到 Registry 留到 Step 2。
+//! 引入 `CommandHandler` trait 与 `HandlerRegistry` 的接口；
+//! Step 2/3 已经把 trait 用作最小示例。
 //!
-//! 设计选择：
-//! - 命令类型作为 `&'static str` 索引（与现有 enum variant 同名，snake_case）；
-//! - handler 通过 `Arc<dyn CommandHandler>` 持有，trait 的方法 `async`；
-//! - 注册与查表均 `Send + Sync`，方便从 axum 的 State 直接 `Arc::clone`。
-//!
-//! 不删除任何现有 `commands/` 模块。
+//! 子模块：
+//! - `handlers/ping`：最小 ping handler（无 DB 依赖）
+//! - `handlers/get_connection_info`：最小 get_connection_info handler
+
+pub mod handlers;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -161,7 +160,6 @@ mod tests {
     async fn registered_types_lists_keys() {
         let reg = HandlerRegistry::new();
         reg.register(EchoHandler);
-        // 二次注册同 key 不报错，覆盖
         reg.register(EchoHandler);
         let types = reg.registered_types();
         assert_eq!(types, vec!["echo"]);
@@ -175,5 +173,27 @@ mod tests {
         let _: AppError = e.into();
         let e = HandlerError::Internal { detail: "z".into() };
         let _: AppError = e.into();
+    }
+
+    /// 组合示例：注册所有内置示例 handlers 后 dispatch。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sample_handlers_can_all_be_registered() {
+        use super::handlers::{GetConnectionInfoHandler, PingHandler};
+        let reg = HandlerRegistry::new();
+        reg.register(PingHandler);
+        reg.register(GetConnectionInfoHandler);
+        let types = reg.registered_types();
+        assert!(types.contains(&"ping"));
+        assert!(types.contains(&"get_connection_info"));
+
+        // ping
+        let out = reg
+            .dispatch("ping", ctx(), json!({ "hi": "there" }))
+            .unwrap();
+        assert_eq!(out["ok"], true);
+
+        // get_connection_info
+        let out2 = reg.dispatch("get_connection_info", ctx(), json!({})).unwrap();
+        assert!(out2["user_id"].is_string());
     }
 }
