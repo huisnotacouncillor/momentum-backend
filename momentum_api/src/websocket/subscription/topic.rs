@@ -47,6 +47,9 @@ impl Topic {
         if namespace.is_empty() {
             return Err(TopicParseError::EmptyNamespace(s.to_string()));
         }
+        if !is_valid_segment(namespace) {
+            return Err(TopicParseError::InvalidCharacters);
+        }
 
         let resource_id = match parts.get(1).copied() {
             None => None,
