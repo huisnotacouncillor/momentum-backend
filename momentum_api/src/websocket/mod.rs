@@ -15,6 +15,7 @@ pub mod feature_flags;
 pub mod protocol;
 pub mod middleware;
 pub mod registry;
+pub mod registry_dispatch;
 pub mod subscription;
 
 // Issue events handler module
