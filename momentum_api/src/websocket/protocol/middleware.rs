@@ -1,16 +1,13 @@
 //! ProtocolVersion 中间件（spec §7.2）
 //!
-//! 从 `envelope.context.metadata["ws_version"]` 读取客户端版本，
-//! 与服务器支持的版本列表进行协商：
+//! 从 `envelope.metadata["ws_version"]` 读取客户端版本，与服务器支持的版本列表进行协商：
 //! - 客户端版本不可解析 -> 默认 v1.0（向后兼容）
 //! - 客户端版本不在 supported() 列表里 -> 拒绝
 //! - 主版本不同 -> 拒绝
 //!
-//! 设计点：因为 `RequestContext` 现有字段是
-//!   { user_id, workspace_id, idempotency_key }
-//! 暂时**不**直接修改 `RequestContext`；用
-//! `envelope.context.idempotency_key` 兼任"ws_version"位置在
-//! 后续真正引入 metadata 后再迁移。本中间件不破坏此字段格式。
+//! Step 9：之前临时占用 `RequestContext.idempotency_key` 的 hack 已废弃；
+//! metadata 现在正经存在于 `CommandEnvelope`，后续真正把协议版本塞进
+//! ws client → server 的连接 header / 首帧即可。
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -35,12 +32,11 @@ impl VersionNegotiationMiddleware {
         }
     }
 
-    /// 客户端版本从 `context.idempotency_key` 读取（临时占位）；
-    /// 真实部署应该在 `RequestContext` 扩 `metadata`。
-    fn parse_client_version(&self, ctx: &momentum_core::services::context::RequestContext) -> ProtocolVersion {
-        ctx.idempotency_key
-            .as_deref()
-            .and_then(ProtocolVersion::parse)
+    fn parse_client_version(&self, envelope: &CommandEnvelope) -> ProtocolVersion {
+        envelope
+            .metadata
+            .get("ws_version")
+            .and_then(|v| ProtocolVersion::parse(v))
             .unwrap_or(ProtocolVersion::V1_0)
     }
 }
@@ -63,7 +59,7 @@ impl CommandMiddleware for VersionNegotiationMiddleware {
         _ctx: &MiddlewareContext,
         next: NextMiddleware<'_>,
     ) -> Result<Value, AppError> {
-        let client = self.parse_client_version(&envelope.context);
+        let client = self.parse_client_version(&envelope);
         // 不在 supported() 列表中
         if !self.supported.contains(&client) {
             return Err(AppError::Internal(format!(
@@ -94,16 +90,20 @@ mod tests {
     use momentum_core::services::context::RequestContext;
 
     fn make_env(version: Option<&str>) -> CommandEnvelope {
-        CommandEnvelope {
-            command_type: "ping",
-            payload: json!({}),
-            context: RequestContext {
+        let mut env = CommandEnvelope::new(
+            "ping",
+            json!({}),
+            RequestContext {
                 user_id: Uuid::new_v4(),
                 workspace_id: Uuid::new_v4(),
-                idempotency_key: version.map(|s| s.to_string()),
+                idempotency_key: None,
             },
-            request_id: Some("req".into()),
+            Some("req".into()),
+        );
+        if let Some(v) = version {
+            env.metadata.insert("ws_version".to_string(), v.to_string());
         }
+        env
     }
 
     fn make_ctx() -> MiddlewareContext {

@@ -65,16 +65,16 @@ mod tests {
     use momentum_core::services::context::RequestContext;
 
     fn make_env(command_type: &'static str, payload: Value) -> CommandEnvelope {
-        CommandEnvelope {
+        CommandEnvelope::new(
             command_type,
             payload,
-            context: RequestContext {
+            RequestContext {
                 user_id: Uuid::new_v4(),
                 workspace_id: Uuid::new_v4(),
                 idempotency_key: None,
             },
-            request_id: Some("req-test".into()),
-        }
+            Some("req-test".into()),
+        )
     }
 
     fn make_ctx(flags: Arc<FeatureFlags>) -> MiddlewareContext {
