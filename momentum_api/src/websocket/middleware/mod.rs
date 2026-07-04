@@ -267,4 +267,105 @@ mod tests {
         // post 由内向外运行：c 先 (3)，然后 b (4)，然后 a (5)
         assert_eq!(post, vec![3, 4, 5]);
     }
+
+    // ===== 集成测试（与 feature_flag / version 中间件串联） =====
+
+    /// ping 通过；使用默认 flags & 默认 version
+    #[tokio::test]
+    async fn integration_ping_passes_through_full_chain() {
+        use crate::websocket::feature_flags::FeatureFlagMiddleware;
+        use crate::websocket::protocol::VersionNegotiationMiddleware;
+        use std::sync::Arc;
+
+        let flags = Arc::new(crate::websocket::feature_flags::FeatureFlags::default());
+        let ctx = MiddlewareContext { feature_flags: flags };
+        let env = CommandEnvelope {
+            command_type: "ping",
+            payload: json!({}),
+            context: RequestContext {
+                user_id: Uuid::new_v4(),
+                workspace_id: Uuid::new_v4(),
+                idempotency_key: None,
+            },
+            request_id: Some("req-it-1".into()),
+        };
+        let chain = MiddlewareChain::new()
+            .push(FeatureFlagMiddleware::new())
+            .push(VersionNegotiationMiddleware::new());
+        let out = chain.execute(env, &ctx).await.unwrap();
+        assert_eq!(out, json!({}));
+    }
+
+    /// create_issue 被 feature flag 拦截：返回 Internal("FEATURE_FLAG_DISABLED...")
+    #[tokio::test]
+    async fn integration_create_issue_blocked_by_feature_flag() {
+        use crate::websocket::feature_flags::FeatureFlagMiddleware;
+        use std::sync::Arc;
+
+        let flags = Arc::new(crate::websocket::feature_flags::FeatureFlags::default());
+        let ctx = MiddlewareContext { feature_flags: flags };
+        let env = CommandEnvelope {
+            command_type: "create_issue",
+            payload: json!({"title": "x"}),
+            context: RequestContext {
+                user_id: Uuid::new_v4(),
+                workspace_id: Uuid::new_v4(),
+                idempotency_key: Some("1.0".into()),
+            },
+            request_id: Some("req-it-2".into()),
+        };
+        let chain = MiddlewareChain::new().push(FeatureFlagMiddleware::new());
+        let err = chain.execute(env, &ctx).await.unwrap_err();
+        match err {
+            AppError::Internal(m) => {
+                assert!(m.contains("FEATURE_FLAG_DISABLED"));
+                assert!(m.contains("create_issue"));
+            }
+            other => panic!("expected Internal, got {:?}", other),
+        }
+    }
+
+    /// 颠倒中间件顺序：FeatureFlag 在前，所以 flag 拦截早于版本；
+    /// 如果颠倒，则版本拦截先生效。
+    #[tokio::test]
+    async fn integration_chain_order_matters() {
+        use crate::websocket::feature_flags::FeatureFlagMiddleware;
+        use crate::websocket::protocol::VersionNegotiationMiddleware;
+        use std::sync::Arc;
+
+        let flags = Arc::new(crate::websocket::feature_flags::FeatureFlags::default());
+        let ctx = MiddlewareContext { feature_flags: flags };
+        let env = CommandEnvelope {
+            command_type: "create_issue",
+            payload: json!({}),
+            context: RequestContext {
+                user_id: Uuid::new_v4(),
+                workspace_id: Uuid::new_v4(),
+                idempotency_key: Some("9.9".into()), // 不支持的版本
+            },
+            request_id: None,
+        };
+
+        // 顺序 1: feature flag 先 (拦截 create_issue)
+        let chain1 = MiddlewareChain::new()
+            .push(FeatureFlagMiddleware::new())
+            .push(VersionNegotiationMiddleware::new());
+        let err1 = chain1.execute(env.clone(), &ctx).await.unwrap_err();
+        match err1 {
+            AppError::Internal(m) => assert!(m.contains("FEATURE_FLAG_DISABLED")),
+            other => panic!("chain1 expected FF, got {:?}", other),
+        }
+
+        // 顺序 2: version 先 (拒绝 9.9)
+        let chain2 = MiddlewareChain::new()
+            .push(VersionNegotiationMiddleware::new())
+            .push(FeatureFlagMiddleware::new());
+        let err2 = chain2.execute(env, &ctx).await.unwrap_err();
+        match err2 {
+            AppError::Internal(m) => {
+                assert!(m.contains("UNSUPPORTED_VERSION"), "got: {m}");
+            }
+            other => panic!("chain2 expected version, got {:?}", other),
+        }
+    }
 }
