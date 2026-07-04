@@ -10,6 +10,12 @@ pub mod retry_timeout;
 pub mod security;
 pub mod tests;
 
+// Step 1 (incremental WebSocket refactor) — additive only, no behavior change
+pub mod feature_flags;
+pub mod protocol;
+pub mod middleware;
+pub mod registry;
+
 // Issue events handler module
 pub mod handlers;
 pub mod issue_events;
