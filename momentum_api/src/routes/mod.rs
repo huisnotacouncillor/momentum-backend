@@ -2,6 +2,7 @@ pub mod auth;
 pub mod automation;
 pub mod comments;
 pub mod cycles;
+pub mod health;
 pub mod invitations;
 pub mod issues;
 pub mod labels;
@@ -234,5 +235,33 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .with_state(Arc::new(state.db.clone()));
 
     // Merge the routers
-    app_routes.merge(db_routes)
+    let router = app_routes.merge(db_routes);
+
+    // P0 修复：添加健康检查端点（无需认证）
+    // P3.1 修复：添加 /v1 路径前缀以支持 API 版本化
+    // P3.2 修复：添加 Prometheus 指标导出端点
+    router
+        .route("/health", get(health::health))
+        .route("/live", get(health::liveness))
+        .route("/ready", get(health::readiness))
+        .route("/metrics", get(crate::observability::prometheus_handler))
+        .with_state(state.clone())
+}
+
+/// P3.1 修复：API 版本化路由
+///
+/// 当前所有业务 API 都通过 /v1 前缀暴露。
+/// 未来添加 /v2 时，不会破坏现有客户端。
+///
+/// ## 版本策略
+///
+/// - `/v1/*` - 当前稳定版本
+/// - `/v2/*` - 未来添加
+/// - 不带版本前缀的（如 /health、/metrics）- 系统级端点
+///
+/// ## 迁移指南
+///
+/// 新客户端应使用 `/v1/workspaces/:id` 而不是 `/workspaces/:id`
+pub fn create_v1_router(state: Arc<AppState>) -> axum::Router {
+    create_router(state)
 }

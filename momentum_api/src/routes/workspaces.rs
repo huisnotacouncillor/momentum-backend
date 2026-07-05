@@ -44,6 +44,7 @@ pub async fn create_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -87,6 +88,7 @@ pub async fn get_current_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -128,6 +130,7 @@ pub async fn update_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -154,6 +157,18 @@ pub async fn delete_workspace(
     auth_info: AuthUserInfo,
     Path(workspace_id): Path<Uuid>,
 ) -> impl IntoResponse {
+    // P0 修复：只有 Owner 才能删除工作区
+    if let Err(e) =
+        crate::middleware::permission::require_owner(&state, workspace_id, &auth_info).await
+    {
+        let (status, response) = e.to_http_response();
+        return (
+            StatusCode::from_u16(status).unwrap_or(StatusCode::FORBIDDEN),
+            Json(response),
+        )
+            .into_response();
+    }
+
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
         Err(_) => {
@@ -167,6 +182,7 @@ pub async fn delete_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
