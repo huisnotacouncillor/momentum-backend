@@ -276,4 +276,87 @@ impl ProjectsService {
         ProjectsRepo::delete_by_id(conn, project_id)?;
         Ok(())
     }
+
+    pub fn get_by_id(
+        conn: &mut PgConnection,
+        ctx: &RequestContext,
+        asset_helper: &crate::utils::AssetUrlHelper,
+        project_id: uuid::Uuid,
+    ) -> Result<crate::db::models::project::ProjectInfo, AppError> {
+        // Check if project exists and belongs to workspace
+        let project = ProjectsRepo::find_by_id_in_workspace(conn, ctx.workspace_id, project_id)?
+            .ok_or_else(|| AppError::not_found("project"))?;
+
+        // Get status
+        let status = crate::schema::project_statuses::table
+            .filter(crate::schema::project_statuses::id.eq(project.project_status_id))
+            .select(crate::db::models::project_status::ProjectStatus::as_select())
+            .first::<crate::db::models::project_status::ProjectStatus>(conn)
+            .optional()?
+            .ok_or_else(|| AppError::internal("Project status not found"))?;
+
+        let status_info = crate::db::models::project_status::ProjectStatusInfo {
+            id: status.id,
+            name: status.name,
+            description: status.description,
+            color: status.color,
+            category: status.category,
+            created_at: status.created_at,
+            updated_at: status.updated_at,
+        };
+
+        // Get owner
+        let owner = crate::schema::users::table
+            .filter(crate::schema::users::id.eq(project.owner_id))
+            .select(crate::db::models::auth::User::as_select())
+            .first::<crate::db::models::auth::User>(conn)
+            .optional()?
+            .ok_or_else(|| AppError::internal("Failed to retrieve project owner"))?;
+
+        let processed_avatar_url = owner
+            .avatar_url
+            .as_ref()
+            .map(|url| asset_helper.process_url(url));
+        let owner_basic = crate::db::models::auth::UserBasicInfo {
+            id: owner.id,
+            name: owner.name,
+            username: owner.username,
+            email: owner.email,
+            avatar_url: processed_avatar_url,
+        };
+
+        // Get all available statuses for this workspace
+        let all_statuses = crate::schema::project_statuses::table
+            .filter(crate::schema::project_statuses::workspace_id.eq(ctx.workspace_id))
+            .select(crate::db::models::project_status::ProjectStatus::as_select())
+            .load::<crate::db::models::project_status::ProjectStatus>(conn)?;
+
+        let available_statuses: Vec<crate::db::models::project_status::ProjectStatusInfo> =
+            all_statuses
+                .into_iter()
+                .map(|status| crate::db::models::project_status::ProjectStatusInfo {
+                    id: status.id,
+                    name: status.name,
+                    description: status.description,
+                    color: status.color,
+                    category: status.category,
+                    created_at: status.created_at,
+                    updated_at: status.updated_at,
+                })
+                .collect();
+
+        Ok(crate::db::models::project::ProjectInfo {
+            id: project.id,
+            name: project.name,
+            project_key: project.project_key,
+            description: project.description,
+            status: status_info,
+            available_statuses,
+            owner: owner_basic,
+            target_date: project.target_date,
+            priority: project.priority,
+            created_at: project.created_at,
+            updated_at: project.updated_at,
+        })
+    }
 }

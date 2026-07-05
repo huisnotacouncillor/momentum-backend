@@ -640,6 +640,7 @@ impl WebSocketManager {
                                                         .handle_command(
                                                             command,
                                                             &authenticated_user,
+                                                            &connection_id,
                                                         )
                                                         .await;
                                                     let response_time = start_time.elapsed();
@@ -686,6 +687,7 @@ impl WebSocketManager {
                                                             .handle_command(
                                                                 refresh_cmd,
                                                                 &authenticated_user,
+                                                                &connection_id,
                                                             )
                                                             .await;
 
@@ -715,6 +717,7 @@ impl WebSocketManager {
                                                             .handle_command(
                                                                 refresh_cmd,
                                                                 &authenticated_user,
+                                                                &connection_id,
                                                             )
                                                             .await;
 

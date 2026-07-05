@@ -83,6 +83,8 @@ pub struct WebSocketMonitor {
     response_times: Arc<RwLock<Vec<Duration>>>,
     /// 监控配置
     config: MonitoringConfig,
+    /// Step 12: channel for bridging sync MetricsSink to async record_command_processed
+    metrics_tx: tokio::sync::mpsc::UnboundedSender<crate::websocket::middleware::metrics::MetricsEvent>,
 }
 
 /// 监控配置
@@ -109,6 +111,7 @@ impl Default for MonitoringConfig {
 
 impl WebSocketMonitor {
     pub fn new(config: MonitoringConfig) -> Self {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let monitor = Self {
             metrics: Arc::new(RwLock::new(PerformanceMetrics {
                 total_connections: 0,
@@ -125,11 +128,33 @@ impl WebSocketMonitor {
             error_summary: Arc::new(RwLock::new(HashMap::new())),
             response_times: Arc::new(RwLock::new(Vec::new())),
             config,
+            metrics_tx: tx,
         };
 
-        // 启动后台监控任务
+        // Start background tasks (health check + metrics collection)
         monitor.start_background_tasks();
+        // Step 12: spawn the metrics sink background task
+        monitor.spawn_metrics_receiver(rx);
         monitor
+    }
+
+    /// Step 12: background task that drains the metrics channel and forwards
+    /// events to the async record_command_processed method.
+    fn spawn_metrics_receiver(
+        &self,
+        mut rx: tokio::sync::mpsc::UnboundedReceiver<crate::websocket::middleware::metrics::MetricsEvent>,
+    ) {
+        let monitor = self.clone();
+        tokio::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                monitor
+                    .record_command_processed(
+                        std::time::Duration::from_millis(event.elapsed_ms),
+                        event.success,
+                    )
+                    .await;
+            }
+        });
     }
 
     /// 记录新连接
@@ -476,6 +501,42 @@ impl WebSocketMonitor {
 impl Default for WebSocketMonitor {
     fn default() -> Self {
         Self::new(MonitoringConfig::default())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MetricsSink integration (Step 12)
+// ---------------------------------------------------------------------------
+// MetricsSink::record is sync, but WebSocketMonitor::record_command_processed
+// is async. We bridge them with a channel: the sink sends into a channel and
+// a background task on WebSocketMonitor drives the actual async recording.
+
+/// Synchronous MetricsSink that forwards events to WebSocketMonitor via a channel.
+/// The corresponding receiver is spawned as a background task in WebSocketMonitor::new.
+pub struct MonitorMetricsSink {
+    tx: tokio::sync::mpsc::UnboundedSender<crate::websocket::middleware::metrics::MetricsEvent>,
+}
+
+impl MonitorMetricsSink {
+    pub fn new(tx: tokio::sync::mpsc::UnboundedSender<crate::websocket::middleware::metrics::MetricsEvent>) -> Self {
+        Self { tx }
+    }
+}
+
+impl crate::websocket::middleware::metrics::MetricsSink for MonitorMetricsSink {
+    fn record(&self, event: crate::websocket::middleware::metrics::MetricsEvent) {
+        // Non-blocking send — if the channel is full (backpressure), drop the event
+        // rather than blocking the middleware hot path.
+        let _ = self.tx.send(event);
+    }
+}
+
+impl WebSocketMonitor {
+    /// Returns an `Arc<dyn MetricsSink>` that can be passed to `MetricsMiddleware`.
+    /// Internally events are forwarded over a channel consumed by a background task
+    /// that calls the async `record_command_processed` method.
+    pub fn metrics_sink(&self) -> Arc<dyn crate::websocket::middleware::metrics::MetricsSink> {
+        Arc::new(MonitorMetricsSink::new(self.metrics_tx.clone()))
     }
 }
 

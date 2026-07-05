@@ -64,6 +64,10 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    GetFeatureFlags {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
     // Team
     CreateTeam {
         data: CreateTeamCommand,
@@ -192,6 +196,11 @@ pub enum WebSocketCommand {
         request_id: Option<String>,
     },
     DeleteProject {
+        project_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    GetProject {
         project_id: Uuid,
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
@@ -621,6 +630,9 @@ pub struct UpdateProjectCommand {
 pub struct ProjectFilters {
     pub search: Option<String>,
     pub owner_id: Option<Uuid>,
+    pub team_id: Option<Uuid>,  // Frontend expects this but ProjectsService doesn't use it
+    pub page: Option<i64>,
+    pub limit: Option<i64>,
 }
 
 // Issue command payloads
@@ -665,6 +677,10 @@ pub struct IssueFilters {
     pub priority: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_string")]
     pub search: Option<String>,
+    #[serde(default)]
+    pub limit: Option<u32>,
+    #[serde(default, deserialize_with = "deserialize_optional_string")]
+    pub cursor: Option<String>,
 }
 
 // 自定义反序列化函数：将空字符串转换为 None
@@ -694,5 +710,113 @@ where
         Some(s) if s.trim().is_empty() => Ok(None),
         Some(s) => Ok(Some(s)),
         None => Ok(None),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared enum → string helpers (avoids duplication between registry_dispatch
+// and handler.rs)
+// ---------------------------------------------------------------------------
+
+impl WebSocketCommand {
+    /// Returns the string command_type for this variant.
+    /// NOTE: `Subscribe`/`Unsubscribe` intentionally return their own names
+    /// (matching the pre-Registry dispatch behavior).
+    pub fn command_type(&self) -> &'static str {
+        match self {
+            WebSocketCommand::CreateLabel { .. } => "create_label",
+            WebSocketCommand::UpdateLabel { .. } => "update_label",
+            WebSocketCommand::DeleteLabel { .. } => "delete_label",
+            WebSocketCommand::QueryLabels { .. } => "query_labels",
+            WebSocketCommand::BatchCreateLabels { .. } => "batch_create_labels",
+            WebSocketCommand::BatchUpdateLabels { .. } => "batch_update_labels",
+            WebSocketCommand::BatchDeleteLabels { .. } => "batch_delete_labels",
+            WebSocketCommand::Subscribe { .. } => "subscribe",
+            WebSocketCommand::Unsubscribe { .. } => "unsubscribe",
+            WebSocketCommand::GetConnectionInfo { .. } => "get_connection_info",
+            WebSocketCommand::Ping { .. } => "ping",
+            WebSocketCommand::CreateTeam { .. } => "create_team",
+            WebSocketCommand::UpdateTeam { .. } => "update_team",
+            WebSocketCommand::DeleteTeam { .. } => "delete_team",
+            WebSocketCommand::QueryTeams { .. } => "query_teams",
+            WebSocketCommand::AddTeamMember { .. } => "add_team_member",
+            WebSocketCommand::UpdateTeamMember { .. } => "update_team_member",
+            WebSocketCommand::RemoveTeamMember { .. } => "remove_team_member",
+            WebSocketCommand::ListTeamMembers { .. } => "list_team_members",
+            WebSocketCommand::InviteWorkspaceMember { .. } => "invite_workspace_member",
+            WebSocketCommand::AcceptInvitation { .. } => "accept_invitation",
+            WebSocketCommand::QueryWorkspaceMembers { .. } => "query_workspace_members",
+            WebSocketCommand::CreateProjectStatus { .. } => "create_project_status",
+            WebSocketCommand::UpdateProjectStatus { .. } => "update_project_status",
+            WebSocketCommand::DeleteProjectStatus { .. } => "delete_project_status",
+            WebSocketCommand::QueryProjectStatuses { .. } => "query_project_statuses",
+            WebSocketCommand::GetProjectStatusById { .. } => "get_project_status_by_id",
+            WebSocketCommand::CreateWorkspace { .. } => "create_workspace",
+            WebSocketCommand::UpdateWorkspace { .. } => "update_workspace",
+            WebSocketCommand::DeleteWorkspace { .. } => "delete_workspace",
+            WebSocketCommand::GetCurrentWorkspace { .. } => "get_current_workspace",
+            WebSocketCommand::UpdateProfile { .. } => "update_profile",
+            WebSocketCommand::CreateProject { .. } => "create_project",
+            WebSocketCommand::UpdateProject { .. } => "update_project",
+            WebSocketCommand::DeleteProject { .. } => "delete_project",
+            WebSocketCommand::GetProject { .. } => "get_project",
+            WebSocketCommand::QueryProjects { .. } => "query_projects",
+            WebSocketCommand::CreateIssue { .. } => "create_issue",
+            WebSocketCommand::UpdateIssue { .. } => "update_issue",
+            WebSocketCommand::DeleteIssue { .. } => "delete_issue",
+            WebSocketCommand::QueryIssues { .. } => "query_issues",
+            WebSocketCommand::GetIssue { .. } => "get_issue",
+            WebSocketCommand::GetFeatureFlags { .. } => "get_feature_flags",
+        }
+    }
+
+    /// Extracts the request_id from this variant, if any.
+    pub fn request_id(&self) -> Option<String> {
+        let id = match self {
+            WebSocketCommand::CreateLabel { request_id, .. }
+            | WebSocketCommand::UpdateLabel { request_id, .. }
+            | WebSocketCommand::DeleteLabel { request_id, .. }
+            | WebSocketCommand::QueryLabels { request_id, .. }
+            | WebSocketCommand::BatchCreateLabels { request_id, .. }
+            | WebSocketCommand::BatchUpdateLabels { request_id, .. }
+            | WebSocketCommand::BatchDeleteLabels { request_id, .. }
+            | WebSocketCommand::Subscribe { request_id, .. }
+            | WebSocketCommand::Unsubscribe { request_id, .. }
+            | WebSocketCommand::GetConnectionInfo { request_id, .. }
+            | WebSocketCommand::Ping { request_id, .. }
+            | WebSocketCommand::CreateTeam { request_id, .. }
+            | WebSocketCommand::UpdateTeam { request_id, .. }
+            | WebSocketCommand::DeleteTeam { request_id, .. }
+            | WebSocketCommand::QueryTeams { request_id, .. }
+            | WebSocketCommand::AddTeamMember { request_id, .. }
+            | WebSocketCommand::UpdateTeamMember { request_id, .. }
+            | WebSocketCommand::RemoveTeamMember { request_id, .. }
+            | WebSocketCommand::ListTeamMembers { request_id, .. }
+            | WebSocketCommand::InviteWorkspaceMember { request_id, .. }
+            | WebSocketCommand::AcceptInvitation { request_id, .. }
+            | WebSocketCommand::QueryWorkspaceMembers { request_id, .. }
+            | WebSocketCommand::CreateProjectStatus { request_id, .. }
+            | WebSocketCommand::UpdateProjectStatus { request_id, .. }
+            | WebSocketCommand::DeleteProjectStatus { request_id, .. }
+            | WebSocketCommand::QueryProjectStatuses { request_id, .. }
+            | WebSocketCommand::GetProjectStatusById { request_id, .. }
+            | WebSocketCommand::CreateWorkspace { request_id, .. }
+            | WebSocketCommand::UpdateWorkspace { request_id, .. }
+            | WebSocketCommand::DeleteWorkspace { request_id, .. }
+            | WebSocketCommand::GetCurrentWorkspace { request_id, .. }
+            | WebSocketCommand::UpdateProfile { request_id, .. }
+            | WebSocketCommand::CreateProject { request_id, .. }
+            | WebSocketCommand::UpdateProject { request_id, .. }
+            | WebSocketCommand::DeleteProject { request_id, .. }
+            | WebSocketCommand::GetProject { request_id, .. }
+            | WebSocketCommand::QueryProjects { request_id, .. }
+            | WebSocketCommand::CreateIssue { request_id, .. }
+            | WebSocketCommand::UpdateIssue { request_id, .. }
+            | WebSocketCommand::DeleteIssue { request_id, .. }
+            | WebSocketCommand::QueryIssues { request_id, .. }
+            | WebSocketCommand::GetIssue { request_id, .. }
+            | WebSocketCommand::GetFeatureFlags { request_id, .. } => request_id,
+        };
+        id.clone()
     }
 }

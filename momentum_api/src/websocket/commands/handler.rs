@@ -9,6 +9,7 @@ use momentum_core::{
 };
 
 use super::types::*;
+use crate::websocket::registry_dispatch;
 use crate::websocket::security::SecureMessage;
 
 #[derive(Clone)]
@@ -17,6 +18,12 @@ pub struct WebSocketCommandHandler {
     idempotency: IdempotencyControl,
     message_signer: Option<Arc<crate::websocket::MessageSigner>>,
     asset_helper: Arc<momentum_core::utils::AssetUrlHelper>,
+    /// Optional registry for Step 8.5 — when present, registry dispatch is tried
+    /// before the legacy match block.
+    registry: Option<Arc<crate::websocket::registry::HandlerRegistry>>,
+    /// Optional SubscriptionManager for Step 8.5 — used with registry dispatch
+    /// to handle subscribe/unsubscribe via SubscriptionSession.
+    subscription_manager: Option<Arc<crate::websocket::subscription::SubscriptionManager>>,
 }
 
 impl WebSocketCommandHandler {
@@ -26,7 +33,24 @@ impl WebSocketCommandHandler {
             idempotency: IdempotencyControl::new(300),
             message_signer: None,
             asset_helper,
+            registry: None,
+            subscription_manager: None,
         }
+    }
+
+    pub fn with_subscription_manager(
+        mut self,
+        mgr: Arc<crate::websocket::subscription::SubscriptionManager>,
+    ) -> Self {
+        self.subscription_manager = Some(mgr);
+        self
+    }
+
+    /// Step 8.5: Wire in the shared HandlerRegistry so commands can be dispatched
+    /// through the registry trait layer before falling back to the legacy match.
+    pub fn with_registry(mut self, reg: Arc<crate::websocket::registry::HandlerRegistry>) -> Self {
+        self.registry = Some(reg);
+        self
     }
 
     pub fn with_message_signer(mut self, signer: Arc<crate::websocket::MessageSigner>) -> Self {
@@ -320,6 +344,10 @@ impl WebSocketCommandHandler {
                 "delete_project".hash(&mut hasher);
                 project_id.hash(&mut hasher);
             }
+            WebSocketCommand::GetProject { project_id, .. } => {
+                "get_project".hash(&mut hasher);
+                project_id.hash(&mut hasher);
+            }
             WebSocketCommand::QueryProjects { filters, .. } => {
                 "query_projects".hash(&mut hasher);
                 if let Some(ref search) = filters.search {
@@ -376,6 +404,9 @@ impl WebSocketCommandHandler {
                 "get_issue".hash(&mut hasher);
                 issue_id.hash(&mut hasher);
             }
+            WebSocketCommand::GetFeatureFlags { .. } => {
+                "get_feature_flags".hash(&mut hasher);
+            }
         }
         let time_window = chrono::Utc::now().timestamp() / 300;
         time_window.hash(&mut hasher);
@@ -386,6 +417,7 @@ impl WebSocketCommandHandler {
         &self,
         secure_message: SecureMessage,
         user: &crate::websocket::auth::AuthenticatedUser,
+        connection_id: &str,
     ) -> WebSocketCommandResponse {
         if let Err(e) = self.verify_secure_message(&secure_message).await {
             return WebSocketCommandResponse::error(
@@ -410,102 +442,47 @@ impl WebSocketCommandHandler {
                 );
             }
         };
-        self.handle_command(command, user).await
+        self.handle_command(command, user, connection_id).await
     }
 
+    /// Handle a WebSocket command.
+    ///
+    /// When `subscription_manager` is configured, this first tries `registry_dispatch`
+    /// (which includes subscribe/unsubscribe via SubscriptionSession). If the registry
+    /// handles the command, its response is returned immediately. Otherwise the legacy
+    /// match block is used as a fallback.
     pub async fn handle_command(
         &self,
         command: WebSocketCommand,
         user: &crate::websocket::auth::AuthenticatedUser,
+        connection_id: &str,
     ) -> WebSocketCommandResponse {
-        let request_id = match &command {
-            WebSocketCommand::CreateLabel { request_id, .. }
-            | WebSocketCommand::UpdateLabel { request_id, .. }
-            | WebSocketCommand::DeleteLabel { request_id, .. }
-            | WebSocketCommand::QueryLabels { request_id, .. }
-            | WebSocketCommand::BatchCreateLabels { request_id, .. }
-            | WebSocketCommand::BatchUpdateLabels { request_id, .. }
-            | WebSocketCommand::BatchDeleteLabels { request_id, .. }
-            | WebSocketCommand::Subscribe { request_id, .. }
-            | WebSocketCommand::Unsubscribe { request_id, .. }
-            | WebSocketCommand::GetConnectionInfo { request_id, .. }
-            | WebSocketCommand::Ping { request_id, .. }
-            | WebSocketCommand::CreateTeam { request_id, .. }
-            | WebSocketCommand::UpdateTeam { request_id, .. }
-            | WebSocketCommand::DeleteTeam { request_id, .. }
-            | WebSocketCommand::QueryTeams { request_id, .. }
-            | WebSocketCommand::AddTeamMember { request_id, .. }
-            | WebSocketCommand::UpdateTeamMember { request_id, .. }
-            | WebSocketCommand::RemoveTeamMember { request_id, .. }
-            | WebSocketCommand::ListTeamMembers { request_id, .. }
-            | WebSocketCommand::InviteWorkspaceMember { request_id, .. }
-            | WebSocketCommand::AcceptInvitation { request_id, .. }
-            | WebSocketCommand::QueryWorkspaceMembers { request_id, .. }
-            | WebSocketCommand::CreateProjectStatus { request_id, .. }
-            | WebSocketCommand::UpdateProjectStatus { request_id, .. }
-            | WebSocketCommand::DeleteProjectStatus { request_id, .. }
-            | WebSocketCommand::QueryProjectStatuses { request_id, .. }
-            | WebSocketCommand::GetProjectStatusById { request_id, .. }
-            | WebSocketCommand::CreateWorkspace { request_id, .. }
-            | WebSocketCommand::UpdateWorkspace { request_id, .. }
-            | WebSocketCommand::DeleteWorkspace { request_id, .. }
-            | WebSocketCommand::GetCurrentWorkspace { request_id, .. }
-            | WebSocketCommand::UpdateProfile { request_id, .. }
-            | WebSocketCommand::CreateProject { request_id, .. }
-            | WebSocketCommand::UpdateProject { request_id, .. }
-            | WebSocketCommand::DeleteProject { request_id, .. }
-            | WebSocketCommand::QueryProjects { request_id, .. }
-            | WebSocketCommand::CreateIssue { request_id, .. }
-            | WebSocketCommand::UpdateIssue { request_id, .. }
-            | WebSocketCommand::DeleteIssue { request_id, .. }
-            | WebSocketCommand::QueryIssues { request_id, .. }
-            | WebSocketCommand::GetIssue { request_id, .. } => request_id.clone(),
-        };
-
+        let request_id = command.request_id();
         let idempotency_key = "disabled".to_string();
-        let command_type = match &command {
-            WebSocketCommand::CreateLabel { .. } => "create_label",
-            WebSocketCommand::UpdateLabel { .. } => "update_label",
-            WebSocketCommand::DeleteLabel { .. } => "delete_label",
-            WebSocketCommand::QueryLabels { .. } => "query_labels",
-            WebSocketCommand::BatchCreateLabels { .. } => "batch_create_labels",
-            WebSocketCommand::BatchUpdateLabels { .. } => "batch_update_labels",
-            WebSocketCommand::BatchDeleteLabels { .. } => "batch_delete_labels",
-            WebSocketCommand::Subscribe { .. } => "subscribe",
-            WebSocketCommand::Unsubscribe { .. } => "unsubscribe",
-            WebSocketCommand::GetConnectionInfo { .. } => "get_connection_info",
-            WebSocketCommand::Ping { .. } => "ping",
-            WebSocketCommand::CreateTeam { .. } => "create_team",
-            WebSocketCommand::UpdateTeam { .. } => "update_team",
-            WebSocketCommand::DeleteTeam { .. } => "delete_team",
-            WebSocketCommand::QueryTeams { .. } => "query_teams",
-            WebSocketCommand::AddTeamMember { .. } => "add_team_member",
-            WebSocketCommand::UpdateTeamMember { .. } => "update_team_member",
-            WebSocketCommand::RemoveTeamMember { .. } => "remove_team_member",
-            WebSocketCommand::ListTeamMembers { .. } => "list_team_members",
-            WebSocketCommand::InviteWorkspaceMember { .. } => "invite_workspace_member",
-            WebSocketCommand::AcceptInvitation { .. } => "accept_invitation",
-            WebSocketCommand::QueryWorkspaceMembers { .. } => "query_workspace_members",
-            WebSocketCommand::CreateProjectStatus { .. } => "create_project_status",
-            WebSocketCommand::UpdateProjectStatus { .. } => "update_project_status",
-            WebSocketCommand::DeleteProjectStatus { .. } => "delete_project_status",
-            WebSocketCommand::QueryProjectStatuses { .. } => "query_project_statuses",
-            WebSocketCommand::GetProjectStatusById { .. } => "get_project_status_by_id",
-            WebSocketCommand::CreateWorkspace { .. } => "create_workspace",
-            WebSocketCommand::UpdateWorkspace { .. } => "update_workspace",
-            WebSocketCommand::DeleteWorkspace { .. } => "delete_workspace",
-            WebSocketCommand::GetCurrentWorkspace { .. } => "get_current_workspace",
-            WebSocketCommand::UpdateProfile { .. } => "update_profile",
-            WebSocketCommand::CreateProject { .. } => "create_project",
-            WebSocketCommand::UpdateProject { .. } => "update_project",
-            WebSocketCommand::DeleteProject { .. } => "delete_project",
-            WebSocketCommand::QueryProjects { .. } => "query_projects",
-            WebSocketCommand::CreateIssue { .. } => "create_issue",
-            WebSocketCommand::UpdateIssue { .. } => "update_issue",
-            WebSocketCommand::DeleteIssue { .. } => "delete_issue",
-            WebSocketCommand::QueryIssues { .. } => "query_issues",
-            WebSocketCommand::GetIssue { .. } => "get_issue",
-        };
+        let command_type = command.command_type();
+
+        // Step 8.5: Try registry dispatch when registry + subscription_manager are wired up
+        if let (Some(reg), Some(sub_mgr)) = (&self.registry, &self.subscription_manager) {
+            let authed_user = crate::websocket::auth::AuthenticatedUser {
+                user_id: user.user_id,
+                username: user.username.clone(),
+                email: user.email.clone(),
+                name: user.name.clone(),
+                avatar_url: user.avatar_url.clone(),
+                current_workspace_id: user.current_workspace_id,
+            };
+            if let Some(resp) = registry_dispatch::try_dispatch(
+                reg.as_ref(),
+                Some(sub_mgr),
+                &command,
+                &authed_user,
+                connection_id,
+            )
+            .await
+            {
+                return resp;
+            }
+        }
 
         let workspace_id = match user.current_workspace_id {
             Some(ws) => ws,
@@ -556,6 +533,9 @@ impl WebSocketCommandHandler {
                 self.handle_get_connection_info(ctx, user).await
             }
             WebSocketCommand::Ping { .. } => Ok(serde_json::json!({"message": "pong"})),
+            WebSocketCommand::GetFeatureFlags { .. } => {
+                Ok(serde_json::json!({"feature_flags": {}}))
+            }
             WebSocketCommand::CreateTeam { data, .. } => self.handle_create_team(ctx, data).await,
             WebSocketCommand::UpdateTeam { team_id, data, .. } => {
                 self.handle_update_team(ctx, team_id, data).await
@@ -640,6 +620,9 @@ impl WebSocketCommandHandler {
             }
             WebSocketCommand::QueryProjects { filters, .. } => {
                 self.handle_query_projects(ctx, filters).await
+            }
+            WebSocketCommand::GetProject { project_id, .. } => {
+                self.handle_get_project(ctx, project_id).await
             }
             WebSocketCommand::CreateIssue { data, .. } => self.handle_create_issue(ctx, data).await,
             WebSocketCommand::UpdateIssue { issue_id, data, .. } => {
@@ -1267,6 +1250,20 @@ impl WebSocketCommandHandler {
             &self.db,
             ctx,
             filters,
+            &self.asset_helper,
+        )
+        .await
+    }
+
+    async fn handle_get_project(
+        &self,
+        ctx: RequestContext,
+        project_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::projects::ProjectHandlers::handle_get_project(
+            &self.db,
+            ctx,
+            project_id,
             &self.asset_helper,
         )
         .await
