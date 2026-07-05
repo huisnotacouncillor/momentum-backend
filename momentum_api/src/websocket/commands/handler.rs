@@ -244,6 +244,10 @@ impl WebSocketCommandHandler {
                 "accept_invitation".hash(&mut hasher);
                 invitation_id.hash(&mut hasher);
             }
+            WebSocketCommand::GetInvitation { invitation_id, .. } => {
+                "get_invitation".hash(&mut hasher);
+                invitation_id.hash(&mut hasher);
+            }
             WebSocketCommand::QueryWorkspaceMembers { filters, .. } => {
                 "query_workspace_members".hash(&mut hasher);
                 if let Some(user_id) = filters.user_id {
@@ -598,6 +602,9 @@ impl WebSocketCommandHandler {
             }
             WebSocketCommand::AcceptInvitation { invitation_id, .. } => {
                 self.handle_accept_invitation(ctx, invitation_id).await
+            }
+            WebSocketCommand::GetInvitation { invitation_id, .. } => {
+                self.handle_get_invitation(ctx, invitation_id).await
             }
             WebSocketCommand::QueryWorkspaceMembers { filters, .. } => {
                 self.handle_list_workspace_members(ctx, filters).await
@@ -1122,6 +1129,19 @@ impl WebSocketCommandHandler {
         invitation_id: Uuid,
     ) -> Result<serde_json::Value, AppError> {
         super::workspace_members::WorkspaceMemberHandlers::handle_accept_invitation(
+            &self.db,
+            ctx,
+            invitation_id,
+        )
+        .await
+    }
+
+    async fn handle_get_invitation(
+        &self,
+        ctx: RequestContext,
+        invitation_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::workspace_members::WorkspaceMemberHandlers::handle_get_invitation(
             &self.db,
             ctx,
             invitation_id,

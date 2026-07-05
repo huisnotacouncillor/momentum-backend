@@ -43,6 +43,24 @@ impl WorkspaceMemberHandlers {
         Ok(serde_json::json!(invitation))
     }
 
+    pub async fn handle_get_invitation(
+        db: &Arc<DbPool>,
+        ctx: RequestContext,
+        invitation_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = db.get()?;
+
+        let invitation =
+            momentum_core::services::InvitationsService::get_by_id(
+                &mut conn,
+                &ctx,
+                &momentum_core::utils::AssetUrlHelper::default(),
+                invitation_id,
+            )?;
+
+        Ok(serde_json::json!(invitation))
+    }
+
     pub async fn handle_list_workspace_members(
         db: &Arc<DbPool>,
         asset_helper: &AssetUrlHelper,
