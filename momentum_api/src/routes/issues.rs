@@ -35,19 +35,12 @@ pub async fn get_issues(
     Query(params): Query<IssueQueryParams>,
     auth_info: AuthUserInfo,
 ) -> impl IntoResponse {
-    let mut conn = match state.db.get() {
-        Ok(conn) => conn,
-        Err(_) => {
-            let response = ApiResponse::<()>::internal_error("Database connection failed");
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
-        }
-    };
-
     let ctx = match auth_info.current_workspace_id {
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -91,7 +84,14 @@ pub async fn get_issues(
     };
 
     let service = IssuesService::new();
-    match service.list(&mut conn, &ctx, &filters) {
+
+    // P1.3 修复：使用 spawn_blocking 包装同步 DB 调用，避免阻塞 tokio 工作线程
+    let result = momentum_core::db::run_db(&state.db, move |conn| {
+        service.list(conn, &ctx, &filters)
+    })
+    .await;
+
+    match result {
         Ok(paginated) => {
             #[derive(serde::Serialize)]
             struct PaginatedResponse {
@@ -130,6 +130,7 @@ pub async fn create_issue(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -171,6 +172,7 @@ pub async fn update_issue(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -211,6 +213,7 @@ pub async fn delete_issue(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -251,6 +254,7 @@ pub async fn get_issue(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
