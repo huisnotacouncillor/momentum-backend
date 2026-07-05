@@ -408,6 +408,25 @@ impl WebSocketCommandHandler {
                 "get_issue".hash(&mut hasher);
                 issue_id.hash(&mut hasher);
             }
+            WebSocketCommand::QueryCycles { .. } => {
+                "query_cycles".hash(&mut hasher);
+            }
+            WebSocketCommand::GetCycle { cycle_id, .. } => {
+                "get_cycle".hash(&mut hasher);
+                cycle_id.hash(&mut hasher);
+            }
+            WebSocketCommand::CreateCycle { data, .. } => {
+                "create_cycle".hash(&mut hasher);
+                data.team_id.hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateCycle { cycle_id, .. } => {
+                "update_cycle".hash(&mut hasher);
+                cycle_id.hash(&mut hasher);
+            }
+            WebSocketCommand::DeleteCycle { cycle_id, .. } => {
+                "delete_cycle".hash(&mut hasher);
+                cycle_id.hash(&mut hasher);
+            }
             WebSocketCommand::GetFeatureFlags { .. } => {
                 "get_feature_flags".hash(&mut hasher);
             }
@@ -643,6 +662,21 @@ impl WebSocketCommandHandler {
             }
             WebSocketCommand::GetIssue { issue_id, .. } => {
                 self.handle_get_issue(ctx, issue_id).await
+            }
+            WebSocketCommand::QueryCycles { .. } => {
+                self.handle_query_cycles(ctx).await
+            }
+            WebSocketCommand::GetCycle { cycle_id, .. } => {
+                self.handle_get_cycle(ctx, cycle_id).await
+            }
+            WebSocketCommand::CreateCycle { data, .. } => {
+                self.handle_create_cycle(ctx, data).await
+            }
+            WebSocketCommand::UpdateCycle { cycle_id, data, .. } => {
+                self.handle_update_cycle(ctx, cycle_id, data).await
+            }
+            WebSocketCommand::DeleteCycle { cycle_id, .. } => {
+                self.handle_delete_cycle(ctx, cycle_id).await
             }
         };
 
@@ -1324,6 +1358,46 @@ impl WebSocketCommandHandler {
         issue_id: Uuid,
     ) -> Result<serde_json::Value, AppError> {
         super::issues::IssueHandlers::handle_get_issue(&self.db, ctx, issue_id).await
+    }
+
+    async fn handle_query_cycles(
+        &self,
+        ctx: RequestContext,
+    ) -> Result<serde_json::Value, AppError> {
+        super::cycles::CycleHandlers::handle_query_cycles(&self.db, ctx).await
+    }
+
+    async fn handle_get_cycle(
+        &self,
+        ctx: RequestContext,
+        cycle_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::cycles::CycleHandlers::handle_get_cycle(&self.db, ctx, cycle_id).await
+    }
+
+    async fn handle_create_cycle(
+        &self,
+        ctx: RequestContext,
+        data: CreateCycleCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::cycles::CycleHandlers::handle_create_cycle(&self.db, ctx, data).await
+    }
+
+    async fn handle_update_cycle(
+        &self,
+        ctx: RequestContext,
+        cycle_id: Uuid,
+        data: UpdateCycleCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        super::cycles::CycleHandlers::handle_update_cycle(&self.db, ctx, cycle_id, data).await
+    }
+
+    async fn handle_delete_cycle(
+        &self,
+        ctx: RequestContext,
+        cycle_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::cycles::CycleHandlers::handle_delete_cycle(&self.db, ctx, cycle_id).await
     }
 
     pub async fn start_cleanup_task(&self) {

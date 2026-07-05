@@ -11,6 +11,7 @@ pub mod workspaces;
 pub mod user;
 pub mod projects;
 pub mod issues;
+pub mod cycles;
 
 pub use types::*;
 pub use handler::*;

@@ -242,6 +242,32 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    // Cycles
+    QueryCycles {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    GetCycle {
+        cycle_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    CreateCycle {
+        data: CreateCycleCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    UpdateCycle {
+        cycle_id: Uuid,
+        data: UpdateCycleCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    DeleteCycle {
+        cycle_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -688,6 +714,27 @@ pub struct IssueFilters {
     pub cursor: Option<String>,
 }
 
+// Cycle commands
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCycleCommand {
+    pub team_id: Uuid,
+    pub name: String,
+    pub start_date: Option<chrono::NaiveDate>,
+    pub end_date: Option<chrono::NaiveDate>,
+    pub description: Option<String>,
+    pub goal: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateCycleCommand {
+    pub name: Option<String>,
+    pub start_date: Option<chrono::NaiveDate>,
+    pub end_date: Option<chrono::NaiveDate>,
+    pub status: Option<String>,
+    pub description: Option<String>,
+    pub goal: Option<String>,
+}
+
 // 自定义反序列化函数：将空字符串转换为 None
 fn deserialize_optional_uuid<'de, D>(deserializer: D) -> Result<Option<Uuid>, D::Error>
 where
@@ -772,6 +819,11 @@ impl WebSocketCommand {
             WebSocketCommand::DeleteIssue { .. } => "delete_issue",
             WebSocketCommand::QueryIssues { .. } => "query_issues",
             WebSocketCommand::GetIssue { .. } => "get_issue",
+            WebSocketCommand::QueryCycles { .. } => "query_cycles",
+            WebSocketCommand::GetCycle { .. } => "get_cycle",
+            WebSocketCommand::CreateCycle { .. } => "create_cycle",
+            WebSocketCommand::UpdateCycle { .. } => "update_cycle",
+            WebSocketCommand::DeleteCycle { .. } => "delete_cycle",
             WebSocketCommand::GetFeatureFlags { .. } => "get_feature_flags",
         }
     }
@@ -822,6 +874,11 @@ impl WebSocketCommand {
             | WebSocketCommand::DeleteIssue { request_id, .. }
             | WebSocketCommand::QueryIssues { request_id, .. }
             | WebSocketCommand::GetIssue { request_id, .. }
+            | WebSocketCommand::QueryCycles { request_id, .. }
+            | WebSocketCommand::GetCycle { request_id, .. }
+            | WebSocketCommand::CreateCycle { request_id, .. }
+            | WebSocketCommand::UpdateCycle { request_id, .. }
+            | WebSocketCommand::DeleteCycle { request_id, .. }
             | WebSocketCommand::GetFeatureFlags { request_id, .. } => request_id,
         };
         id.clone()
