@@ -135,6 +135,11 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    SwitchWorkspace {
+        workspace_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
     QueryWorkspaceMembers {
         filters: WorkspaceMemberFilters,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -804,6 +809,7 @@ impl WebSocketCommand {
             WebSocketCommand::InviteWorkspaceMember { .. } => "invite_workspace_member",
             WebSocketCommand::AcceptInvitation { .. } => "accept_invitation",
             WebSocketCommand::GetInvitation { .. } => "get_invitation",
+            WebSocketCommand::SwitchWorkspace { .. } => "switch_workspace",
             WebSocketCommand::QueryWorkspaceMembers { .. } => "query_workspace_members",
             WebSocketCommand::CreateProjectStatus { .. } => "create_project_status",
             WebSocketCommand::UpdateProjectStatus { .. } => "update_project_status",
@@ -860,6 +866,7 @@ impl WebSocketCommand {
             | WebSocketCommand::InviteWorkspaceMember { request_id, .. }
             | WebSocketCommand::AcceptInvitation { request_id, .. }
             | WebSocketCommand::GetInvitation { request_id, .. }
+            | WebSocketCommand::SwitchWorkspace { request_id, .. }
             | WebSocketCommand::QueryWorkspaceMembers { request_id, .. }
             | WebSocketCommand::CreateProjectStatus { request_id, .. }
             | WebSocketCommand::UpdateProjectStatus { request_id, .. }

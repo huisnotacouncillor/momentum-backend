@@ -248,6 +248,10 @@ impl WebSocketCommandHandler {
                 "get_invitation".hash(&mut hasher);
                 invitation_id.hash(&mut hasher);
             }
+            WebSocketCommand::SwitchWorkspace { workspace_id, .. } => {
+                "switch_workspace".hash(&mut hasher);
+                workspace_id.hash(&mut hasher);
+            }
             WebSocketCommand::QueryWorkspaceMembers { filters, .. } => {
                 "query_workspace_members".hash(&mut hasher);
                 if let Some(user_id) = filters.user_id {
@@ -605,6 +609,9 @@ impl WebSocketCommandHandler {
             }
             WebSocketCommand::GetInvitation { invitation_id, .. } => {
                 self.handle_get_invitation(ctx, invitation_id).await
+            }
+            WebSocketCommand::SwitchWorkspace { workspace_id, .. } => {
+                self.handle_switch_workspace(ctx, workspace_id).await
             }
             WebSocketCommand::QueryWorkspaceMembers { filters, .. } => {
                 self.handle_list_workspace_members(ctx, filters).await
@@ -1145,6 +1152,19 @@ impl WebSocketCommandHandler {
             &self.db,
             ctx,
             invitation_id,
+        )
+        .await
+    }
+
+    async fn handle_switch_workspace(
+        &self,
+        ctx: RequestContext,
+        workspace_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::user::UserHandlers::handle_switch_workspace(
+            &self.db,
+            ctx,
+            workspace_id,
         )
         .await
     }
