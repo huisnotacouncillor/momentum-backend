@@ -38,13 +38,45 @@ pub struct AuthConfig {
     pub refresh_expiration: Duration,
 }
 
-impl Default for AuthConfig {
-    fn default() -> Self {
+// P2.2 修复：AuthConfig 不再提供 Default 实现，强制从配置创建
+// 旧实现会回退到硬编码 "your-secret-key"，导致生产环境密钥泄漏
+//
+// 新方式：通过 `AuthConfig::from_config(&core_config)` 从主配置创建
+impl AuthConfig {
+    /// 从 core 配置创建 AuthConfig
+    pub fn from_config(core_config: &momentum_core::config::Config) -> Self {
         Self {
-            jwt_secret: std::env::var("JWT_SECRET")
-                .unwrap_or_else(|_| "your-secret-key".to_string()),
-            jwt_expiration: Duration::from_secs(3600), // 1 hour
-            refresh_expiration: Duration::from_secs(7 * 24 * 3600), // 7 days
+            jwt_secret: core_config.jwt_secret.clone(),
+            jwt_expiration: Duration::from_secs(core_config.jwt_access_token_expires_in),
+            refresh_expiration: Duration::from_secs(core_config.jwt_refresh_token_expires_in),
+        }
+    }
+
+    /// 从环境变量创建（带严格验证）
+    ///
+    /// 如果 JWT_SECRET 未设置或等于占位符，会 panic
+    pub fn from_env_strict() -> Self {
+        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+            panic!(
+                "JWT_SECRET environment variable is required. \
+                 Set it to a secure random value (>= 32 bytes)."
+            );
+        });
+
+        if secret == "your-secret-key"
+            || secret == "your-super-secret-jwt-key-change-this-in-production"
+            || secret.len() < 32
+        {
+            panic!(
+                "JWT_SECRET is set to an insecure value. \
+                 Use a random secret of at least 32 bytes."
+            );
+        }
+
+        Self {
+            jwt_secret: secret,
+            jwt_expiration: Duration::from_secs(3600),
+            refresh_expiration: Duration::from_secs(7 * 24 * 3600),
         }
     }
 }
@@ -160,6 +192,17 @@ pub async fn auth_middleware(
     mut request: Request<axum::body::Body>,
     next: Next<axum::body::Body>,
 ) -> Result<Response, Response> {
+    // P2.2 修复：从请求扩展中获取预配置的 AuthConfig
+    // (由 main.rs 在启动时通过 layer 注入)
+    let auth_config = request
+        .extensions()
+        .get::<AuthConfig>()
+        .cloned()
+        .unwrap_or_else(|| {
+            tracing::error!("AuthConfig not found in request extensions");
+            AuthConfig::from_env_strict()
+        });
+
     let auth_header = request
         .headers()
         .get(AUTHORIZATION)
@@ -178,8 +221,8 @@ pub async fn auth_middleware(
         }
     };
 
-    // 创建认证服务实例
-    let auth_service: AuthService = AuthService::new(AuthConfig::default());
+    // 创建认证服务实例（使用从请求扩展中获取的配置）
+    let auth_service: AuthService = AuthService::new(auth_config);
 
     // 验证token
     let claims = match auth_service.verify_token(&token) {
@@ -276,7 +319,13 @@ pub async fn optional_auth_middleware(
         });
 
     if let Some(token) = &auth_header {
-        let auth_service = AuthService::new(AuthConfig::default());
+        // P2.2 修复：从请求扩展获取配置或使用严格环境变量读取
+        let auth_config = request
+            .extensions()
+            .get::<AuthConfig>()
+            .cloned()
+            .unwrap_or_else(AuthConfig::from_env_strict);
+        let auth_service = AuthService::new(auth_config);
 
         if let Ok(claims) = auth_service.verify_token(token) {
             if let Ok(user) = get_user_by_id(&pool, claims.sub).await {
@@ -297,17 +346,22 @@ pub async fn optional_auth_middleware(
 async fn get_user_by_id(
     pool: &Arc<DbPool>,
     user_id: uuid::Uuid,
-) -> Result<User, diesel::result::Error> {
+) -> Result<User, momentum_core::error::AppError> {
     use momentum_core::schema::users::dsl::*;
     use diesel::prelude::*;
 
-    let mut conn = pool.get().expect("Failed to get DB connection");
+    let mut conn = pool.get().map_err(|_| {
+        momentum_core::error::AppError::ServiceUnavailable {
+            message: "Database temporarily unavailable".to_string(),
+        }
+    })?;
 
     users
         .filter(id.eq(user_id))
         .filter(is_active.eq(true))
         .select(User::as_select())
         .first(&mut conn)
+        .map_err(momentum_core::error::AppError::Database)
 }
 
 // 提取器，用于从请求中获取当前用户
