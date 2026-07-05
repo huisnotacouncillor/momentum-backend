@@ -26,6 +26,11 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    GetLabel {
+        label_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
     QueryLabels {
         filters: LabelFilters,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -727,6 +732,7 @@ impl WebSocketCommand {
             WebSocketCommand::CreateLabel { .. } => "create_label",
             WebSocketCommand::UpdateLabel { .. } => "update_label",
             WebSocketCommand::DeleteLabel { .. } => "delete_label",
+            WebSocketCommand::GetLabel { .. } => "get_label",
             WebSocketCommand::QueryLabels { .. } => "query_labels",
             WebSocketCommand::BatchCreateLabels { .. } => "batch_create_labels",
             WebSocketCommand::BatchUpdateLabels { .. } => "batch_update_labels",
@@ -776,6 +782,7 @@ impl WebSocketCommand {
             WebSocketCommand::CreateLabel { request_id, .. }
             | WebSocketCommand::UpdateLabel { request_id, .. }
             | WebSocketCommand::DeleteLabel { request_id, .. }
+            | WebSocketCommand::GetLabel { request_id, .. }
             | WebSocketCommand::QueryLabels { request_id, .. }
             | WebSocketCommand::BatchCreateLabels { request_id, .. }
             | WebSocketCommand::BatchUpdateLabels { request_id, .. }

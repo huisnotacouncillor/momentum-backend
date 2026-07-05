@@ -112,6 +112,10 @@ impl WebSocketCommandHandler {
                 "delete_label".hash(&mut hasher);
                 label_id.hash(&mut hasher);
             }
+            WebSocketCommand::GetLabel { label_id, .. } => {
+                "get_label".hash(&mut hasher);
+                label_id.hash(&mut hasher);
+            }
             WebSocketCommand::QueryLabels { filters, .. } => {
                 "query_labels".hash(&mut hasher);
                 if let Some(ref level) = filters.level {
@@ -513,6 +517,9 @@ impl WebSocketCommandHandler {
             WebSocketCommand::DeleteLabel { label_id, .. } => {
                 self.handle_delete_label(ctx, label_id).await
             }
+            WebSocketCommand::GetLabel { label_id, .. } => {
+                self.handle_get_label(ctx, label_id).await
+            }
             WebSocketCommand::QueryLabels { filters, .. } => {
                 self.handle_query_labels(ctx, filters).await
             }
@@ -676,6 +683,14 @@ impl WebSocketCommandHandler {
         label_id: Uuid,
     ) -> Result<serde_json::Value, AppError> {
         super::labels::LabelHandlers::handle_delete_label(&self.db, ctx, label_id).await
+    }
+
+    async fn handle_get_label(
+        &self,
+        ctx: RequestContext,
+        label_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        super::labels::LabelHandlers::handle_get_label(&self.db, ctx, label_id).await
     }
 
     async fn handle_query_labels(
