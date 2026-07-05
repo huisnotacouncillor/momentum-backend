@@ -40,8 +40,8 @@ impl WebSocketAuth {
         pool: Arc<DbPool>,
         token: &str,
     ) -> Result<AuthenticatedUser, WebSocketAuthError> {
-        // 使用现有的认证服务
-        let auth_service = AuthService::new(AuthConfig::default());
+        // P2.2 修复：从环境变量严格读取，不使用默认密钥
+        let auth_service = AuthService::new(AuthConfig::from_env_strict());
 
         // 验证JWT token
         let claims = auth_service.verify_token(token).map_err(|e| {
@@ -161,16 +161,21 @@ impl std::error::Error for WebSocketAuthError {}
 async fn get_user_by_id(
     pool: &Arc<DbPool>,
     user_id: Uuid,
-) -> Result<AuthUser, diesel::result::Error> {
+) -> Result<AuthUser, momentum_core::error::AppError> {
     use momentum_core::schema::users::dsl::*;
 
-    let mut conn = pool.get().expect("Failed to get DB connection");
+    let mut conn = pool.get().map_err(|_| {
+        momentum_core::error::AppError::ServiceUnavailable {
+            message: "Database temporarily unavailable".to_string(),
+        }
+    })?;
 
     let user = users
         .filter(id.eq(user_id))
         .filter(is_active.eq(true))
         .select(momentum_core::db::models::User::as_select())
-        .first(&mut conn)?;
+        .first(&mut conn)
+        .map_err(momentum_core::error::AppError::Database)?;
 
     Ok(AuthUser {
         id: user.id,
@@ -184,17 +189,24 @@ async fn get_user_by_id(
 async fn get_user_current_workspace(
     pool: &Arc<DbPool>,
     user_id: Uuid,
-) -> Result<Uuid, diesel::result::Error> {
+) -> Result<Uuid, momentum_core::error::AppError> {
     use momentum_core::schema::users::dsl::*;
 
-    let mut conn = pool.get().expect("Failed to get DB connection");
+    let mut conn = pool.get().map_err(|_| {
+        momentum_core::error::AppError::ServiceUnavailable {
+            message: "Database temporarily unavailable".to_string(),
+        }
+    })?;
 
     let workspace_id = users
         .filter(id.eq(user_id))
         .filter(is_active.eq(true))
         .select(current_workspace_id)
-        .first::<Option<Uuid>>(&mut conn)?
-        .ok_or_else(|| diesel::result::Error::NotFound)?;
+        .first::<Option<Uuid>>(&mut conn)
+        .map_err(momentum_core::error::AppError::Database)?
+        .ok_or_else(|| momentum_core::error::AppError::NotFound {
+            resource: "user_workspace".to_string(),
+        })?;
 
     Ok(workspace_id)
 }

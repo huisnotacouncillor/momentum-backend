@@ -37,10 +37,20 @@ impl IssueRepo {
 
     pub fn list_by_workspace(
         conn: &mut PgConnection,
-        _workspace_id: uuid::Uuid,
+        workspace_id: uuid::Uuid,
     ) -> Result<Vec<Issue>, diesel::result::Error> {
-        use crate::schema::issues::dsl::*;
-        issues.order(created_at.desc()).load::<Issue>(conn)
+        use crate::schema::{issues::dsl::*, teams};
+
+        // 先获取该工作区的所有 team_id
+        let workspace_team_ids: Vec<uuid::Uuid> = teams::table
+            .filter(teams::workspace_id.eq(workspace_id))
+            .select(teams::id)
+            .load(conn)?;
+
+        issues
+            .filter(team_id.eq_any(&workspace_team_ids))
+            .order(created_at.desc())
+            .load::<Issue>(conn)
     }
 
     pub fn list_by_team(
@@ -144,12 +154,19 @@ impl IssueRepo {
 
     pub fn search_by_title(
         conn: &mut PgConnection,
-        _workspace_id: uuid::Uuid,
+        workspace_id: uuid::Uuid,
         search_term: &str,
     ) -> Result<Vec<Issue>, diesel::result::Error> {
-        use crate::schema::issues::dsl::*;
+        use crate::schema::{issues::dsl::*, teams};
+
+        let workspace_team_ids: Vec<uuid::Uuid> = teams::table
+            .filter(teams::workspace_id.eq(workspace_id))
+            .select(teams::id)
+            .load(conn)?;
+
         let pattern = format!("%{}%", search_term);
         issues
+            .filter(team_id.eq_any(&workspace_team_ids))
             .filter(title.like(pattern))
             .order(created_at.desc())
             .load::<Issue>(conn)
@@ -174,12 +191,20 @@ impl IssueRepo {
 
     pub fn find_by_id_in_workspace(
         conn: &mut PgConnection,
-        _workspace_id: uuid::Uuid,
+        workspace_id: uuid::Uuid,
         issue_id: uuid::Uuid,
     ) -> Result<Option<Issue>, diesel::result::Error> {
-        use crate::schema::issues::dsl::*;
+        use crate::schema::{issues::dsl::*, teams};
+
+        // 验证 issue 属于指定工作区
+        let workspace_team_ids: Vec<uuid::Uuid> = teams::table
+            .filter(teams::workspace_id.eq(workspace_id))
+            .select(teams::id)
+            .load(conn)?;
+
         issues
             .filter(id.eq(issue_id))
+            .filter(team_id.eq_any(&workspace_team_ids))
             .first::<Issue>(conn)
             .optional()
     }

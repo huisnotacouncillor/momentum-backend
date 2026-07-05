@@ -221,39 +221,52 @@ impl WebSocketManager {
         user_id: Uuid,
         recovery_token: &str,
     ) -> Option<ConnectedUser> {
-        let recovery_map = self.recovery_info.write().await;
+        // P1.4 修复：消除嵌套锁，避免死锁
+        // 策略：先获取并立即释放 recovery_info 锁（仅用于验证），
+        // 然后逐个获取 connections 和 subscriptions 锁（顺序一致避免循环）
 
-        if let Some(recovery_info) = recovery_map.get(&user_id) {
-            if recovery_info.recovery_token == recovery_token
-                && recovery_info.expires_at > chrono::Utc::now()
+        // 第一步：验证 recovery_token（短暂持锁）
+        let (subscriptions_to_restore, pending_messages_to_restore) = {
+            let recovery_map = self.recovery_info.read().await;
+            let info = recovery_map.get(&user_id)?;
+            if info.recovery_token != recovery_token
+                || info.expires_at <= chrono::Utc::now()
             {
-                // 恢复连接信息
-                let mut connections = self.connections.write().await;
-                if let Some(user) = connections.get_mut(&user_id.to_string()) {
-                    user.state = ConnectionState::Connected;
-                    user.subscriptions = recovery_info.subscriptions.clone();
-                    user.message_queue = recovery_info.pending_messages.clone();
-                    user.recovery_token = None;
+                return None;
+            }
+            (info.subscriptions.clone(), info.pending_messages.clone())
+        }; // recovery_info 锁释放
 
-                    // 更新订阅信息
-                    let mut subscriptions = self.subscriptions.write().await;
-                    for topic in &user.subscriptions {
-                        subscriptions
-                            .entry(topic.clone())
-                            .or_insert_with(HashSet::new)
-                            .insert(user_id);
-                    }
+        // 第二步：获取 connections 锁，更新用户状态
+        let username = {
+            let mut connections = self.connections.write().await;
+            let user = connections.get_mut(&user_id.to_string())?;
+            user.state = ConnectionState::Connected;
+            user.subscriptions = subscriptions_to_restore.clone();
+            user.message_queue = pending_messages_to_restore;
+            user.recovery_token = None;
+            user.username.clone()
+        }; // connections 锁释放
 
-                    info!(
-                        "🔄 WebSocket Recovered connection for user {}",
-                        user.username
-                    );
-                    return Some(user.clone());
-                }
+        // 第三步：单独获取 subscriptions 锁（不再嵌套）
+        {
+            let mut subscriptions = self.subscriptions.write().await;
+            for topic in &subscriptions_to_restore {
+                subscriptions
+                    .entry(topic.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(user_id);
             }
         }
 
-        None
+        info!(
+            "🔄 WebSocket Recovered connection for user {}",
+            username
+        );
+
+        // 第四步：返回当前状态快照
+        let connections = self.connections.read().await;
+        connections.get(&user_id.to_string()).cloned()
     }
 
     /// 暂停连接（临时断开）
@@ -817,10 +830,47 @@ impl WebSocketManager {
         // 处理广播消息
         let send_task = {
             let monitor = monitor.clone();
+            let user_current_workspace = user.current_workspace_id; // 捕获用户的 workspace
             tokio::spawn(async move {
                 while let Ok(message) = rx.recv().await {
-                    // 基于workspace广播 - 发送给同一workspace的所有用户
-                    let should_send = true; // 所有广播消息都发送给当前连接
+                    // P0 修复：基于消息元数据和用户工作区进行过滤
+                    // 防止工作区 A 的事件泄漏给工作区 B 的用户
+                    let should_send = match &message.message_type {
+                        // 通知消息 - 如果携带 workspace_id 则只发送给同工作区
+                        MessageType::Notification => {
+                            match message.data.get("workspace_id") {
+                                Some(ws_val) => {
+                                    let ws_uuid = ws_val
+                                        .as_str()
+                                        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+                                    ws_uuid.map(|ws| Some(ws) == user_current_workspace).unwrap_or(false)
+                                }
+                                // 没有 workspace_id 的全局通知 - 仅发送给所有
+                                None => true,
+                            }
+                        }
+                        // 用户加入/离开 - 如果携带 workspace_id 则只发送给同工作区
+                        MessageType::UserJoined | MessageType::UserLeft => {
+                            match message.data.get("workspace_id") {
+                                Some(ws_val) => {
+                                    let ws_uuid = ws_val
+                                        .as_str()
+                                        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+                                    ws_uuid.map(|ws| Some(ws) == user_current_workspace).unwrap_or(false)
+                                }
+                                None => true,
+                            }
+                        }
+                        // 系统消息和心跳 - 发送给所有
+                        MessageType::SystemMessage | MessageType::Ping | MessageType::Pong => true,
+                        // CommandResponse 是直接发给特定连接的，不应该通过 broadcast 接收
+                        // Text 和其他类型不应通过 broadcast_tx 发送
+                        MessageType::CommandResponse
+                        | MessageType::Text
+                        | MessageType::Error
+                        | MessageType::Command
+                        | MessageType::InitialData => false,
+                    };
 
                     if should_send {
                         if let Ok(msg_text) = serde_json::to_string(&message) {
@@ -883,6 +933,7 @@ impl WebSocketManager {
             user_id,
             workspace_id,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         };
 
         // 获取用户完整 profile（参考 GET /auth/profile API）

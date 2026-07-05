@@ -17,6 +17,23 @@ pub enum WorkspaceMemberRole {
     Guest,
 }
 
+impl WorkspaceMemberRole {
+    /// 角色等级：数值越大权限越高
+    pub fn level(&self) -> u8 {
+        match self {
+            WorkspaceMemberRole::Owner => 4,
+            WorkspaceMemberRole::Admin => 3,
+            WorkspaceMemberRole::Member => 2,
+            WorkspaceMemberRole::Guest => 1,
+        }
+    }
+
+    /// 检查是否满足最低角色要求
+    pub fn has_at_least(&self, required: &WorkspaceMemberRole) -> bool {
+        self.level() >= required.level()
+    }
+}
+
 impl diesel::serialize::ToSql<crate::schema::sql_types::WorkspaceUserRole, diesel::pg::Pg>
     for WorkspaceMemberRole
 {

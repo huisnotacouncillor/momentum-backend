@@ -408,8 +408,20 @@ impl AuthService {
         ctx: &RequestContext,
         workspace_id: Uuid,
     ) -> Result<User, AppError> {
-        // Verify user has access to the workspace (this would need workspace member check)
-        // For now, just update the current workspace
+        // P0 修复：验证用户是该工作区的成员，防止跨工作区越权
+        let membership = crate::db::repositories::workspace_members::WorkspaceMembersRepo::find(
+            conn,
+            workspace_id,
+            ctx.user_id,
+        )
+        .map_err(AppError::Database)?;
+
+        if membership.is_none() {
+            return Err(AppError::Forbidden {
+                message: "User is not a member of this workspace".to_string(),
+            });
+        }
+
         let updated_user = AuthRepo::update_current_workspace(conn, ctx.user_id, workspace_id)?;
         Ok(updated_user)
     }

@@ -23,6 +23,9 @@ pub enum AppError {
     #[error("Validation error: {message}")]
     Validation { message: String },
 
+    #[error("Forbidden: {message}")]
+    Forbidden { message: String },
+
     #[error("Not found: {resource}")]
     NotFound { resource: String },
 
@@ -32,6 +35,9 @@ pub enum AppError {
         field: Option<String>,
         code: Option<String>,
     },
+
+    #[error("Service unavailable: {message}")]
+    ServiceUnavailable { message: String },
 
     #[error("Configuration error: {0}")]
     Config(String),
@@ -83,6 +89,10 @@ impl AppError {
                 400,
                 ApiResponse::<()>::bad_request(message),
             ),
+            AppError::Forbidden { message } => (
+                403,
+                ApiResponse::<()>::forbidden(message),
+            ),
             AppError::NotFound { resource } => (
                 404,
                 ApiResponse::<()>::not_found(&format!("{} not found", resource)),
@@ -94,6 +104,10 @@ impl AppError {
             } => (
                 409,
                 ApiResponse::<()>::conflict(message, field.clone(), code.as_deref().unwrap_or("")),
+            ),
+            AppError::ServiceUnavailable { message } => (
+                503,
+                ApiResponse::<()>::internal_error(message),
             ),
             AppError::Config(e) => {
                 tracing::error!("Configuration error: {}", e);
@@ -139,6 +153,12 @@ impl AppError {
 
     pub fn validation(message: impl Into<String>) -> Self {
         Self::Validation {
+            message: message.into(),
+        }
+    }
+
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::Forbidden {
             message: message.into(),
         }
     }
