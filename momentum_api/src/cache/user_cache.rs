@@ -198,7 +198,39 @@ impl UserCache {
         Ok(pong == "PONG")
     }
 
-    /// 获取缓存统计信息
+    /// P2.5 修复：使用 SCAN 迭代键，避免 KEYS 命令阻塞 Redis
+    async fn count_keys_by_pattern(
+        conn: &mut redis::aio::MultiplexedConnection,
+        pattern: &str,
+    ) -> Result<usize, AppError> {
+        let mut count = 0usize;
+        let mut cursor: u64 = 0;
+
+        loop {
+            // SCAN 返回 (next_cursor, batch_keys)
+            let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("MATCH")
+                .arg(pattern)
+                .arg("COUNT")
+                .arg(100)
+                .query_async(conn)
+                .await
+                .map_err(|e| AppError::Internal(format!("SCAN failed: {}", e)))?;
+
+            count += batch.len();
+            cursor = next_cursor;
+
+            // cursor=0 表示迭代完成
+            if cursor == 0 {
+                break;
+            }
+        }
+
+        Ok(count)
+    }
+
+/// 获取缓存统计信息
     pub async fn get_cache_stats(&self) -> Result<CacheStats, AppError> {
         let mut conn = self.get_connection().await?;
 
@@ -209,26 +241,18 @@ impl UserCache {
             .await
             .map_err(|e| AppError::Internal(format!("Failed to get Redis info: {}", e)))?;
 
-        // 计算用户相关键的数量
-        let user_keys: Vec<String> = conn
-            .keys(format!("{}*", USER_CACHE_PREFIX))
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to get user keys: {}", e)))?;
-
-        let profile_keys: Vec<String> = conn
-            .keys(format!("{}*", USER_PROFILE_CACHE_PREFIX))
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to get profile keys: {}", e)))?;
-
-        let workspace_keys: Vec<String> = conn
-            .keys(format!("{}*", USER_WORKSPACE_CACHE_PREFIX))
-            .await
-            .map_err(|e| AppError::Internal(format!("Failed to get workspace keys: {}", e)))?;
+        // P2.5 修复：使用 SCAN 替代 KEYS，避免阻塞 Redis
+        let user_count = Self::count_keys_by_pattern(&mut conn, &format!("{}*", USER_CACHE_PREFIX))
+            .await?;
+        let profile_count = Self::count_keys_by_pattern(&mut conn, &format!("{}*", USER_PROFILE_CACHE_PREFIX))
+            .await?;
+        let workspace_count = Self::count_keys_by_pattern(&mut conn, &format!("{}*", USER_WORKSPACE_CACHE_PREFIX))
+            .await?;
 
         Ok(CacheStats {
-            user_cache_count: user_keys.len(),
-            profile_cache_count: profile_keys.len(),
-            workspace_cache_count: workspace_keys.len(),
+            user_cache_count: user_count,
+            profile_cache_count: profile_count,
+            workspace_cache_count: workspace_count,
             redis_info: info,
         })
     }
