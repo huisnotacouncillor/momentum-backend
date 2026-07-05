@@ -152,42 +152,82 @@ impl IssuesService {
             }
         }
 
-        // Enrich with workflow states and map to response
+        // P1.2 修复：批量加载关联数据，避免 N+1 查询
+        // 问题：之前每个 issue 都单独查询 team 和 workflow_states
+        // 20 个 issue 会触发 40+ 次 DB 查询
+        // 修复：一次性批量加载所有 team 和 workflow states
+
+        // 1. 批量加载所有相关 teams
+        let team_ids: Vec<Uuid> = issues.iter().map(|i| i.team_id).collect();
+        let teams_map: std::collections::HashMap<Uuid, Team> = {
+            use crate::schema::teams::dsl as t;
+            t::teams
+                .filter(t::id.eq_any(&team_ids))
+                .load::<Team>(conn)
+                .map_err(|e| AppError::internal(format!("Failed to load teams: {}", e)))?
+                .into_iter()
+                .map(|team| (team.id, team))
+                .collect()
+        };
+
+        // 2. 批量加载所有相关 workflow states（按 workflow_id 或 team_id 分组）
+        // 收集所有需要的 workflow_id 和 fallback team_id
+        let workflow_ids: Vec<Uuid> = issues.iter().filter_map(|i| i.workflow_id).collect();
+        let mut workflow_states_map: std::collections::HashMap<Uuid, Vec<crate::db::models::workflow::WorkflowState>> =
+            std::collections::HashMap::new();
+        for wf_id in &workflow_ids {
+            let states = WorkflowsRepo::list_states_by_workflow(conn, *wf_id).map_err(|e| {
+                AppError::internal(format!("Failed to load workflow states: {}", e))
+            })?;
+            workflow_states_map.insert(*wf_id, states);
+        }
+
+        // 3. 批量加载 fallback team default states（仅对没有 workflow_id 的 issue）
+        let teams_needing_defaults: std::collections::HashSet<Uuid> = issues
+            .iter()
+            .filter(|i| i.workflow_id.is_none())
+            .map(|i| i.team_id)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        let mut team_default_states_map: std::collections::HashMap<
+            Uuid,
+            Vec<crate::db::models::workflow::WorkflowState>,
+        > = std::collections::HashMap::new();
+        for tid in &teams_needing_defaults {
+            let states = WorkflowsRepo::list_team_default_states(conn, *tid).map_err(|e| {
+                AppError::internal(format!("Failed to load team default states: {}", e))
+            })?;
+            team_default_states_map.insert(*tid, states);
+        }
+
+        // 4. 批量加载 field values
         let ids: Vec<Uuid> = issues.iter().map(|i| i.id).collect();
         let field_values_map = IssueFieldValueRepo::list_by_issues(conn, &ids).unwrap_or_default();
 
+        // 5. 构造响应（仅从 map 中查找，无 DB 查询）
         let mut responses = Vec::with_capacity(issues.len());
         for issue in issues {
             let mut resp = crate::db::models::issue::IssueResponse::from(issue.clone());
-            // Populate team info (and team_key)
-            {
-                use crate::schema::teams::dsl as t;
-                if let Some(team) = t::teams
-                    .filter(t::id.eq(issue.team_id))
-                    .first::<Team>(conn)
-                    .optional()
-                    .map_err(|e| AppError::internal(format!("Failed to load team: {}", e)))?
-                {
-                    resp.team_key = Some(team.team_key.clone());
-                    resp.team = Some(TeamBasicInfo {
-                        id: team.id,
-                        name: team.name,
-                        team_key: team.team_key,
-                        description: team.description,
-                        icon_url: team.icon_url,
-                        is_private: team.is_private,
-                    });
-                }
+
+            // 从预加载的 teams_map 中查找
+            if let Some(team) = teams_map.get(&issue.team_id) {
+                resp.team_key = Some(team.team_key.clone());
+                resp.team = Some(TeamBasicInfo {
+                    id: team.id,
+                    name: team.name.clone(),
+                    team_key: team.team_key.clone(),
+                    description: team.description.clone(),
+                    icon_url: team.icon_url.clone(),
+                    is_private: team.is_private,
+                });
             }
-            // Determine states source
+
+            // 从预加载的 states map 中查找
             let states = if let Some(wf_id) = issue.workflow_id {
-                WorkflowsRepo::list_states_by_workflow(conn, wf_id).map_err(|e| {
-                    AppError::internal(format!("Failed to load workflow states: {}", e))
-                })?
+                workflow_states_map.get(&wf_id).cloned().unwrap_or_default()
             } else {
-                WorkflowsRepo::list_team_default_states(conn, issue.team_id).map_err(|e| {
-                    AppError::internal(format!("Failed to load team default states: {}", e))
-                })?
+                team_default_states_map.get(&issue.team_id).cloned().unwrap_or_default()
             };
             resp.workflow_states = states
                 .into_iter()
