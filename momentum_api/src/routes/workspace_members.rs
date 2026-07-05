@@ -46,6 +46,7 @@ pub async fn invite_member_to_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -85,6 +86,7 @@ pub async fn accept_invitation(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -125,6 +127,7 @@ pub async fn get_workspace_members(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -179,6 +182,7 @@ pub async fn get_workspace_members_and_invitations(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -234,6 +238,7 @@ pub async fn get_current_workspace_members(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

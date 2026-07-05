@@ -52,6 +52,7 @@ pub async fn create_team(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     let req = CreateTeamRequest {
@@ -96,6 +97,7 @@ pub async fn get_teams(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     match TeamsService::list(&mut conn, &ctx) {
@@ -127,6 +129,7 @@ pub async fn get_team(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     match TeamsService::get(&mut conn, &ctx, team_id) {
@@ -159,6 +162,7 @@ pub async fn update_team(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     let req = UpdateTeamRequest {
@@ -208,6 +212,7 @@ pub async fn delete_team(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     match TeamsService::delete(&mut conn, &ctx, team_id) {
@@ -247,6 +252,7 @@ pub async fn add_team_member(
         user_id: auth_info.user.id,
         workspace_id: current_workspace_id,
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
     let role_str = match payload.role {
         TeamRole::Admin => "admin",
@@ -293,6 +299,7 @@ pub async fn get_team_members_list(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     let members = match momentum_core::services::team_members_service::TeamMembersService::list(
@@ -349,6 +356,7 @@ pub async fn update_team_member(
         user_id: auth_info.user.id,
         workspace_id: current_workspace_id,
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
     let role_str = match payload.role {
         TeamRole::Admin => "admin",
@@ -390,6 +398,7 @@ pub async fn remove_team_member(
         user_id: auth_info.user.id,
         workspace_id: current_workspace_id,
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
     match TeamMembersService::remove(&mut conn, &ctx, team_id, member_user_id) {
         Ok(_) => {

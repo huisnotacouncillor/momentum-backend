@@ -76,6 +76,7 @@ pub async fn try_dispatch(
         user_id: user.user_id,
         workspace_id: user.current_workspace_id.unwrap_or_else(uuid_nil),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
     let request_id = command.request_id();
 

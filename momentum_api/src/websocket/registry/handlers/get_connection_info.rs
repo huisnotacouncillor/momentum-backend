@@ -65,6 +65,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             workspace_id: Uuid::new_v4(),
             idempotency_key: Some("v1.0".into()),
+            trace_id: "test".into(),
         };
         let out = reg.dispatch("get_connection_info", ctx, json!({})).unwrap();
         assert!(out["user_id"].is_string());

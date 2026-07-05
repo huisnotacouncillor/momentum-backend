@@ -60,6 +60,7 @@ pub async fn create_project(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -108,6 +109,7 @@ pub async fn get_projects(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -155,6 +157,7 @@ pub async fn update_project(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -218,6 +221,7 @@ pub async fn delete_project(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

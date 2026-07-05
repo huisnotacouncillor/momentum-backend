@@ -65,6 +65,7 @@ pub async fn create_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -110,6 +111,7 @@ pub async fn get_cycles(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -149,6 +151,7 @@ pub async fn get_cycle_by_id(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -189,6 +192,7 @@ pub async fn update_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -228,6 +232,7 @@ pub async fn delete_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -267,6 +272,7 @@ pub async fn get_cycle_stats(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -307,6 +313,7 @@ pub async fn get_cycle_issues(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -354,6 +361,7 @@ pub async fn assign_issues_to_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -400,6 +408,7 @@ pub async fn remove_issues_from_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

@@ -53,6 +53,7 @@ pub async fn get_workflows(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -92,6 +93,7 @@ pub async fn get_workflow_by_id(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -132,6 +134,7 @@ pub async fn create_workflow(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -179,6 +182,7 @@ pub async fn update_workflow(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -218,6 +222,7 @@ pub async fn delete_workflow(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -257,6 +262,7 @@ pub async fn get_workflow_states(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -296,6 +302,7 @@ pub async fn get_team_default_workflow_states(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -347,6 +354,7 @@ pub async fn create_workflow_state(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -406,6 +414,7 @@ pub async fn create_team_default_workflow_state(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -479,6 +488,7 @@ pub async fn update_team_default_workflow_state(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -545,6 +555,7 @@ pub async fn get_issue_transitions(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

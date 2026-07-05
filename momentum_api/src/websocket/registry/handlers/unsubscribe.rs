@@ -97,6 +97,7 @@ mod tests {
             user_id: uuid::Uuid::new_v4(),
             workspace_id: uuid::Uuid::new_v4(),
             idempotency_key: None,
+        trace_id: "unknown".to_string(),
         }
     }
 

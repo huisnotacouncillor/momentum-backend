@@ -597,6 +597,7 @@ impl WebSocketCommandHandler {
             user_id: user.user_id,
             workspace_id,
             idempotency_key: Some(idempotency_key.clone()),
+            trace_id: format!("ws-{}", Uuid::new_v4()),
         };
 
         let result = match command {

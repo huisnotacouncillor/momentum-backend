@@ -28,6 +28,7 @@ pub async fn update_profile(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     match AuthService::update_profile(

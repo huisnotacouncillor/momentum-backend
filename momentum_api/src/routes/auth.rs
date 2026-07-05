@@ -83,6 +83,7 @@ pub async fn get_profile(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     match AuthService::get_profile(&mut conn, &ctx, &state.asset_helper) {
@@ -112,6 +113,7 @@ pub async fn update_profile(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     match AuthService::update_profile(&mut conn, &ctx, &payload, &state.asset_helper) {
@@ -141,6 +143,7 @@ pub async fn switch_workspace(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     match AuthService::switch_workspace(&mut conn, &ctx, payload.workspace_id) {
@@ -169,6 +172,7 @@ pub async fn logout(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
+        trace_id: "unknown".to_string(),
     };
 
     // 使所有会话失效

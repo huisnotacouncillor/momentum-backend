@@ -138,6 +138,7 @@ mod tests {
                 user_id: Uuid::new_v4(),
                 workspace_id: Uuid::new_v4(),
                 idempotency_key: None,
+        trace_id: "unknown".to_string(),
             },
             Some("req-1".into()),
         );
@@ -266,6 +267,7 @@ mod tests {
                 user_id: Uuid::new_v4(),
                 workspace_id: Uuid::new_v4(),
                 idempotency_key: None,
+        trace_id: "unknown".to_string(),
             },
             Some("req-it-1".into()),
         );
@@ -290,6 +292,7 @@ mod tests {
                 user_id: Uuid::new_v4(),
                 workspace_id: Uuid::new_v4(),
                 idempotency_key: None,
+        trace_id: "unknown".to_string(),
             },
             Some("req-it-2".into()),
         );
@@ -319,6 +322,7 @@ mod tests {
                 user_id: Uuid::new_v4(),
                 workspace_id: Uuid::new_v4(),
                 idempotency_key: None,
+        trace_id: "unknown".to_string(),
             },
             None,
         );
