@@ -155,7 +155,7 @@ mod tests {
         fn name(&self) -> &'static str { "wrapper" }
         async fn process(
             &self,
-            envelope: CommandEnvelope,
+            _envelope: CommandEnvelope,
             _ctx: &MiddlewareContext,
             next: NextMiddleware<'_>,
         ) -> Result<Value, AppError> {

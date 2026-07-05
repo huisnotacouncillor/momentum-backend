@@ -1,4 +1,4 @@
-use diesel::{Connection, RunQueryDsl};
+use diesel::{BoolExpressionMethods, Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -332,6 +332,9 @@ impl WebSocketCommandHandler {
                     avatar_url.hash(&mut hasher);
                 }
             }
+            WebSocketCommand::QueryProfile { .. } => {
+                "query_profile".hash(&mut hasher);
+            }
             WebSocketCommand::CreateProject { data, .. } => {
                 "create_project".hash(&mut hasher);
                 data.name.hash(&mut hasher);
@@ -416,6 +419,9 @@ impl WebSocketCommandHandler {
                 "get_issue".hash(&mut hasher);
                 issue_id.hash(&mut hasher);
             }
+            WebSocketCommand::QueryIssuePriorities { .. } => {
+                "query_issue_priorities".hash(&mut hasher);
+            }
             WebSocketCommand::QueryCycles { .. } => {
                 "query_cycles".hash(&mut hasher);
             }
@@ -434,6 +440,63 @@ impl WebSocketCommandHandler {
             WebSocketCommand::DeleteCycle { cycle_id, .. } => {
                 "delete_cycle".hash(&mut hasher);
                 cycle_id.hash(&mut hasher);
+            }
+            WebSocketCommand::QueryComments { issue_id, .. } => {
+                "query_comments".hash(&mut hasher);
+                issue_id.hash(&mut hasher);
+            }
+            WebSocketCommand::CreateComment { issue_id, data, .. } => {
+                "create_comment".hash(&mut hasher);
+                issue_id.hash(&mut hasher);
+                data.content.hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateComment { comment_id, data, .. } => {
+                "update_comment".hash(&mut hasher);
+                comment_id.hash(&mut hasher);
+                data.content.hash(&mut hasher);
+            }
+            WebSocketCommand::DeleteComment { comment_id, .. } => {
+                "delete_comment".hash(&mut hasher);
+                comment_id.hash(&mut hasher);
+            }
+            WebSocketCommand::GetTeam { team_id, .. } => {
+                "get_team".hash(&mut hasher);
+                team_id.hash(&mut hasher);
+            }
+            WebSocketCommand::GetTeamWorkflowStatuses { team_id, .. } => {
+                "get_team_workflow_statuses".hash(&mut hasher);
+                team_id.hash(&mut hasher);
+            }
+            WebSocketCommand::CreateTeamWorkflowStatus { team_id, data, .. } => {
+                "create_team_workflow_status".hash(&mut hasher);
+                team_id.hash(&mut hasher);
+                data.name.hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateTeamWorkflowStatus { status_id, data, .. } => {
+                "update_team_workflow_status".hash(&mut hasher);
+                status_id.hash(&mut hasher);
+                if let Some(ref name) = data.name { name.hash(&mut hasher); }
+            }
+            WebSocketCommand::DeleteTeamWorkflowStatus { status_id, .. } => {
+                "delete_team_workflow_status".hash(&mut hasher);
+                status_id.hash(&mut hasher);
+            }
+            WebSocketCommand::GetWorkspace { workspace_id, .. } => {
+                "get_workspace".hash(&mut hasher);
+                workspace_id.hash(&mut hasher);
+            }
+            WebSocketCommand::GetWorkspaceMember { user_id, .. } => {
+                "get_workspace_member".hash(&mut hasher);
+                user_id.hash(&mut hasher);
+            }
+            WebSocketCommand::UpdateWorkspaceMember { user_id, data, .. } => {
+                "update_workspace_member".hash(&mut hasher);
+                user_id.hash(&mut hasher);
+                format!("{:?}", data.role).hash(&mut hasher);
+            }
+            WebSocketCommand::DeleteWorkspaceMember { user_id, .. } => {
+                "delete_workspace_member".hash(&mut hasher);
+                user_id.hash(&mut hasher);
             }
             WebSocketCommand::GetFeatureFlags { .. } => {
                 "get_feature_flags".hash(&mut hasher);
@@ -578,6 +641,19 @@ impl WebSocketCommandHandler {
                 self.handle_delete_team(ctx, team_id).await
             }
             WebSocketCommand::QueryTeams { .. } => self.handle_query_teams(ctx).await,
+            WebSocketCommand::GetTeam { team_id, .. } => self.handle_get_team(ctx, team_id).await,
+            WebSocketCommand::GetTeamWorkflowStatuses { team_id, .. } => {
+                self.handle_get_team_workflow_statuses(ctx, team_id).await
+            }
+            WebSocketCommand::CreateTeamWorkflowStatus { team_id, data, .. } => {
+                self.handle_create_team_workflow_status(ctx, team_id, data).await
+            }
+            WebSocketCommand::UpdateTeamWorkflowStatus { team_id, status_id, data, .. } => {
+                self.handle_update_team_workflow_status(ctx, team_id, status_id, data).await
+            }
+            WebSocketCommand::DeleteTeamWorkflowStatus { team_id, status_id, .. } => {
+                self.handle_delete_team_workflow_status(ctx, team_id, status_id).await
+            }
             WebSocketCommand::AddTeamMember { team_id, data, .. } => {
                 self.handle_add_team_member(ctx, team_id, data).await
             }
@@ -646,8 +722,23 @@ impl WebSocketCommandHandler {
             WebSocketCommand::GetCurrentWorkspace { .. } => {
                 self.handle_get_current_workspace(ctx).await
             }
+            WebSocketCommand::GetWorkspace { workspace_id, .. } => {
+                self.handle_get_workspace(ctx, workspace_id).await
+            }
+            WebSocketCommand::GetWorkspaceMember { user_id, .. } => {
+                self.handle_get_workspace_member(ctx, user_id).await
+            }
+            WebSocketCommand::UpdateWorkspaceMember { user_id, data, .. } => {
+                self.handle_update_workspace_member(ctx, user_id, data).await
+            }
+            WebSocketCommand::DeleteWorkspaceMember { user_id, .. } => {
+                self.handle_delete_workspace_member(ctx, user_id).await
+            }
             WebSocketCommand::UpdateProfile { data, .. } => {
                 self.handle_update_profile(ctx, data).await
+            }
+            WebSocketCommand::QueryProfile { .. } => {
+                self.handle_query_profile(ctx).await
             }
             WebSocketCommand::CreateProject { data, .. } => {
                 self.handle_create_project(ctx, data).await
@@ -677,6 +768,9 @@ impl WebSocketCommandHandler {
             WebSocketCommand::GetIssue { issue_id, .. } => {
                 self.handle_get_issue(ctx, issue_id).await
             }
+            WebSocketCommand::QueryIssuePriorities { .. } => {
+                self.handle_query_issue_priorities(ctx).await
+            }
             WebSocketCommand::QueryCycles { .. } => {
                 self.handle_query_cycles(ctx).await
             }
@@ -691,6 +785,18 @@ impl WebSocketCommandHandler {
             }
             WebSocketCommand::DeleteCycle { cycle_id, .. } => {
                 self.handle_delete_cycle(ctx, cycle_id).await
+            }
+            WebSocketCommand::QueryComments { issue_id, .. } => {
+                self.handle_query_comments(ctx, issue_id).await
+            }
+            WebSocketCommand::CreateComment { issue_id, data, .. } => {
+                self.handle_create_comment(ctx, issue_id, data).await
+            }
+            WebSocketCommand::UpdateComment { issue_id, comment_id, data, .. } => {
+                self.handle_update_comment(ctx, issue_id, comment_id, data).await
+            }
+            WebSocketCommand::DeleteComment { issue_id, comment_id, .. } => {
+                self.handle_delete_comment(ctx, issue_id, comment_id).await
             }
         };
 
@@ -1291,6 +1397,14 @@ impl WebSocketCommandHandler {
             .await
     }
 
+    async fn handle_query_profile(
+        &self,
+        ctx: RequestContext,
+    ) -> Result<serde_json::Value, AppError> {
+        super::user::UserHandlers::handle_query_profile(&self.db, ctx, &self.asset_helper)
+            .await
+    }
+
     // Project handlers (delegate)
     async fn handle_create_project(
         &self,
@@ -1400,6 +1514,13 @@ impl WebSocketCommandHandler {
         super::issues::IssueHandlers::handle_get_issue(&self.db, ctx, issue_id).await
     }
 
+    async fn handle_query_issue_priorities(
+        &self,
+        ctx: RequestContext,
+    ) -> Result<serde_json::Value, AppError> {
+        super::issues::IssueHandlers::handle_query_issue_priorities(ctx).await
+    }
+
     async fn handle_query_cycles(
         &self,
         ctx: RequestContext,
@@ -1438,6 +1559,226 @@ impl WebSocketCommandHandler {
         cycle_id: Uuid,
     ) -> Result<serde_json::Value, AppError> {
         super::cycles::CycleHandlers::handle_delete_cycle(&self.db, ctx, cycle_id).await
+    }
+
+    // Team handlers
+    async fn handle_get_team(
+        &self,
+        ctx: RequestContext,
+        team_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self.db.get()?;
+        let team = momentum_core::services::teams_service::TeamsService::get(&mut conn, &ctx, team_id)?;
+        Ok(serde_json::json!(team))
+    }
+
+    async fn handle_get_team_workflow_statuses(
+        &self,
+        ctx: RequestContext,
+        team_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self.db.get()?;
+        let states = momentum_core::services::workflows_service::WorkflowsService::get_team_default_states(&mut conn, &ctx, team_id)?;
+        Ok(serde_json::json!(states))
+    }
+
+    async fn handle_create_team_workflow_status(
+        &self,
+        _ctx: RequestContext,
+        team_id: Uuid,
+        data: CreateTeamWorkflowStatusCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        use momentum_core::db::models::workflow::NewWorkflowState;
+        use momentum_core::db::repositories::workflows::WorkflowsRepo;
+        use momentum_core::db::models::workflow::WorkflowStateCategory;
+        let mut conn = self.db.get()?;
+        let category = match data.category.to_lowercase().as_str() {
+            "backlog" => WorkflowStateCategory::Backlog,
+            "unstarted" => WorkflowStateCategory::Unstarted,
+            "started" => WorkflowStateCategory::Started,
+            "completed" => WorkflowStateCategory::Completed,
+            "canceled" => WorkflowStateCategory::Canceled,
+            "triage" => WorkflowStateCategory::Triage,
+            _ => return Err(AppError::validation("Invalid category")),
+        };
+        let new_state = NewWorkflowState {
+            workflow_id: uuid::Uuid::new_v4(),
+            name: data.name,
+            description: data.description,
+            color: Some(data.color),
+            category,
+            position: data.position,
+            is_default: true,
+        };
+        let state = WorkflowsRepo::insert_team_default_state(&mut conn, team_id, &new_state)
+            .map_err(|e| AppError::internal(format!("Failed to create workflow state: {}", e)))?;
+        Ok(serde_json::json!(state))
+    }
+
+    async fn handle_update_team_workflow_status(
+        &self,
+        _ctx: RequestContext,
+        _team_id: Uuid,
+        status_id: Uuid,
+        data: UpdateTeamWorkflowStatusCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        use momentum_core::db::repositories::workflows::WorkflowsRepo;
+        use momentum_core::db::models::workflow::WorkflowStateCategory;
+        let mut conn = self.db.get()?;
+        let category = if let Some(ref cat_str) = data.category {
+            match cat_str.to_lowercase().as_str() {
+                "backlog" => Some(WorkflowStateCategory::Backlog),
+                "unstarted" => Some(WorkflowStateCategory::Unstarted),
+                "started" => Some(WorkflowStateCategory::Started),
+                "completed" => Some(WorkflowStateCategory::Completed),
+                "canceled" => Some(WorkflowStateCategory::Canceled),
+                "triage" => Some(WorkflowStateCategory::Triage),
+                _ => return Err(AppError::validation("Invalid category")),
+            }
+        } else {
+            None
+        };
+        let state = WorkflowsRepo::update_team_default_state_fields(
+            &mut conn,
+            status_id,
+            data.name.as_deref(),
+            data.description.as_deref(),
+            data.color.as_deref(),
+            category.as_ref(),
+            data.position,
+        ).map_err(|e| AppError::internal(format!("Failed to update workflow state: {}", e)))?;
+        Ok(serde_json::json!(state))
+    }
+
+    async fn handle_delete_team_workflow_status(
+        &self,
+        _ctx: RequestContext,
+        team_id: Uuid,
+        status_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        use momentum_core::db::repositories::workflows::WorkflowsRepo;
+        let mut conn = self.db.get()?;
+        // Verify the state exists and belongs to the team
+        let _existing = WorkflowsRepo::find_team_default_state_by_id(&mut conn, team_id, status_id)?
+            .ok_or_else(|| AppError::not_found("workflow state"))?;
+        // Delete the state
+        diesel::delete(momentum_core::schema::workflow_states::table.filter(momentum_core::schema::workflow_states::id.eq(status_id)))
+            .execute(&mut conn)
+            .map_err(|e| AppError::internal(format!("Failed to delete workflow state: {}", e)))?;
+        Ok(serde_json::json!({"deleted": true, "status_id": status_id}))
+    }
+
+    // Workspace handlers
+    async fn handle_get_workspace(
+        &self,
+        _ctx: RequestContext,
+        workspace_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        use momentum_core::db::repositories::workspaces::WorkspacesRepo;
+        let mut conn = self.db.get()?;
+        let workspace = WorkspacesRepo::find_by_id(&mut conn, workspace_id)?
+            .ok_or_else(|| AppError::not_found("workspace"))?;
+        Ok(serde_json::json!(workspace))
+    }
+
+    // Workspace member handlers
+    async fn handle_get_workspace_member(
+        &self,
+        ctx: RequestContext,
+        user_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        use momentum_core::db::repositories::workspace_members::WorkspaceMembersRepo;
+        let mut conn = self.db.get()?;
+        let member = WorkspaceMembersRepo::find(&mut conn, ctx.workspace_id, user_id)?
+            .ok_or_else(|| AppError::not_found("workspace member"))?;
+        Ok(serde_json::json!(member))
+    }
+
+    async fn handle_update_workspace_member(
+        &self,
+        ctx: RequestContext,
+        user_id: Uuid,
+        data: UpdateWorkspaceMemberCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        use momentum_core::db::models::workspace_member::{UpdateWorkspaceMember, WorkspaceMemberRole as DbRole};
+        let mut conn = self.db.get()?;
+        // Verify member exists
+        let _member = momentum_core::db::repositories::workspace_members::WorkspaceMembersRepo::find(&mut conn, ctx.workspace_id, user_id)?
+            .ok_or_else(|| AppError::not_found("workspace member"))?;
+        let new_role: DbRole = data.role.into();
+        let changes = UpdateWorkspaceMember { role: Some(new_role) };
+        diesel::update(momentum_core::schema::workspace_members::table.filter(
+            momentum_core::schema::workspace_members::user_id.eq(user_id).and(
+                momentum_core::schema::workspace_members::workspace_id.eq(ctx.workspace_id)
+            )
+        ))
+            .set(&changes)
+            .execute(&mut conn)
+            .map_err(|e| AppError::internal(format!("Failed to update member: {}", e)))?;
+        let updated = momentum_core::db::repositories::workspace_members::WorkspaceMembersRepo::find(&mut conn, ctx.workspace_id, user_id)?
+            .ok_or_else(|| AppError::not_found("workspace member after update"))?;
+        Ok(serde_json::json!(updated))
+    }
+
+    async fn handle_delete_workspace_member(
+        &self,
+        ctx: RequestContext,
+        user_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        use momentum_core::db::repositories::workspace_members::WorkspaceMembersRepo;
+        let mut conn = self.db.get()?;
+        let _member = WorkspaceMembersRepo::find(&mut conn, ctx.workspace_id, user_id)?
+            .ok_or_else(|| AppError::not_found("workspace member"))?;
+        WorkspaceMembersRepo::delete(&mut conn, ctx.workspace_id, user_id)
+            .map_err(|e| AppError::internal(format!("Failed to delete member: {}", e)))?;
+        Ok(serde_json::json!({"deleted": true, "user_id": user_id}))
+    }
+
+    // Comment handlers
+    async fn handle_query_comments(
+        &self,
+        _ctx: RequestContext,
+        issue_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        use momentum_core::db::repositories::comments::CommentRepo;
+        let mut conn = self.db.get()?;
+        let comments = CommentRepo::list_by_issue(&mut conn, issue_id, false)
+            .map_err(|e| AppError::internal(format!("Failed to list comments: {}", e)))?;
+        Ok(serde_json::json!(comments))
+    }
+
+    async fn handle_create_comment(
+        &self,
+        ctx: RequestContext,
+        issue_id: Uuid,
+        data: CreateCommentCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self.db.get()?;
+        let comment = momentum_core::services::CommentsService::create(&mut conn, &ctx, issue_id, data.content)?;
+        Ok(serde_json::json!(comment))
+    }
+
+    async fn handle_update_comment(
+        &self,
+        ctx: RequestContext,
+        _issue_id: Uuid,
+        comment_id: Uuid,
+        data: UpdateCommentCommand,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self.db.get()?;
+        let comment = momentum_core::services::CommentsService::update(&mut conn, &ctx, comment_id, data.content)?;
+        Ok(serde_json::json!(comment))
+    }
+
+    async fn handle_delete_comment(
+        &self,
+        ctx: RequestContext,
+        _issue_id: Uuid,
+        comment_id: Uuid,
+    ) -> Result<serde_json::Value, AppError> {
+        let mut conn = self.db.get()?;
+        momentum_core::services::CommentsService::delete(&mut conn, &ctx, comment_id)?;
+        Ok(serde_json::json!({"deleted": true, "comment_id": comment_id}))
     }
 
     pub async fn start_cleanup_task(&self) {
