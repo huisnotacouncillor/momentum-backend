@@ -1,24 +1,65 @@
 // @generated automatically by Diesel CLI.
 
 pub mod sql_types {
-    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+    #[derive(diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "invitation_status"))]
     pub struct InvitationStatus;
 
-    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+    #[derive(diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "label_level_enum"))]
     pub struct LabelLevelEnum;
 
-    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+    #[derive(diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "workspace_user_role"))]
     pub struct WorkspaceUserRole;
-
-    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "tsvector"))]
-    pub struct Tsvector;
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
+    agent_runs (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        issue_id -> Nullable<Uuid>,
+        plugin_id -> Text,
+        agent_id -> Text,
+        status -> Text,
+        input -> Nullable<Jsonb>,
+        output -> Nullable<Jsonb>,
+        error -> Nullable<Text>,
+        tokens_input -> Nullable<Int4>,
+        tokens_output -> Nullable<Int4>,
+        duration_ms -> Nullable<Int4>,
+        actor_id -> Nullable<Uuid>,
+        started_at -> Timestamptz,
+        completed_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
+    automation_rules (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        team_id -> Nullable<Uuid>,
+        #[max_length = 255]
+        name -> Varchar,
+        description -> Nullable<Text>,
+        is_enabled -> Bool,
+        #[max_length = 50]
+        trigger_type -> Varchar,
+        trigger_config -> Nullable<Jsonb>,
+        conditions -> Jsonb,
+        actions -> Jsonb,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
     comment_attachments (id) {
         id -> Uuid,
         comment_id -> Uuid,
@@ -33,6 +74,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     comment_mentions (id) {
         id -> Uuid,
         comment_id -> Uuid,
@@ -42,6 +85,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     comment_reactions (id) {
         id -> Uuid,
         comment_id -> Uuid,
@@ -53,6 +98,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     comments (id) {
         id -> Uuid,
         issue_id -> Uuid,
@@ -69,6 +116,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     cycles (id) {
         id -> Uuid,
         team_id -> Uuid,
@@ -104,6 +153,37 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
+    issue_field_definitions (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        plugin_id -> Text,
+        field_key -> Text,
+        label -> Text,
+        field_type -> Text,
+        options -> Nullable<Jsonb>,
+        required -> Bool,
+        sort_order -> Int4,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
+    issue_field_values (issue_id, field_id) {
+        issue_id -> Uuid,
+        field_id -> Uuid,
+        value -> Jsonb,
+        text_value -> Nullable<Text>,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
     issue_labels (issue_id, label_id) {
         issue_id -> Uuid,
         label_id -> Uuid,
@@ -112,7 +192,6 @@ diesel::table! {
 
 diesel::table! {
     use diesel::sql_types::*;
-    use super::sql_types::Tsvector;
 
     issues (id) {
         id -> Uuid,
@@ -154,6 +233,27 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
+    notifications (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        user_id -> Uuid,
+        #[max_length = 50]
+        notification_type -> Varchar,
+        #[max_length = 255]
+        title -> Varchar,
+        message -> Nullable<Text>,
+        data -> Nullable<Jsonb>,
+        is_read -> Bool,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
     oauth_providers (id) {
         id -> Int4,
         #[max_length = 100]
@@ -165,16 +265,93 @@ diesel::table! {
         auth_url -> Text,
         token_url -> Text,
         user_info_url -> Text,
-        redirect_uri -> Nullable<Text>,
         #[max_length = 255]
         scope -> Nullable<Varchar>,
         is_active -> Bool,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+        #[max_length = 255]
+        redirect_uri -> Nullable<Varchar>,
     }
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
+    outbox (id) {
+        id -> Int8,
+        aggregate_type -> Nullable<Text>,
+        aggregate_id -> Nullable<Uuid>,
+        event_type -> Text,
+        payload -> Jsonb,
+        occurred_at -> Timestamptz,
+        delivered_at -> Nullable<Timestamptz>,
+        attempt_count -> Int4,
+        next_retry_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
+    plugin_audit (id) {
+        id -> Int8,
+        plugin_id -> Text,
+        workspace_id -> Nullable<Uuid>,
+        event -> Text,
+        payload -> Nullable<Jsonb>,
+        actor_id -> Nullable<Uuid>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
+    plugin_installations (id) {
+        id -> Uuid,
+        workspace_id -> Uuid,
+        plugin_id -> Text,
+        config -> Jsonb,
+        status -> Text,
+        installed_at -> Timestamptz,
+        enabled_at -> Nullable<Timestamptz>,
+        error_message -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
+    plugin_storage (plugin_id, workspace_id, namespace, key) {
+        plugin_id -> Text,
+        workspace_id -> Uuid,
+        namespace -> Text,
+        key -> Text,
+        value -> Jsonb,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
+    plugins (id) {
+        id -> Text,
+        name -> Text,
+        version -> Text,
+        publisher -> Nullable<Text>,
+        manifest -> Jsonb,
+        status -> Text,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    use diesel::sql_types::*;
+
     project_statuses (id) {
         id -> Uuid,
         #[max_length = 255]
@@ -191,6 +368,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     projects (id) {
         id -> Uuid,
         workspace_id -> Uuid,
@@ -210,6 +389,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     roadmaps (id) {
         id -> Uuid,
         workspace_id -> Uuid,
@@ -223,6 +404,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     team_members (user_id, team_id) {
         user_id -> Uuid,
         team_id -> Uuid,
@@ -233,6 +416,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     teams (id) {
         id -> Uuid,
         workspace_id -> Uuid,
@@ -249,6 +434,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     user_credentials (id) {
         id -> Int4,
         user_id -> Uuid,
@@ -266,6 +453,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     user_sessions (id) {
         id -> Int4,
         user_id -> Uuid,
@@ -284,6 +473,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     users (id) {
         name -> Text,
         #[max_length = 255]
@@ -300,6 +491,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     workflow_states (id) {
         id -> Uuid,
         workflow_id -> Uuid,
@@ -318,6 +511,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     workflow_transitions (id) {
         id -> Uuid,
         workflow_id -> Uuid,
@@ -331,6 +526,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     workflows (id) {
         id -> Uuid,
         #[max_length = 255]
@@ -357,6 +554,8 @@ diesel::table! {
 }
 
 diesel::table! {
+    use diesel::sql_types::*;
+
     workspaces (id) {
         id -> Uuid,
         #[max_length = 255]
@@ -369,147 +568,10 @@ diesel::table! {
     }
 }
 
-diesel::table! {
-    agent_runs (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        issue_id -> Nullable<Uuid>,
-        plugin_id -> Text,
-        agent_id -> Text,
-        status -> Text,
-        input -> Nullable<Jsonb>,
-        output -> Nullable<Jsonb>,
-        error -> Nullable<Text>,
-        tokens_input -> Nullable<Int4>,
-        tokens_output -> Nullable<Int4>,
-        duration_ms -> Nullable<Int4>,
-        actor_id -> Nullable<Uuid>,
-        started_at -> Timestamptz,
-        completed_at -> Nullable<Timestamptz>,
-    }
-}
-
-diesel::table! {
-    automation_rules (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        team_id -> Nullable<Uuid>,
-        name -> Varchar,
-        description -> Nullable<Text>,
-        is_enabled -> Bool,
-        trigger_type -> Varchar,
-        trigger_config -> Nullable<Jsonb>,
-        conditions -> Jsonb,
-        actions -> Jsonb,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    issue_field_definitions (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        plugin_id -> Text,
-        field_key -> Text,
-        label -> Text,
-        field_type -> Text,
-        options -> Nullable<Jsonb>,
-        required -> Bool,
-        sort_order -> Int4,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    issue_field_values (issue_id, field_id) {
-        issue_id -> Uuid,
-        field_id -> Uuid,
-        value -> Jsonb,
-        text_value -> Nullable<Text>,
-        updated_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    notifications (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        user_id -> Uuid,
-        notification_type -> Varchar,
-        title -> Varchar,
-        message -> Nullable<Text>,
-        data -> Nullable<Jsonb>,
-        is_read -> Bool,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    outbox (id) {
-        id -> Int8,
-        aggregate_type -> Nullable<Text>,
-        aggregate_id -> Nullable<Uuid>,
-        event_type -> Text,
-        payload -> Jsonb,
-        occurred_at -> Timestamptz,
-        delivered_at -> Nullable<Timestamptz>,
-        attempt_count -> Int4,
-        next_retry_at -> Nullable<Timestamptz>,
-    }
-}
-
-diesel::table! {
-    plugin_audit (id) {
-        id -> Int8,
-        plugin_id -> Text,
-        workspace_id -> Nullable<Uuid>,
-        event -> Text,
-        payload -> Nullable<Jsonb>,
-        actor_id -> Nullable<Uuid>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    plugin_installations (id) {
-        id -> Uuid,
-        workspace_id -> Uuid,
-        plugin_id -> Text,
-        config -> Jsonb,
-        status -> Text,
-        installed_at -> Timestamptz,
-        enabled_at -> Nullable<Timestamptz>,
-        error_message -> Nullable<Text>,
-    }
-}
-
-diesel::table! {
-    plugin_storage (plugin_id, workspace_id, namespace, key) {
-        plugin_id -> Text,
-        workspace_id -> Uuid,
-        namespace -> Text,
-        key -> Text,
-        value -> Jsonb,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    plugins (id) {
-        id -> Text,
-        name -> Text,
-        version -> Text,
-        publisher -> Nullable<Text>,
-        manifest -> Jsonb,
-        status -> Text,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
+diesel::joinable!(agent_runs -> issues (issue_id));
+diesel::joinable!(agent_runs -> workspaces (workspace_id));
+diesel::joinable!(automation_rules -> teams (team_id));
+diesel::joinable!(automation_rules -> workspaces (workspace_id));
 diesel::joinable!(comment_attachments -> comments (comment_id));
 diesel::joinable!(comment_mentions -> comments (comment_id));
 diesel::joinable!(comment_mentions -> users (mentioned_user_id));
@@ -520,6 +582,9 @@ diesel::joinable!(comments -> users (author_id));
 diesel::joinable!(cycles -> teams (team_id));
 diesel::joinable!(invitations -> users (invited_by));
 diesel::joinable!(invitations -> workspaces (workspace_id));
+diesel::joinable!(issue_field_definitions -> workspaces (workspace_id));
+diesel::joinable!(issue_field_values -> issue_field_definitions (field_id));
+diesel::joinable!(issue_field_values -> issues (issue_id));
 diesel::joinable!(issue_labels -> issues (issue_id));
 diesel::joinable!(issue_labels -> labels (label_id));
 diesel::joinable!(issues -> cycles (cycle_id));
@@ -528,6 +593,10 @@ diesel::joinable!(issues -> teams (team_id));
 diesel::joinable!(issues -> workflow_states (workflow_state_id));
 diesel::joinable!(issues -> workflows (workflow_id));
 diesel::joinable!(labels -> workspaces (workspace_id));
+diesel::joinable!(notifications -> users (user_id));
+diesel::joinable!(notifications -> workspaces (workspace_id));
+diesel::joinable!(plugin_installations -> plugins (plugin_id));
+diesel::joinable!(plugin_installations -> workspaces (workspace_id));
 diesel::joinable!(project_statuses -> workspaces (workspace_id));
 diesel::joinable!(projects -> project_statuses (project_status_id));
 diesel::joinable!(projects -> roadmaps (roadmap_id));

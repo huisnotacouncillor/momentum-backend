@@ -148,4 +148,18 @@ impl IssueHandlers {
         let issue = service.get_by_id(&mut conn, &ctx, issue_id)?;
         Ok(serde_json::json!(issue))
     }
+
+    pub async fn handle_query_issue_priorities(
+        _ctx: momentum_core::services::context::RequestContext,
+    ) -> Result<serde_json::Value, AppError> {
+        // Return the list of valid issue priorities
+        let priorities = vec![
+            "none",
+            "low",
+            "medium",
+            "high",
+            "urgent",
+        ];
+        Ok(serde_json::json!(priorities))
+    }
 }

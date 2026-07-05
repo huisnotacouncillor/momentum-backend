@@ -1,0 +1,44 @@
+# Test environment for integration tests
+# Usage:
+#   docker-compose -f docker-compose.test.yml up -d
+#   cargo test -- --ignored --test-threads=1
+#   docker-compose -f docker-compose.test.yml down -v
+
+services:
+  postgres_test:
+    image: postgres:15-alpine
+    container_name: momentum-postgres-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rust-backend-test
+    ports:
+      - "5435:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+  redis_test:
+    image: redis:7-alpine
+    container_name: momentum-redis-test
+    ports:
+      - "6380:6379"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge

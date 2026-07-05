@@ -94,6 +94,36 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    GetTeam {
+        team_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    // Team workflow statuses
+    GetTeamWorkflowStatuses {
+        team_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    CreateTeamWorkflowStatus {
+        team_id: Uuid,
+        data: CreateTeamWorkflowStatusCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    UpdateTeamWorkflowStatus {
+        team_id: Uuid,
+        status_id: Uuid,
+        data: UpdateTeamWorkflowStatusCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    DeleteTeamWorkflowStatus {
+        team_id: Uuid,
+        status_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
     // Team members
     AddTeamMember {
         team_id: Uuid,
@@ -166,6 +196,28 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    GetWorkspace {
+        workspace_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    // Workspace members
+    GetWorkspaceMember {
+        user_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    UpdateWorkspaceMember {
+        user_id: Uuid,
+        data: UpdateWorkspaceMemberCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    DeleteWorkspaceMember {
+        user_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
     // Project statuses
     CreateProjectStatus {
         data: CreateProjectStatusCommand,
@@ -195,6 +247,10 @@ pub enum WebSocketCommand {
     // User profile
     UpdateProfile {
         data: UpdateProfileCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    QueryProfile {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
@@ -252,6 +308,10 @@ pub enum WebSocketCommand {
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
+    QueryIssuePriorities {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
     // Cycles
     QueryCycles {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -275,6 +335,31 @@ pub enum WebSocketCommand {
     },
     DeleteCycle {
         cycle_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    // Comments
+    QueryComments {
+        issue_id: Uuid,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    CreateComment {
+        issue_id: Uuid,
+        data: CreateCommentCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    UpdateComment {
+        issue_id: Uuid,
+        comment_id: Uuid,
+        data: UpdateCommentCommand,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    DeleteComment {
+        issue_id: Uuid,
+        comment_id: Uuid,
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },
@@ -745,6 +830,44 @@ pub struct UpdateCycleCommand {
     pub goal: Option<String>,
 }
 
+// Team workflow status commands
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateTeamWorkflowStatusCommand {
+    pub name: String,
+    pub description: Option<String>,
+    pub color: String,
+    pub category: String,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateTeamWorkflowStatusCommand {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub color: Option<String>,
+    pub category: Option<String>,
+    pub position: Option<i32>,
+}
+
+// Workspace member commands
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateWorkspaceMemberCommand {
+    pub role: WorkspaceMemberRole,
+}
+
+// Comment commands
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCommentCommand {
+    pub content: String,
+    pub content_type: Option<String>,
+    pub parent_comment_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateCommentCommand {
+    pub content: String,
+}
+
 // 自定义反序列化函数：将空字符串转换为 None
 fn deserialize_optional_uuid<'de, D>(deserializer: D) -> Result<Option<Uuid>, D::Error>
 where
@@ -802,6 +925,11 @@ impl WebSocketCommand {
             WebSocketCommand::UpdateTeam { .. } => "update_team",
             WebSocketCommand::DeleteTeam { .. } => "delete_team",
             WebSocketCommand::QueryTeams { .. } => "query_teams",
+            WebSocketCommand::GetTeam { .. } => "get_team",
+            WebSocketCommand::GetTeamWorkflowStatuses { .. } => "get_team_workflow_statuses",
+            WebSocketCommand::CreateTeamWorkflowStatus { .. } => "create_team_workflow_status",
+            WebSocketCommand::UpdateTeamWorkflowStatus { .. } => "update_team_workflow_status",
+            WebSocketCommand::DeleteTeamWorkflowStatus { .. } => "delete_team_workflow_status",
             WebSocketCommand::AddTeamMember { .. } => "add_team_member",
             WebSocketCommand::UpdateTeamMember { .. } => "update_team_member",
             WebSocketCommand::RemoveTeamMember { .. } => "remove_team_member",
@@ -820,7 +948,12 @@ impl WebSocketCommand {
             WebSocketCommand::UpdateWorkspace { .. } => "update_workspace",
             WebSocketCommand::DeleteWorkspace { .. } => "delete_workspace",
             WebSocketCommand::GetCurrentWorkspace { .. } => "get_current_workspace",
+            WebSocketCommand::GetWorkspace { .. } => "get_workspace",
+            WebSocketCommand::GetWorkspaceMember { .. } => "get_workspace_member",
+            WebSocketCommand::UpdateWorkspaceMember { .. } => "update_workspace_member",
+            WebSocketCommand::DeleteWorkspaceMember { .. } => "delete_workspace_member",
             WebSocketCommand::UpdateProfile { .. } => "update_profile",
+            WebSocketCommand::QueryProfile { .. } => "query_profile",
             WebSocketCommand::CreateProject { .. } => "create_project",
             WebSocketCommand::UpdateProject { .. } => "update_project",
             WebSocketCommand::DeleteProject { .. } => "delete_project",
@@ -831,11 +964,16 @@ impl WebSocketCommand {
             WebSocketCommand::DeleteIssue { .. } => "delete_issue",
             WebSocketCommand::QueryIssues { .. } => "query_issues",
             WebSocketCommand::GetIssue { .. } => "get_issue",
+            WebSocketCommand::QueryIssuePriorities { .. } => "query_issue_priorities",
             WebSocketCommand::QueryCycles { .. } => "query_cycles",
             WebSocketCommand::GetCycle { .. } => "get_cycle",
             WebSocketCommand::CreateCycle { .. } => "create_cycle",
             WebSocketCommand::UpdateCycle { .. } => "update_cycle",
             WebSocketCommand::DeleteCycle { .. } => "delete_cycle",
+            WebSocketCommand::QueryComments { .. } => "query_comments",
+            WebSocketCommand::CreateComment { .. } => "create_comment",
+            WebSocketCommand::UpdateComment { .. } => "update_comment",
+            WebSocketCommand::DeleteComment { .. } => "delete_comment",
             WebSocketCommand::GetFeatureFlags { .. } => "get_feature_flags",
         }
     }
@@ -878,6 +1016,7 @@ impl WebSocketCommand {
             | WebSocketCommand::DeleteWorkspace { request_id, .. }
             | WebSocketCommand::GetCurrentWorkspace { request_id, .. }
             | WebSocketCommand::UpdateProfile { request_id, .. }
+            | WebSocketCommand::QueryProfile { request_id, .. }
             | WebSocketCommand::CreateProject { request_id, .. }
             | WebSocketCommand::UpdateProject { request_id, .. }
             | WebSocketCommand::DeleteProject { request_id, .. }
@@ -888,11 +1027,25 @@ impl WebSocketCommand {
             | WebSocketCommand::DeleteIssue { request_id, .. }
             | WebSocketCommand::QueryIssues { request_id, .. }
             | WebSocketCommand::GetIssue { request_id, .. }
+            | WebSocketCommand::QueryIssuePriorities { request_id, .. }
             | WebSocketCommand::QueryCycles { request_id, .. }
             | WebSocketCommand::GetCycle { request_id, .. }
             | WebSocketCommand::CreateCycle { request_id, .. }
             | WebSocketCommand::UpdateCycle { request_id, .. }
             | WebSocketCommand::DeleteCycle { request_id, .. }
+            | WebSocketCommand::QueryComments { request_id, .. }
+            | WebSocketCommand::CreateComment { request_id, .. }
+            | WebSocketCommand::UpdateComment { request_id, .. }
+            | WebSocketCommand::DeleteComment { request_id, .. }
+            | WebSocketCommand::GetTeam { request_id, .. }
+            | WebSocketCommand::GetTeamWorkflowStatuses { request_id, .. }
+            | WebSocketCommand::CreateTeamWorkflowStatus { request_id, .. }
+            | WebSocketCommand::UpdateTeamWorkflowStatus { request_id, .. }
+            | WebSocketCommand::DeleteTeamWorkflowStatus { request_id, .. }
+            | WebSocketCommand::GetWorkspace { request_id, .. }
+            | WebSocketCommand::GetWorkspaceMember { request_id, .. }
+            | WebSocketCommand::UpdateWorkspaceMember { request_id, .. }
+            | WebSocketCommand::DeleteWorkspaceMember { request_id, .. }
             | WebSocketCommand::GetFeatureFlags { request_id, .. } => request_id,
         };
         id.clone()

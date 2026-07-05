@@ -20,14 +20,14 @@ impl InvitationsRepo {
         email_val: &str,
     ) -> Result<bool, diesel::result::Error> {
         use crate::schema::invitations::dsl as inv;
-        diesel::select(diesel::dsl::exists(
-            inv::invitations
-                .filter(inv::workspace_id.eq(ws_id))
-                .filter(inv::email.eq(email_val))
-                .filter(inv::status.eq(InvitationStatus::Pending))
-                .filter(inv::expires_at.gt(chrono::Utc::now())),
-        ))
-        .get_result(conn)
+        inv::invitations
+            .filter(inv::workspace_id.eq(ws_id))
+            .filter(inv::email.eq(email_val))
+            .filter(inv::status.eq(InvitationStatus::Pending))
+            .filter(inv::expires_at.gt(chrono::Utc::now()))
+            .first::<Invitation>(conn)
+            .optional()
+            .map(|opt| opt.is_some())
     }
 
     pub fn update_status(

@@ -1,4 +1,5 @@
 use diesel::prelude::*;
+use diesel::query_builder::QueryId;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use uuid::Uuid;
@@ -49,6 +50,11 @@ impl diesel::deserialize::FromSql<crate::schema::sql_types::InvitationStatus, di
             _ => Err("Unrecognized enum variant".into()),
         }
     }
+}
+
+impl QueryId for crate::schema::sql_types::InvitationStatus {
+    type QueryId = Self;
+    const HAS_STATIC_QUERY_ID: bool = true;
 }
 
 // Invitation 模型定义
