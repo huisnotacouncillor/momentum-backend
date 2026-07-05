@@ -1,10 +1,11 @@
-use axum::{Router, Server, middleware::from_fn};
+use axum::{Router, middleware::from_fn};
 use momentum_api::middleware::{performance_monitoring_middleware, request_tracking_middleware};
 use momentum_api::{AppConfig, AppState, websocket};
 use momentum_core::config::Config;
 use momentum_core::db as core_db;
 use momentum_core::utils::AssetUrlHelper;
 use std::sync::Arc;
+use tokio::signal;
 use tower_http::cors::{Any, CorsLayer};
 
 #[tokio::main]
@@ -77,16 +78,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(state.clone());
 
     // Build router - apply auth middleware only to routes that need it
-    let protected_routes = momentum_api::routes::create_router(state.clone()).layer(
-        axum::middleware::from_fn_with_state(
+    // P2.2 修复：通过 layer 注入 AuthConfig，避免 default() 密钥回退
+    use momentum_api::middleware::auth::AuthConfig;
+    let auth_config = AuthConfig::from_config(&core_config);
+
+    let protected_routes = momentum_api::routes::create_router(state.clone())
+        .layer(axum::middleware::from_fn_with_state(
             Arc::new(state.db.clone()),
             momentum_api::middleware::auth::auth_middleware,
-        ),
-    );
+        ))
+        .layer(axum::Extension(auth_config));
 
     let app = Router::new()
+        // P3.1 修复：业务 API 挂载到 /v1 路径，支持版本演进
+        .nest("/v1", protected_routes)
+        // WebSocket 和 auth_routes 暂不版本化（保持向后兼容）
+        // 未来可在 /v1/auth 中提供新版本认证
         .merge(auth_routes)
-        .merge(protected_routes)
         .merge(websocket::create_websocket_routes().with_state(ws_state))
         .layer(cors)
         .layer(from_fn(request_tracking_middleware))
@@ -97,8 +105,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = config.server_address;
     tracing::info!("Server running at http://{}", addr);
     tracing::info!("WebSocket endpoint available at ws://{}/ws", addr);
+    tracing::info!("Press Ctrl+C or send SIGTERM to shutdown gracefully");
 
-    Server::bind(&addr).serve(app.into_make_service()).await?;
+    // P1.1 修复：使用 graceful shutdown
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
+    tracing::info!("Server shut down gracefully");
     Ok(())
+}
+
+/// 监听操作系统信号（Ctrl+C / SIGTERM）触发优雅关闭
+///
+/// 当接收到信号时：
+/// 1. 停止接受新连接
+/// 2. 等待正在进行的请求完成（默认超时 30s）
+/// 3. 关闭所有 WebSocket 连接
+/// 4. 归还数据库连接到池中
+/// 5. 清理后台任务
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {
+            tracing::info!("Received Ctrl+C, starting graceful shutdown...");
+        }
+        _ = terminate => {
+            tracing::info!("Received SIGTERM, starting graceful shutdown...");
+        }
+    }
 }
