@@ -7,6 +7,7 @@ pub mod cache;
 pub mod state;
 pub mod validation;
 pub mod error;
+pub mod observability;
 
 // Re-exports for convenience
 pub use config::AppConfig;
