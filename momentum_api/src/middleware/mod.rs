@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod log_dedup_tests;
 pub mod permission;
 pub mod request_tracking;
 

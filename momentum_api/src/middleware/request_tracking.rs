@@ -118,71 +118,16 @@ fn get_or_generate_request_id(headers: &HeaderMap) -> String {
         .unwrap_or_else(|| Uuid::new_v4().to_string())
 }
 
-/// 性能监控中间件
-/// 专门用于监控API性能指标
+/// 性能监控中间件（Issue #8 修复后为纯透传）
+///
+/// 历史：之前该函数也记录 perf metrics 与分级日志，与
+/// `request_tracking_middleware` 的完成日志重复，导致每个请求产生 2 条完成日志。
+///
+/// 修复后：`request_tracking_middleware` 已经记录 status + duration_ms
+/// 在结构化字段中，无需重复打日志。本函数保留只是为了 Router 装配兼容，
+/// 是纯透传。
 pub async fn performance_monitoring_middleware<B>(request: Request<B>, next: Next<B>) -> Response {
-    let start_time = Instant::now();
-    let method = request.method().clone();
-    let uri = request.uri().path().to_string();
-
-    // 处理请求
-    let response = next.run(request).await;
-
-    // 计算性能指标
-    let duration = start_time.elapsed();
-    let duration_ms = duration.as_millis();
-    let status_code = response.status().as_u16();
-
-    // 记录性能指标
-    info!(
-        method = %method,
-        uri = %uri,
-        status_code = %status_code,
-        duration_ms = %duration_ms,
-        "API performance metrics"
-    );
-
-    // 根据不同的性能阈值记录不同级别的日志
-    match duration_ms {
-        0..=100 => {
-            // 快速响应，debug级别
-            tracing::debug!(
-                method = %method,
-                uri = %uri,
-                duration_ms = %duration_ms,
-                "Fast response"
-            );
-        }
-        101..=500 => {
-            // 正常响应，info级别
-            info!(
-                method = %method,
-                uri = %uri,
-                duration_ms = %duration_ms,
-                "Normal response"
-            );
-        }
-        501..=1000 => {
-            // 较慢响应，warn级别
-            warn!(
-                method = %method,
-                uri = %uri,
-                duration_ms = %duration_ms,
-                "Slow response"
-            );
-        }
-        _ => {
-            // 非常慢的响应，error级别
-            tracing::error!(
-                method = %method,
-                uri = %uri,
-                duration_ms = %duration_ms,
-                "Very slow response"
-            );
-        }
-    }
-
-    response
+    next.run(request).await
 }
 
 /// 从请求头中提取请求ID的辅助函数
