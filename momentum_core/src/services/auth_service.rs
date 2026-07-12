@@ -30,10 +30,15 @@ use crate::{
 pub struct AuthService;
 
 impl AuthService {
+    /// 注册新用户
+    ///
+    /// `bcrypt_cost` 控制密码哈希的 cost。**必须由调用方从 `Config.bcrypt_cost` 传入**，
+    /// 不再使用 `bcrypt::DEFAULT_COST`，避免改 env 变量无效果。
     pub fn register(
         conn: &mut PgConnection,
         req: &RegisterRequest,
         asset_helper: &AssetUrlHelper,
+        bcrypt_cost: u32,
     ) -> Result<LoginResponse, AppError> {
         validate_register_request(&req.name, &req.username, &req.email, &req.password)?;
 
@@ -56,7 +61,9 @@ impl AuthService {
         }
 
         // Hash password
-        let hashed_password = hash(&req.password, bcrypt::DEFAULT_COST)
+        // Issue #9：使用调用方传入的 bcrypt_cost（来自 Config.bcrypt_cost），
+        // 之前硬编码 bcrypt::DEFAULT_COST 导致改 env 变量无效果。
+        let hashed_password = hash(&req.password, bcrypt_cost)
             .map_err(|_| AppError::internal("Failed to hash password"))?;
 
         let new_user = NewUser {

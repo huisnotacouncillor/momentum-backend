@@ -37,7 +37,7 @@ pub async fn register(
         }
     };
 
-    match AuthService::register(&mut conn, &payload, &state.asset_helper) {
+    match AuthService::register(&mut conn, &payload, &state.asset_helper, state.bcrypt_cost) {
         Ok(login_response) => {
             let response = ApiResponse::created(login_response, "User registered successfully");
             (StatusCode::CREATED, Json(response)).into_response()
