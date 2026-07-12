@@ -833,44 +833,12 @@ impl WebSocketManager {
             let user_current_workspace = user.current_workspace_id; // 捕获用户的 workspace
             tokio::spawn(async move {
                 while let Ok(message) = rx.recv().await {
-                    // P0 修复：基于消息元数据和用户工作区进行过滤
-                    // 防止工作区 A 的事件泄漏给工作区 B 的用户
-                    let should_send = match &message.message_type {
-                        // 通知消息 - 如果携带 workspace_id 则只发送给同工作区
-                        MessageType::Notification => {
-                            match message.data.get("workspace_id") {
-                                Some(ws_val) => {
-                                    let ws_uuid = ws_val
-                                        .as_str()
-                                        .and_then(|s| uuid::Uuid::parse_str(s).ok());
-                                    ws_uuid.map(|ws| Some(ws) == user_current_workspace).unwrap_or(false)
-                                }
-                                // 没有 workspace_id 的全局通知 - 仅发送给所有
-                                None => true,
-                            }
-                        }
-                        // 用户加入/离开 - 如果携带 workspace_id 则只发送给同工作区
-                        MessageType::UserJoined | MessageType::UserLeft => {
-                            match message.data.get("workspace_id") {
-                                Some(ws_val) => {
-                                    let ws_uuid = ws_val
-                                        .as_str()
-                                        .and_then(|s| uuid::Uuid::parse_str(s).ok());
-                                    ws_uuid.map(|ws| Some(ws) == user_current_workspace).unwrap_or(false)
-                                }
-                                None => true,
-                            }
-                        }
-                        // 系统消息和心跳 - 发送给所有
-                        MessageType::SystemMessage | MessageType::Ping | MessageType::Pong => true,
-                        // CommandResponse 是直接发给特定连接的，不应该通过 broadcast 接收
-                        // Text 和其他类型不应通过 broadcast_tx 发送
-                        MessageType::CommandResponse
-                        | MessageType::Text
-                        | MessageType::Error
-                        | MessageType::Command
-                        | MessageType::InitialData => false,
-                    };
+                    // P0 修复（Issue #4）：统一调用 `should_send_to_user` 做工作区隔离判断
+                    // 语义详见 `should_send_to_user` —— 关键改动：
+                    // - 缺失/非法 workspace_id → 默认 deny（之前是 None => true，会泄漏）
+                    // - 系统/心跳消息 → 所有人
+                    // - CommandResponse / Text 等 → 永不通过 broadcast 分发
+                    let should_send = should_send_to_user(&message, user_current_workspace);
 
                     if should_send {
                         if let Ok(msg_text) = serde_json::to_string(&message) {
@@ -1042,5 +1010,173 @@ impl WebSocketManager {
 impl Default for WebSocketManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// 判断一条 broadcast 消息是否应该发给指定用户（基于其工作区）。
+///
+/// P0 修复 (Issue #4)：保证工作区 A 的事件不会被工作区 B 的用户收到。
+///
+/// 规则：
+/// - **Notification / UserJoined / UserLeft**：携带 `data["workspace_id"]` 时，
+///   只有该工作区的用户能收到；**缺失** workspace_id 时**拒绝**（防御性默认 deny）
+/// - **SystemMessage / Ping / Pong**：所有用户都收（横切通知）
+/// - **CommandResponse / Command / Text / Error / InitialData**：绝不应通过 broadcast 分发
+///   （这些走 connection-targeted channel）
+pub fn should_send_to_user(msg: &WebSocketMessage, user_workspace: Option<Uuid>) -> bool {
+    match &msg.message_type {
+        MessageType::Notification | MessageType::UserJoined | MessageType::UserLeft => {
+            match msg.data.get("workspace_id") {
+                Some(ws_val) => {
+                    let ws_uuid = ws_val.as_str().and_then(|s| Uuid::parse_str(s).ok());
+                    ws_uuid.map(|ws| Some(ws) == user_workspace).unwrap_or(false)
+                }
+                // P0 fix：缺失 workspace_id → deny（默认防御）
+                None => false,
+            }
+        }
+        MessageType::SystemMessage | MessageType::Ping | MessageType::Pong => true,
+        // command response / initial data 等走专用通道，不通过 broadcast
+        MessageType::CommandResponse
+        | MessageType::Command
+        | MessageType::Text
+        | MessageType::Error
+        | MessageType::InitialData => false,
+    }
+}
+
+#[cfg(test)]
+mod workspace_isolation_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn ws_a() -> Uuid {
+        Uuid::parse_str("00000000-0000-0000-0000-00000000000a").unwrap()
+    }
+
+    fn ws_b() -> Uuid {
+        Uuid::parse_str("00000000-0000-0000-0000-00000000000b").unwrap()
+    }
+
+    fn notification_in(workspace_id: Uuid) -> WebSocketMessage {
+        WebSocketMessage {
+            message_type: MessageType::Notification,
+            data: json!({ "workspace_id": workspace_id, "content": "hi" }),
+            id: None,
+            timestamp: None,
+        }
+    }
+
+    #[test]
+    fn notification_in_workspace_a_sent_to_user_in_workspace_a() {
+        let msg = notification_in(ws_a());
+        assert!(should_send_to_user(&msg, Some(ws_a())));
+    }
+
+    #[test]
+    fn notification_in_workspace_a_NOT_sent_to_user_in_workspace_b() {
+        // P0 修复核心：workspace A 的事件不能泄漏给 workspace B 的用户
+        let msg = notification_in(ws_a());
+        assert!(
+            !should_send_to_user(&msg, Some(ws_b())),
+            "workspace A notification must NOT reach user in workspace B"
+        );
+    }
+
+    #[test]
+    fn notification_without_workspace_id_is_rejected() {
+        // 缺失 workspace_id 的 Notification 不能再广播给所有人（默认 deny）
+        let msg = WebSocketMessage {
+            message_type: MessageType::Notification,
+            data: json!({ "content": "no workspace_id here" }),
+            id: None,
+            timestamp: None,
+        };
+        assert!(
+            !should_send_to_user(&msg, Some(ws_a())),
+            "missing workspace_id must default-deny (P0 fix). prev behaviour: true"
+        );
+        assert!(!should_send_to_user(&msg, None));
+    }
+
+    #[test]
+    fn notification_with_unparseable_workspace_id_is_rejected() {
+        let msg = WebSocketMessage {
+            message_type: MessageType::Notification,
+            data: json!({ "workspace_id": "not-a-uuid" }),
+            id: None,
+            timestamp: None,
+        };
+        assert!(
+            !should_send_to_user(&msg, Some(ws_a())),
+            "unparseable workspace_id must deny (P0 fix). prev behaviour: false but defensive test"
+        );
+    }
+
+    #[test]
+    fn user_joined_is_workspace_scoped() {
+        let msg = WebSocketMessage {
+            message_type: MessageType::UserJoined,
+            data: json!({ "workspace_id": ws_a(), "username": "alice" }),
+            id: None,
+            timestamp: None,
+        };
+        assert!(should_send_to_user(&msg, Some(ws_a())));
+        assert!(!should_send_to_user(&msg, Some(ws_b())));
+        assert!(!should_send_to_user(&msg, None));
+    }
+
+    #[test]
+    fn user_left_is_workspace_scoped() {
+        let msg = WebSocketMessage {
+            message_type: MessageType::UserLeft,
+            data: json!({ "workspace_id": ws_a() }),
+            id: None,
+            timestamp: None,
+        };
+        assert!(should_send_to_user(&msg, Some(ws_a())));
+        assert!(!should_send_to_user(&msg, Some(ws_b())));
+    }
+
+    #[test]
+    fn system_message_reaches_all_users() {
+        let msg = WebSocketMessage {
+            message_type: MessageType::SystemMessage,
+            data: json!({ "content": "server maintenance in 5min" }),
+            id: None,
+            timestamp: None,
+        };
+        assert!(should_send_to_user(&msg, Some(ws_a())));
+        assert!(should_send_to_user(&msg, Some(ws_b())));
+        assert!(should_send_to_user(&msg, None));
+    }
+
+    #[test]
+    fn ping_and_pong_reach_all_users() {
+        for mtype in [MessageType::Ping, MessageType::Pong] {
+            let msg = WebSocketMessage {
+                message_type: mtype.clone(),
+                data: json!({}),
+                id: None,
+                timestamp: None,
+            };
+            assert!(
+                should_send_to_user(&msg, None),
+                "{:?} must reach users with no workspace",
+                mtype
+            );
+        }
+    }
+
+    #[test]
+    fn command_response_is_NOT_broadcast() {
+        // CommandResponse 走 connection-targeted 通道，broadcast 时收到只会浪费带宽
+        let msg = WebSocketMessage {
+            message_type: MessageType::CommandResponse,
+            data: json!({"success": true}),
+            id: None,
+            timestamp: None,
+        };
+        assert!(!should_send_to_user(&msg, Some(ws_a())));
     }
 }
