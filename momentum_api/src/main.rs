@@ -7,6 +7,28 @@ use momentum_core::utils::AssetUrlHelper;
 use std::sync::Arc;
 use tokio::signal;
 use tower_http::cors::{Any, CorsLayer};
+use tracing_subscriber::{EnvFilter, fmt};
+
+use momentum_api::observability::{LoggingLevel, LoggingOptions};
+
+/// 解析 LoggingOptions 并安装 tracing subscriber（每个进程最多调用一次）
+pub fn init_tracing(opts: LoggingOptions) -> Result<(), String> {
+    use momentum_api::observability::LoggingFormat;
+    let level: LoggingLevel = opts.level.parse().map_err(|e: String| e)?;
+    let format: LoggingFormat = opts.format.parse().map_err(|e: String| e)?;
+
+    // EnvFilter：先读 LOG_LEVEL env 覆盖，再回退到 config
+    let env_filter = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new(level.as_env_filter()))
+        .map_err(|e| format!("failed to build EnvFilter: {}", e))?;
+
+    let result = match format {
+        LoggingFormat::Json => fmt().with_env_filter(env_filter).json().try_init(),
+        LoggingFormat::Pretty => fmt().with_env_filter(env_filter).try_init(),
+    };
+
+    result.map_err(|e| format!("tracing already initialized or error: {}", e))
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,10 +36,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let core_config = Config::from_env()?;
     let config = AppConfig::from_core_config(core_config.clone());
 
-    // Initialize tracing
-    tracing_subscriber::fmt::init();
+    // Initialize tracing using Config.log_level / log_format (Issue #2 修复)
+    // 旧：tracing_subscriber::fmt::init(); — 不读 env，运维无法按模块调日志
+    let logging_opts = momentum_api::observability::LoggingOptions {
+        level: core_config.log_level.clone(),
+        format: core_config.log_format.clone(),
+    };
+    if let Err(e) = init_tracing(logging_opts) {
+        eprintln!("WARN: failed to init tracing: {}. Falling back to default.", e);
+        tracing_subscriber::fmt().init();
+    }
 
-    tracing::info!("Starting server with config: {:?}", config);
+    // 用 sanitized config 启动日志（不会泄漏 JWT secret / database url）
+    tracing::info!(
+        "Starting server with config: {}",
+        serde_json::to_string(&core_config.sanitize_for_logging())
+            .unwrap_or_else(|_| "<failed to serialize sanitized config>".to_string())
+    );
 
     // Initialize database
     let db_pool = core_db::create_pool(&core_config.database())?;

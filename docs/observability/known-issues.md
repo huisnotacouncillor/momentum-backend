@@ -1,7 +1,13 @@
 # 可观测性已知缺口（Known Issues）
 
-> 状态：2026-07-12 快照
+> 状态：2026-07-13 快照（Issue #1、#2 已修复）
 > 来源：架构审视报告 + 代码巡检
+
+## ✅ 已修复（2026-07-13 commit e72244d + 当前）
+
+- **#1 trace_id 在所有路由硬编码 "unknown"** → 改用 `extract_trace_id(&headers)`，新增 72 处接入
+- **#3 日志配置不生效** → `init_tracing()` 解析 `Config.log_level` + `LOG_LEVEL` env + `Config.log_format`
+- **#6 敏感信息泄漏** → `Config::sanitize_for_logging()` 显式排除 `jwt_secret` / `database_url`，启动日志用 sanitized 版本
 
 ---
 

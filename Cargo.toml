@@ -49,7 +49,7 @@ serde_yaml = "0.9"
 which = "6.0"
 clap = "4.0"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3.20", features = ["json"] }
+tracing-subscriber = { version = "0.3.20", features = ["json", "env-filter"] }
 
 # Auth
 jsonwebtoken = "9.3"
