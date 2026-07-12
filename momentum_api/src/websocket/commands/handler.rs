@@ -552,8 +552,13 @@ impl WebSocketCommandHandler {
         connection_id: &str,
     ) -> WebSocketCommandResponse {
         let request_id = command.request_id();
-        let idempotency_key = "disabled".to_string();
         let command_type = command.command_type();
+
+        // Issue #7：基于 user + workspace + payload 计算 idempotency_key，存入 RequestContext
+        // 而非硬编码 "disabled"。这样：
+        //  - 同 key 重放可以走 IdempotencyCache 命中（如果 handler 配了）
+        //  - service 层如果支持，也能基于 ctx.idempotency_key 做去重
+        let idempotency_key = self.generate_idempotency_key(&command, user);
 
         // Step 8.5: Try registry dispatch when registry + subscription_manager are wired up
         if let (Some(reg), Some(sub_mgr)) = (&self.registry, &self.subscription_manager) {
