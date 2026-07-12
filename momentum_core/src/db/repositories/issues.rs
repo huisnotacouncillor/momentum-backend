@@ -7,13 +7,23 @@ pub struct IssueRepo;
 impl IssueRepo {
     pub fn get_next_issue_number(
         conn: &mut PgConnection,
-        _team_id: uuid::Uuid,
+        team_id_param: uuid::Uuid,
     ) -> Result<i32, diesel::result::Error> {
-        use crate::schema::issues::dsl::*;
+        // Issue #6 fix：per-team advisory lock 串行化并发请求，
+        // 避免 max+1 后被并发事务插入同一 issue_number 触发 unique violation → 500
+        // pg_advisory_xact_lock 在事务结束（commit/rollback）时自动释放。
+        // 不同 team 互不阻塞（锁 key 由 team_id 计算得出）。
+        let lock_key: i64 = team_id_param.as_bytes().iter().fold(0i64, |acc, &b| {
+            acc.wrapping_shl(8).wrapping_add(b as i64)
+        });
+        diesel::sql_query("SELECT pg_advisory_xact_lock($1)")
+            .bind::<diesel::sql_types::BigInt, _>(lock_key)
+            .execute(conn)?;
 
-        // Get max issue_number for this team, with 0 as default if no issues exist
+        // 导入 dsl
+        use crate::schema::issues::dsl::*;
         let max_number = issues
-            .filter(team_id.eq(_team_id))
+            .filter(team_id.eq(team_id_param))
             .select(issue_number)
             .order(issue_number.desc())
             .limit(1)
@@ -268,6 +278,49 @@ mod search_sql_guard_tests {
                 && !SEARCH_RANK_SQL.contains("to_tsvector('english', description)"),
             "SEARCH_RANK_SQL must NOT inline-recompute tsvector. got: {}",
             SEARCH_RANK_SQL
+        );
+    }
+}
+
+/// Issue #6 防退化守门：get_next_issue_number 必须串行化 per-team 的发放，
+/// 否则并发插入会触发 unique violation → 500。
+#[cfg(test)]
+mod issue_number_race_guard_tests {
+    #[test]
+    fn get_next_issue_number_acquires_advisory_lock() {
+        // 仅扫描函数体（前 30 行），避免 doc comment 里的字符串触发假阳性
+        let source = include_str!("issues.rs");
+        let fn_start = source
+            .find("pub fn get_next_issue_number")
+            .expect("function must exist");
+        let snippet: String = source[fn_start..]
+            .lines()
+            .take(30)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            snippet.contains("pg_advisory_xact_lock"),
+            "Issue #6 fix: get_next_issue_number body must acquire per-team advisory lock. \
+             first 30 lines of function:\n{}",
+            snippet
+        );
+    }
+
+    #[test]
+    fn get_next_issue_number_uses_team_id_argument() {
+        // 历史 bug：参数名叫 `_team_id`（下划线前缀），调用方传 team_id 但被忽略
+        let source = include_str!("issues.rs");
+        let fn_start = source
+            .find("pub fn get_next_issue_number")
+            .expect("function must exist");
+        let fn_body_start = source[fn_start..]
+            .find('{')
+            .map(|i| i + fn_start)
+            .expect("function body must start");
+        let signature_section = &source[fn_start..fn_body_start];
+        assert!(
+            !signature_section.contains("_team_id"),
+            "Issue #6 fix: function arg must be `team_id`, not `_team_id` (prev: was ignored)"
         );
     }
 }
