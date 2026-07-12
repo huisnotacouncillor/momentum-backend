@@ -1,6 +1,32 @@
-# Momentum Plugin SDK 实战指南
+# Plugin SDK 文档
 
-> **第一个内部 Dummy 插件已跑通。从这里开始接入你的第一个真实插件。**
+> Momentum 的插件系统：把"Momentum 团队协作内核"开放为可扩展平台，第三方/垂直行业插件通过 gRPC + Manifest 接入。
+
+---
+
+## 📚 文档导航
+
+| 文档 | 用途 | 何时读 |
+|---|---|---|
+| **[README.md](./README.md)**（本文件） | 实战指南：5 分钟跑通第一个插件 | 想马上动手时 |
+| **[design.md](./design.md)** | 架构设计：gRPC 协议、8 大扩展点、权限模型 | 需要理解"为什么这样设计" |
+| **[handover-2026-06-27.md](./handover-2026-06-27.md)** | 当初实现 P0 的交接笔记：技术决策、坑、验证命令 | 接手后续工作 / 排查疑难 |
+
+---
+
+## 🎯 状态速览（2026-07-12）
+
+- ✅ Dummy 插件已跑通（`plugins/plugin-dummy/`，独立 workspace member）
+- ✅ 8 大扩展点中 **Field / Agent / Storage / Webhook / Permission** 已实现；View / Workflow / Integration 为 stub
+- ✅ gRPC 用 **TCP localhost**（端口默认 19991，UDS 在 v0.2 切换）
+- ⚠️ plugin-dummy 的 E2E 测试 (`--ignored`) 尚未接入 CI
+- ⚠️ `state.rs` plugin_host 字段待整合（handover §4 待办）
+
+代码入口：
+- 协议：`proto/plugin.proto`
+- Core：`momentum_core/src/plugins/{manifest,permission,extension/,registry/}/`
+- 路由：`momentum_api/src/routes/plugins.rs`
+- Host：`momentum_plugin_host/src/{supervisor,process,agent_impl}.rs`
 
 ---
 
@@ -162,7 +188,7 @@ permissions:
   - storage.write:cache
 ```
 
-完整 Manifest 规范见 `docs/PLUGIN_SDK_DESIGN.md §2`。
+完整 Manifest 规范见 [`design.md §2`](./design.md)。
 
 ---
 
@@ -418,12 +444,11 @@ psql $DATABASE_URL -c "TRUNCATE plugin_installations, plugin_storage, plugin_aud
 
 ## 7. 文档索引
 
-- [`docs/PLUGIN_SDK_DESIGN.md`](./PLUGIN_SDK_DESIGN.md) — 完整设计（8 大扩展点 / gRPC 协议 / Manifest / 生命周期 / 权限）
-- [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) — 整体架构
-- [`docs/PRODUCT_PLAN.md`](./PRODUCT_PLAN.md) — 产品规划 v3.0
-- [`proto/plugin.proto`](../proto/plugin.proto) — gRPC 契约
-- [`examples/dummy-plugin/plugin.yaml`](../examples/dummy-plugin/plugin.yaml) — 完整 Manifest 示例
-- [`examples/dummy-plugin/src/main.rs`](../examples/dummy-plugin/src/main.rs) — 完整 gRPC Server 示例
+- [`design.md`](./design.md) — 完整设计（8 大扩展点 / gRPC 协议 / Manifest / 生命周期 / 权限）
+- [`handover-2026-06-27.md`](./handover-2026-06-27.md) — P0 实施交接笔记（坑 + 验证命令）
+- `proto/plugin.proto` — gRPC 契约
+- `plugins/plugin-dummy/plugin.yaml` — 完整 Manifest 示例
+- `plugins/plugin-dummy/src/main.rs` — 完整 gRPC Server 示例
 - [`src/plugins/`](../src/plugins/) — Core 端 SDK 实现
 - [`scripts/smoke_test.sh`](../scripts/smoke_test.sh) — 端到端 smoke test
 

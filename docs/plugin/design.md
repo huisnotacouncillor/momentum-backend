@@ -4,8 +4,9 @@
 > 文档版本：v0.1 · 2026-06-19
 
 **相关文档**：
-- [产品规划 v3.0](./PRODUCT_PLAN.md)
-- [架构设计 v1.0](./ARCHITECTURE.md)
+- [产品规划 v3.0](../../docs/superpowers/plans/2026-06-27-momentum-product-planning.md)
+- [架构审视](../../docs/architecture/README.md)
+- [ADR 索引](../../docs/adr/README.md)
 
 ---
 
