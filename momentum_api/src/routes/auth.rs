@@ -4,7 +4,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
+use axum::http::HeaderMap;
 use momentum_core::db::models::{
     api::ApiResponse,
     auth::{LoginRequest, RegisterRequest},
@@ -70,6 +72,7 @@ pub async fn login(
 pub async fn get_profile(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -83,7 +86,7 @@ pub async fn get_profile(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     match AuthService::get_profile(&mut conn, &ctx, &state.asset_helper) {
@@ -99,6 +102,7 @@ pub async fn get_profile(
 pub async fn update_profile(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<UpdateProfileRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -113,7 +117,7 @@ pub async fn update_profile(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     match AuthService::update_profile(&mut conn, &ctx, &payload, &state.asset_helper) {
@@ -129,6 +133,7 @@ pub async fn update_profile(
 pub async fn switch_workspace(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<SwitchWorkspaceRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -143,7 +148,7 @@ pub async fn switch_workspace(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     match AuthService::switch_workspace(&mut conn, &ctx, payload.workspace_id) {
@@ -159,6 +164,7 @@ pub async fn switch_workspace(
 pub async fn logout(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -172,7 +178,7 @@ pub async fn logout(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     // 使所有会话失效

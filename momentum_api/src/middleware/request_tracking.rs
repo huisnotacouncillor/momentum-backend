@@ -192,3 +192,58 @@ pub fn extract_request_id(headers: &HeaderMap) -> Option<String> {
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
 }
+
+/// 从请求头提取 trace_id（route handler 构造 RequestContext 用）
+///
+/// - header 存在且非空且非 "invalid" 占位 → 返回 header 值
+/// - 其他情况 → 返回 "unknown"
+pub fn extract_trace_id(headers: &HeaderMap) -> String {
+    extract_request_id(headers)
+        .filter(|s| s != "invalid" && !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    fn headers_with(trace: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(REQUEST_ID_HEADER, HeaderValue::from_str(trace).unwrap());
+        h
+    }
+
+    #[test]
+    fn extract_trace_id_returns_header_value_when_present() {
+        let headers = headers_with("abc-123");
+        assert_eq!(extract_trace_id(&headers), "abc-123");
+    }
+
+    #[test]
+    fn extract_trace_id_returns_uuid_format_value() {
+        let headers = headers_with("550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(
+            extract_trace_id(&headers),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+    }
+
+    #[test]
+    fn extract_trace_id_falls_back_to_unknown_when_missing() {
+        let headers = HeaderMap::new();
+        assert_eq!(extract_trace_id(&headers), "unknown");
+    }
+
+    #[test]
+    fn extract_trace_id_falls_back_to_unknown_when_value_is_invalid_placeholder() {
+        let headers = headers_with("invalid");
+        assert_eq!(extract_trace_id(&headers), "unknown");
+    }
+
+    #[test]
+    fn extract_trace_id_falls_back_to_unknown_when_value_is_empty() {
+        let headers = headers_with("");
+        assert_eq!(extract_trace_id(&headers), "unknown");
+    }
+}

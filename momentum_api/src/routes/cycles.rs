@@ -1,4 +1,5 @@
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
+use axum::http::HeaderMap;
 use momentum_core::db::models::*;
 use crate::middleware::auth::AuthUserInfo;
 use momentum_core::services::context::RequestContext;
@@ -50,6 +52,7 @@ pub struct PaginatedIssues {
 pub async fn create_cycle(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<CreateCycleRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -65,7 +68,7 @@ pub async fn create_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -96,6 +99,7 @@ pub struct CycleQuery {
 pub async fn get_cycles(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Query(_params): Query<CycleQuery>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -111,7 +115,7 @@ pub async fn get_cycles(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -136,6 +140,7 @@ pub async fn get_cycles(
 pub async fn get_cycle_by_id(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(cycle_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -151,7 +156,7 @@ pub async fn get_cycle_by_id(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -176,6 +181,7 @@ pub async fn get_cycle_by_id(
 pub async fn update_cycle(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(cycle_id): Path<Uuid>,
     Json(payload): Json<UpdateCycleRequest>,
 ) -> impl IntoResponse {
@@ -192,7 +198,7 @@ pub async fn update_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -217,6 +223,7 @@ pub async fn update_cycle(
 pub async fn delete_cycle(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(cycle_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -232,7 +239,7 @@ pub async fn delete_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -257,6 +264,7 @@ pub async fn delete_cycle(
 pub async fn get_cycle_stats(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(cycle_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -272,7 +280,7 @@ pub async fn get_cycle_stats(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -297,6 +305,7 @@ pub async fn get_cycle_stats(
 pub async fn get_cycle_issues(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(cycle_id): Path<Uuid>,
     Query(query): Query<CycleIssuesQuery>,
 ) -> impl IntoResponse {
@@ -313,7 +322,7 @@ pub async fn get_cycle_issues(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -345,6 +354,7 @@ pub async fn get_cycle_issues(
 pub async fn assign_issues_to_cycle(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(cycle_id): Path<Uuid>,
     Json(payload): Json<AssignIssuesToCycleRequest>,
 ) -> impl IntoResponse {
@@ -361,7 +371,7 @@ pub async fn assign_issues_to_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -392,6 +402,7 @@ pub async fn assign_issues_to_cycle(
 pub async fn remove_issues_from_cycle(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(cycle_id): Path<Uuid>,
     Json(payload): Json<AssignIssuesToCycleRequest>,
 ) -> impl IntoResponse {
@@ -408,7 +419,7 @@ pub async fn remove_issues_from_cycle(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

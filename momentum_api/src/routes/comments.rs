@@ -8,7 +8,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
+use axum::http::HeaderMap;
 use momentum_core::db::models::api::{ApiResponse, ErrorDetail};
 use crate::middleware::auth::AuthUserInfo;
 use momentum_core::services::comments_service::CommentsService;
@@ -35,6 +37,7 @@ pub async fn get_comments(
     Path(issue_id): Path<Uuid>,
     Query(params): Query<CommentQueryParams>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -49,7 +52,7 @@ pub async fn get_comments(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -77,6 +80,7 @@ pub async fn create_comment(
     State(state): State<Arc<AppState>>,
     Path(issue_id): Path<Uuid>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<CreateCommentRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -92,7 +96,7 @@ pub async fn create_comment(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -118,6 +122,7 @@ pub async fn update_comment(
     State(state): State<Arc<AppState>>,
     Path(comment_id): Path<Uuid>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<UpdateCommentRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -133,7 +138,7 @@ pub async fn update_comment(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -159,6 +164,7 @@ pub async fn delete_comment(
     State(state): State<Arc<AppState>>,
     Path(comment_id): Path<Uuid>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -173,7 +179,7 @@ pub async fn delete_comment(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -199,6 +205,7 @@ pub async fn get_comment(
     State(state): State<Arc<AppState>>,
     Path(comment_id): Path<Uuid>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -213,7 +220,7 @@ pub async fn get_comment(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

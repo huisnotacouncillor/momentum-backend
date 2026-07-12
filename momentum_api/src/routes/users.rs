@@ -1,5 +1,7 @@
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
+use axum::http::HeaderMap;
 use momentum_core::db::models::api::ApiResponse;
 use crate::middleware::auth::AuthUserInfo;
 use momentum_core::services::auth_service::AuthService;
@@ -13,6 +15,7 @@ pub use momentum_core::services::auth::types::UpdateProfileRequest;
 // 更新用户资料
 pub async fn update_profile(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     auth_info: AuthUserInfo,
     Json(payload): Json<UpdateProfileRequest>,
 ) -> impl IntoResponse {
@@ -28,7 +31,7 @@ pub async fn update_profile(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap_or_default(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     match AuthService::update_profile(

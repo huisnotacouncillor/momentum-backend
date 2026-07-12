@@ -1,4 +1,5 @@
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -11,6 +12,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use axum::http::HeaderMap;
 use momentum_core::db::enums::LabelLevel;
 use momentum_core::db::models::*;
 use crate::middleware::auth::AuthUserInfo;
@@ -31,6 +33,7 @@ pub struct LabelQuery {
 pub async fn get_labels(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Query(params): Query<LabelQuery>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -45,7 +48,7 @@ pub async fn get_labels(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -70,6 +73,7 @@ pub async fn get_labels(
 pub async fn create_label(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<CreateLabelRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -84,7 +88,7 @@ pub async fn create_label(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -109,6 +113,7 @@ pub async fn create_label(
 pub async fn update_label(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(label_id): Path<Uuid>,
     Json(payload): Json<UpdateLabelRequest>,
 ) -> impl IntoResponse {
@@ -124,7 +129,7 @@ pub async fn update_label(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -149,6 +154,7 @@ pub async fn update_label(
 pub async fn delete_label(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(label_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -163,7 +169,7 @@ pub async fn delete_label(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

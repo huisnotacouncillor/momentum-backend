@@ -1,4 +1,5 @@
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -10,6 +11,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use axum::http::HeaderMap;
 use momentum_core::db::models::*;
 use crate::middleware::auth::AuthUserInfo;
 use momentum_core::services::context::RequestContext;
@@ -30,6 +32,7 @@ pub struct InvitationQuery {
 pub async fn invite_member(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<InviteMemberRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -45,7 +48,7 @@ pub async fn invite_member(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -70,6 +73,7 @@ pub async fn invite_member(
 pub async fn get_user_invitations(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Query(params): Query<InvitationQuery>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -85,7 +89,7 @@ pub async fn get_user_invitations(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -125,6 +129,7 @@ pub async fn get_user_invitations(
 pub async fn get_invitation_by_id(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(invitation_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -140,7 +145,7 @@ pub async fn get_invitation_by_id(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -165,6 +170,7 @@ pub async fn get_invitation_by_id(
 pub async fn accept_invitation(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(invitation_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -180,7 +186,7 @@ pub async fn accept_invitation(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -205,6 +211,7 @@ pub async fn accept_invitation(
 pub async fn decline_invitation(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(invitation_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -220,7 +227,7 @@ pub async fn decline_invitation(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -247,6 +254,7 @@ pub async fn decline_invitation(
 pub async fn revoke_invitation(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(invitation_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -262,7 +270,7 @@ pub async fn revoke_invitation(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

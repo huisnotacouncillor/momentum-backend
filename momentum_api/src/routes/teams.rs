@@ -1,3 +1,5 @@
+use axum::http::HeaderMap;
+use crate::middleware::request_tracking::extract_trace_id;
 use momentum_core::db::models::{ApiResponse, ErrorDetail, TeamInfo, TeamMemberInfo};
 use momentum_core::db::{DbPool, models::*};
 use crate::middleware::auth::AuthUserInfo;
@@ -38,6 +40,7 @@ pub struct UpdateTeamMemberRequest {
 pub async fn create_team(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<CreateTeamRequest>,
 ) -> impl IntoResponse {
     let mut conn = match pool.get() {
@@ -52,7 +55,7 @@ pub async fn create_team(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     let req = CreateTeamRequest {
@@ -85,6 +88,7 @@ pub async fn create_team(
 pub async fn get_teams(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let mut conn = match pool.get() {
         Ok(conn) => conn,
@@ -97,7 +101,7 @@ pub async fn get_teams(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     match TeamsService::list(&mut conn, &ctx) {
@@ -116,6 +120,7 @@ pub async fn get_teams(
 pub async fn get_team(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(team_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match pool.get() {
@@ -129,7 +134,7 @@ pub async fn get_team(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     match TeamsService::get(&mut conn, &ctx, team_id) {
@@ -148,6 +153,7 @@ pub async fn get_team(
 pub async fn update_team(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(team_id): Path<Uuid>,
     Json(payload): Json<UpdateTeamRequest>,
 ) -> impl IntoResponse {
@@ -162,7 +168,7 @@ pub async fn update_team(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     let req = UpdateTeamRequest {
@@ -199,6 +205,7 @@ pub async fn update_team(
 pub async fn delete_team(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(team_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match pool.get() {
@@ -212,7 +219,7 @@ pub async fn delete_team(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     match TeamsService::delete(&mut conn, &ctx, team_id) {
@@ -235,6 +242,7 @@ pub async fn delete_team(
 pub async fn add_team_member(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(team_id): Path<Uuid>,
     Json(payload): Json<AddTeamMemberRequest>,
 ) -> impl IntoResponse {
@@ -252,7 +260,7 @@ pub async fn add_team_member(
         user_id: auth_info.user.id,
         workspace_id: current_workspace_id,
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
     let role_str = match payload.role {
         TeamRole::Admin => "admin",
@@ -286,6 +294,7 @@ pub async fn add_team_member(
 pub async fn get_team_members_list(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(team_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match pool.get() {
@@ -299,7 +308,7 @@ pub async fn get_team_members_list(
         user_id: auth_info.user.id,
         workspace_id: auth_info.current_workspace_id.unwrap(),
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
 
     let members = match momentum_core::services::team_members_service::TeamMembersService::list(
@@ -339,6 +348,7 @@ pub async fn get_team_members_list(
 pub async fn update_team_member(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path((team_id, member_user_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<UpdateTeamMemberRequest>,
 ) -> impl IntoResponse {
@@ -356,7 +366,7 @@ pub async fn update_team_member(
         user_id: auth_info.user.id,
         workspace_id: current_workspace_id,
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
     let role_str = match payload.role {
         TeamRole::Admin => "admin",
@@ -382,6 +392,7 @@ pub async fn update_team_member(
 pub async fn remove_team_member(
     State(pool): State<Arc<DbPool>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path((team_id, member_user_id)): Path<(Uuid, Uuid)>,
 ) -> impl IntoResponse {
     let current_workspace_id = auth_info.current_workspace_id.unwrap();
@@ -398,7 +409,7 @@ pub async fn remove_team_member(
         user_id: auth_info.user.id,
         workspace_id: current_workspace_id,
         idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
     };
     match TeamMembersService::remove(&mut conn, &ctx, team_id, member_user_id) {
         Ok(_) => {

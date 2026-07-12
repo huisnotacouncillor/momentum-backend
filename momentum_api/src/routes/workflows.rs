@@ -1,4 +1,5 @@
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
+use axum::http::HeaderMap;
 use momentum_core::db::models::*;
 use crate::middleware::auth::AuthUserInfo;
 use momentum_core::services::context::RequestContext;
@@ -37,6 +39,7 @@ pub struct WorkflowQuery {
 pub async fn get_workflows(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(team_id): Path<Uuid>,
     Query(_params): Query<WorkflowQuery>,
 ) -> impl IntoResponse {
@@ -53,7 +56,7 @@ pub async fn get_workflows(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -78,6 +81,7 @@ pub async fn get_workflows(
 pub async fn get_workflow_by_id(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(workflow_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -93,7 +97,7 @@ pub async fn get_workflow_by_id(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -118,6 +122,7 @@ pub async fn get_workflow_by_id(
 pub async fn create_workflow(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(team_id): Path<Uuid>,
     Json(payload): Json<ApiCreateWorkflowRequest>,
 ) -> impl IntoResponse {
@@ -134,7 +139,7 @@ pub async fn create_workflow(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -166,6 +171,7 @@ pub async fn create_workflow(
 pub async fn update_workflow(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(workflow_id): Path<Uuid>,
     Json(payload): Json<ApiUpdateWorkflowRequest>,
 ) -> impl IntoResponse {
@@ -182,7 +188,7 @@ pub async fn update_workflow(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -207,6 +213,7 @@ pub async fn update_workflow(
 pub async fn delete_workflow(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(workflow_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -222,7 +229,7 @@ pub async fn delete_workflow(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -247,6 +254,7 @@ pub async fn delete_workflow(
 pub async fn get_workflow_states(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(workflow_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -262,7 +270,7 @@ pub async fn get_workflow_states(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -287,6 +295,7 @@ pub async fn get_workflow_states(
 pub async fn get_team_default_workflow_states(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(team_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -302,7 +311,7 @@ pub async fn get_team_default_workflow_states(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -338,6 +347,7 @@ pub struct CreateWorkflowStateRequest {
 pub async fn create_workflow_state(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(workflow_id): Path<Uuid>,
     Json(payload): Json<ApiCreateWorkflowStateRequest>,
 ) -> impl IntoResponse {
@@ -354,7 +364,7 @@ pub async fn create_workflow_state(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -398,6 +408,7 @@ pub async fn create_workflow_state(
 pub async fn create_team_default_workflow_state(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(team_id): Path<Uuid>,
     Json(payload): Json<CreateWorkflowStateRequest>,
 ) -> impl IntoResponse {
@@ -414,7 +425,7 @@ pub async fn create_team_default_workflow_state(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -472,6 +483,7 @@ pub struct UpdateWorkflowStateRequest {
 pub async fn update_team_default_workflow_state(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path((team_id, state_id)): Path<(Uuid, Uuid)>,
     Json(payload): Json<ApiUpdateTeamDefaultStateRequest>,
 ) -> impl IntoResponse {
@@ -488,7 +500,7 @@ pub async fn update_team_default_workflow_state(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -540,6 +552,7 @@ pub async fn update_team_default_workflow_state(
 pub async fn get_issue_transitions(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(issue_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -555,7 +568,7 @@ pub async fn get_issue_transitions(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

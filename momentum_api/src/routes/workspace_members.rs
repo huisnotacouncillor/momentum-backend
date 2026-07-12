@@ -1,4 +1,5 @@
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -10,6 +11,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use axum::http::HeaderMap;
 use momentum_core::db::models::*;
 use crate::middleware::auth::AuthUserInfo;
 use momentum_core::services::context::RequestContext;
@@ -31,6 +33,7 @@ pub struct WorkspaceMemberQuery {
 pub async fn invite_member_to_workspace(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<WorkspaceInviteMemberRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -46,7 +49,7 @@ pub async fn invite_member_to_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -71,6 +74,7 @@ pub async fn invite_member_to_workspace(
 pub async fn accept_invitation(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(invitation_id): Path<Uuid>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -86,7 +90,7 @@ pub async fn accept_invitation(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -111,6 +115,7 @@ pub async fn accept_invitation(
 pub async fn get_workspace_members(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(workspace_id): Path<Uuid>,
     Query(params): Query<WorkspaceMemberQuery>,
 ) -> impl IntoResponse {
@@ -127,7 +132,7 @@ pub async fn get_workspace_members(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -167,6 +172,7 @@ pub async fn get_workspace_members(
 pub async fn get_workspace_members_and_invitations(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Query(params): Query<WorkspaceMemberQuery>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -182,7 +188,7 @@ pub async fn get_workspace_members_and_invitations(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -223,6 +229,7 @@ pub async fn get_workspace_members_and_invitations(
 pub async fn get_current_workspace_members(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Query(params): Query<WorkspaceMemberQuery>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -238,7 +245,7 @@ pub async fn get_current_workspace_members(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

@@ -1,4 +1,5 @@
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
 use axum::{
     Json,
@@ -10,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
+use axum::http::HeaderMap;
 use momentum_core::db::models::*;
 use crate::middleware::auth::AuthUserInfo;
 use momentum_core::services::context::RequestContext;
@@ -29,6 +31,7 @@ pub struct CreateWorkspaceRequest {
 pub async fn create_workspace(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<CreateWorkspaceRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -44,7 +47,7 @@ pub async fn create_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -74,6 +77,7 @@ pub async fn create_workspace(
 pub async fn get_current_workspace(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -88,7 +92,7 @@ pub async fn get_current_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -114,6 +118,7 @@ pub async fn get_current_workspace(
 pub async fn update_workspace(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(workspace_id): Path<Uuid>,
     Json(payload): Json<UpdateWorkspaceRequest>,
 ) -> impl IntoResponse {
@@ -130,7 +135,7 @@ pub async fn update_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -155,6 +160,7 @@ pub async fn update_workspace(
 pub async fn delete_workspace(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Path(workspace_id): Path<Uuid>,
 ) -> impl IntoResponse {
     // P0 修复：只有 Owner 才能删除工作区
@@ -182,7 +188,7 @@ pub async fn delete_workspace(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {

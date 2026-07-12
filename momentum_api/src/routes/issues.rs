@@ -1,5 +1,7 @@
 use crate::error::AppErrorResponse;
+use crate::middleware::request_tracking::extract_trace_id;
 use crate::state::AppState;
+use axum::http::HeaderMap;
 use momentum_core::db::enums::IssuePriority;
 use momentum_core::db::models::api::{ApiResponse, ErrorDetail};
 use crate::middleware::auth::AuthUserInfo;
@@ -34,13 +36,14 @@ pub async fn get_issues(
     State(state): State<Arc<AppState>>,
     Query(params): Query<IssueQueryParams>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let ctx = match auth_info.current_workspace_id {
         Some(ws) => RequestContext {
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -115,6 +118,7 @@ pub async fn get_issues(
 pub async fn create_issue(
     State(state): State<Arc<AppState>>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<CreateIssueRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -130,7 +134,7 @@ pub async fn create_issue(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -157,6 +161,7 @@ pub async fn update_issue(
     State(state): State<Arc<AppState>>,
     Path(issue_id): Path<Uuid>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
     Json(payload): Json<UpdateIssueRequest>,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
@@ -172,7 +177,7 @@ pub async fn update_issue(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -199,6 +204,7 @@ pub async fn delete_issue(
     State(state): State<Arc<AppState>>,
     Path(issue_id): Path<Uuid>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -213,7 +219,7 @@ pub async fn delete_issue(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
@@ -240,6 +246,7 @@ pub async fn get_issue(
     State(state): State<Arc<AppState>>,
     Path(issue_id): Path<Uuid>,
     auth_info: AuthUserInfo,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let mut conn = match state.db.get() {
         Ok(conn) => conn,
@@ -254,7 +261,7 @@ pub async fn get_issue(
             user_id: auth_info.user.id,
             workspace_id: ws,
             idempotency_key: None,
-        trace_id: "unknown".to_string(),
+        trace_id: extract_trace_id(&headers),
         },
         None => {
             let response = ApiResponse::<()>::validation_error(vec![ErrorDetail {
