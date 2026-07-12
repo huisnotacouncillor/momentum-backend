@@ -99,21 +99,17 @@ impl IssueRepo {
             query = query.filter(priority.eq(p));
         }
         if let Some(ref search) = p_search {
-            // 使用 websearch_to_tsquery 进行全文搜索
-            // websearch_to_tsquery 支持自然语言查询，如 "bug fix" 会搜索包含 bug 和 fix 的文档
-            // 使用 || 连接 title 和 description 的 tsvector，然后与查询匹配
+            // Issue #3 修复：搜索 query 改用预计算 `search_vector` 列而非每次重算 tsvector
+            // 这样 PostgreSQL 能命中迁移时创建的 GIN 索引 `idx_issues_search_vector`。
+            // 重算版本会让搜索变全表扫描 + 每次都 build tsvector。
             query = query.filter(
-                diesel::dsl::sql::<diesel::sql_types::Bool>(
-                    "(to_tsvector('english', title) || to_tsvector('english', description)) @@ websearch_to_tsquery('english', $1)"
-                )
-                .bind::<diesel::sql_types::Text, _>(search)
+                diesel::dsl::sql::<diesel::sql_types::Bool>(SEARCH_PREDICATE_SQL)
+                    .bind::<diesel::sql_types::Text, _>(search),
             );
 
             // 按相关性（ts_rank）降序排序，然后按创建时间降序
-            let rank_expr = diesel::dsl::sql::<diesel::sql_types::Float>(
-                "ts_rank((to_tsvector('english', title) || to_tsvector('english', description)), websearch_to_tsquery('english', $1))"
-            )
-            .bind::<diesel::sql_types::Text, _>(search);
+            let rank_expr = diesel::dsl::sql::<diesel::sql_types::Float>(SEARCH_RANK_SQL)
+                .bind::<diesel::sql_types::Text, _>(search);
             query = query.order((rank_expr.desc(), created_at.desc()));
         } else {
             query = query.order(created_at.desc().nulls_last());
@@ -207,5 +203,71 @@ impl IssueRepo {
             .filter(team_id.eq_any(&workspace_team_ids))
             .first::<Issue>(conn)
             .optional()
+    }
+}
+
+/// 全文搜索过滤 SQL（用于 Issue 列表 WHERE 子句）
+///
+/// 注意：必须使用 `search_vector` 列 + `@@` 运算符，这样 PostgreSQL 才能命中迁移时
+/// 创建的 GIN 索引 `idx_issues_search_vector`。
+/// **禁止**重写为从 title/description 重新构造 tsvector 再 `@@`，
+/// 那会每次都重算 tsvector，导致全表扫描，绕开索引。
+pub const SEARCH_PREDICATE_SQL: &str =
+    "search_vector @@ websearch_to_tsquery('english', $1)";
+
+pub const SEARCH_RANK_SQL: &str =
+    "ts_rank(search_vector, websearch_to_tsquery('english', $1))";
+
+#[cfg(test)]
+mod search_sql_guard_tests {
+    use super::*;
+
+    /// 防退化守门测试：保证搜索 SQL 走 `search_vector` 列 + GIN 索引。
+    /// 历史教训：早期版本重算 tsvector 表达式导致搜索变成全表扫描（Issue #3）。
+    #[test]
+    fn search_predicate_sql_uses_search_vector_column() {
+        assert!(
+            SEARCH_PREDICATE_SQL.contains("search_vector @@"),
+            "SEARCH_PREDICATE_SQL must use search_vector column for GIN index. got: {}",
+            SEARCH_PREDICATE_SQL
+        );
+        assert!(
+            !SEARCH_PREDICATE_SQL.contains("to_tsvector('english', title)"),
+            "SEARCH_PREDICATE_SQL must NOT recompute tsvector from title (defeats GIN). got: {}",
+            SEARCH_PREDICATE_SQL
+        );
+    }
+
+    #[test]
+    fn search_rank_sql_uses_search_vector_column() {
+        assert!(
+            SEARCH_RANK_SQL.contains("search_vector"),
+            "SEARCH_RANK_SQL must use search_vector column. got: {}",
+            SEARCH_RANK_SQL
+        );
+        assert!(
+            !SEARCH_RANK_SQL.contains("to_tsvector('english', title) ||"),
+            "SEARCH_RANK_SQL must NOT recompute tsvector. got: {}",
+            SEARCH_RANK_SQL
+        );
+    }
+
+    /// 反向守门：扫描 SQL 常量定义，禁止出现会绕开 GIN 索引的重算表达式
+    ///
+    /// 不扫描整个文件：测试代码本身的断言字符串会包含"bad pattern"导致误报。
+    #[test]
+    fn sql_constants_do_not_recompute_tsvector() {
+        assert!(
+            !SEARCH_PREDICATE_SQL.contains("to_tsvector('english', title) ||")
+                && !SEARCH_PREDICATE_SQL.contains("to_tsvector('english', description)"),
+            "SEARCH_PREDICATE_SQL must NOT inline-recompute tsvector. got: {}",
+            SEARCH_PREDICATE_SQL
+        );
+        assert!(
+            !SEARCH_RANK_SQL.contains("to_tsvector('english', title) ||")
+                && !SEARCH_RANK_SQL.contains("to_tsvector('english', description)"),
+            "SEARCH_RANK_SQL must NOT inline-recompute tsvector. got: {}",
+            SEARCH_RANK_SQL
+        );
     }
 }
