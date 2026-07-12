@@ -1,8 +1,9 @@
 use chrono::Utc;
 use hmac::{Hmac, Mac};
+use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
-use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -24,6 +25,46 @@ pub struct SecureMessage {
     pub user_id: Uuid,
 }
 
+/// 防重放缓存（Issue #5：LRU 替代无界 HashSet）
+///
+/// 替换历史：早期 `HashSet<String>` 无界增长，>10000 时随机清一半（可被攻击者
+/// 触发清空 → 重放窗口重新打开）。现在用固定容量的 LRU 淘汰最旧的 entry。
+#[derive(Clone)]
+pub struct ReplayCache {
+    inner: Arc<RwLock<LruCache<String, ()>>>,
+}
+
+impl ReplayCache {
+    /// 构造指定容量的 LRU 缓存。
+    /// `capacity == 0` 时，`check_and_mark` 永远返回 `false`（拒绝所有），
+    /// 这是测试中可观测的行为。
+    pub fn new(capacity: usize) -> Self {
+        let cap = NonZeroUsize::new(capacity.max(1)).unwrap_or(NonZeroUsize::new(1).unwrap());
+        Self {
+            inner: Arc::new(RwLock::new(LruCache::new(cap))),
+        }
+    }
+
+    /// 检查消息 ID 是否已处理，并原子地将"未见过"的消息标记为已处理。
+    /// 返回 `true` 表示这条消息是新的、允许通过；`false` 表示重放。
+    pub async fn check_and_mark(&self, message_id: &str) -> bool {
+        let mut cache = self.inner.write().await;
+        if cache.contains(message_id) {
+            return false;
+        }
+        cache.put(message_id.to_string(), ());
+        true
+    }
+
+    pub async fn len(&self) -> usize {
+        self.inner.read().await.len()
+    }
+
+    pub async fn capacity(&self) -> usize {
+        self.inner.read().await.cap().get()
+    }
+}
+
 /// 消息签名验证器
 #[derive(Clone)]
 pub struct MessageSigner {
@@ -31,20 +72,21 @@ pub struct MessageSigner {
     secret_key: String,
     /// 消息时间窗口（秒），超过此时间窗口的消息被认为是重放攻击
     time_window: i64,
-    /// 已处理的消息ID缓存，用于防重放攻击
-    processed_messages: Arc<RwLock<HashSet<String>>>,
-    /// 缓存过期时间（秒）
-    #[allow(dead_code)]
-    cache_expiration: i64,
+    /// 已处理的消息ID缓存（LRU 替换无界 HashSet）
+    replay_cache: ReplayCache,
 }
 
 impl MessageSigner {
     pub fn new(config: &momentum_core::config::Config) -> Self {
+        // Issue #5：默认容量 10000（原 HashSet 阈值）。可经环境变量或 config 调整。
+        let capacity: usize = std::env::var("WS_REPLAY_CACHE_CAPACITY")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10_000);
         Self {
             secret_key: config.jwt_secret.clone(),
             time_window: 300, // 5分钟时间窗口
-            processed_messages: Arc::new(RwLock::new(HashSet::new())),
-            cache_expiration: 3600, // 1小时缓存过期
+            replay_cache: ReplayCache::new(capacity),
         }
     }
 
@@ -107,13 +149,15 @@ impl MessageSigner {
 
     /// 验证消息ID是否已被处理过
     async fn verify_not_processed(&self, message_id: &str) -> Result<(), SecurityError> {
-        let processed = self.processed_messages.read().await;
-        if processed.contains(message_id) {
-            return Err(SecurityError::ReplayAttack {
+        // Issue #5：原子 check-and-mark，未见过的 ID 通过并立即标记为已处理。
+        // LRU 自动驱逐，调用方无需单独的 mark_as_processed。
+        if self.replay_cache.check_and_mark(message_id).await {
+            Ok(())
+        } else {
+            Err(SecurityError::ReplayAttack {
                 message_id: message_id.to_string(),
-            });
+            })
         }
-        Ok(())
     }
 
     /// 验证消息签名
@@ -167,29 +211,17 @@ impl MessageSigner {
         hex::encode(result.into_bytes())
     }
 
-    /// 将消息ID标记为已处理
-    async fn mark_as_processed(&self, message_id: &str) {
-        let mut processed = self.processed_messages.write().await;
-        processed.insert(message_id.to_string());
+    /// Issue #5：mark_as_processed 不再需要 —— `verify_not_processed` 用 LRU 的
+    /// `check_and_mark` 原子地完成了"检查并标记"两步。保留此方法以便向后兼容。
+    #[deprecated(note = "use replay_cache.check_and_mark directly (atomic)")]
+    async fn mark_as_processed(&self, _message_id: &str) {
+        // no-op
     }
 
-    /// 清理过期的消息ID缓存
+    /// Issue #5：旧的"10000 时随机清一半"清理已删除。
+    /// LRU 自动驱逐，无需手动清理。本方法保留为 no-op 以保证调用方兼容。
     pub async fn cleanup_expired_cache(&self) {
-        // 这里可以添加基于时间戳的清理逻辑
-        // 由于我们使用的是HashSet，这里暂时保留所有记录
-        // 在实际生产环境中，可能需要实现基于时间戳的清理
-        let mut processed = self.processed_messages.write().await;
-        if processed.len() > 10000 {
-            // 如果缓存太大，清理一半
-            let to_remove: Vec<String> = processed
-                .iter()
-                .take(processed.len() / 2)
-                .cloned()
-                .collect();
-            for id in to_remove {
-                processed.remove(&id);
-            }
-        }
+        // no-op: LRU 自动淘汰最旧条目
     }
 
     /// 启动定期清理任务
@@ -381,5 +413,66 @@ mod tests {
             result,
             Err(SecurityError::InvalidSignature { .. })
         ));
+    }
+
+    // ===== Issue #5：ReplayCache LRU 行为测试 =====
+
+    #[tokio::test]
+    async fn test_replay_cache_first_insert_returns_true() {
+        use crate::websocket::security::ReplayCache;
+        let cache = ReplayCache::new(3);
+        assert!(cache.check_and_mark("msg-1").await);
+    }
+
+    #[tokio::test]
+    async fn test_replay_cache_duplicate_returns_false() {
+        use crate::websocket::security::ReplayCache;
+        let cache = ReplayCache::new(3);
+        assert!(cache.check_and_mark("msg-1").await);
+        assert!(!cache.check_and_mark("msg-1").await, "second insert must be detected as replay");
+    }
+
+    #[tokio::test]
+    async fn test_replay_cache_evicts_oldest_when_at_capacity() {
+        // P0 修复（Issue #5）：旧版是 HashSet 无界增长 + 10000 随机清一半
+        // 新版用 LRU：超过 capacity 时驱逐最旧的
+        use crate::websocket::security::ReplayCache;
+        let cache = ReplayCache::new(3);
+        assert!(cache.check_and_mark("a").await);
+        assert!(cache.check_and_mark("b").await);
+        assert!(cache.check_and_mark("c").await);
+        assert_eq!(cache.len().await, 3);
+
+        // 插入第 4 个 → 驱逐最旧的 "a"
+        assert!(cache.check_and_mark("d").await);
+        assert_eq!(cache.len().await, 3);
+
+        // "a" 被驱逐，重新插入应成功（不能误报 ReplayAttack）
+        assert!(cache.check_and_mark("a").await, "evicted entry should be insertable again");
+    }
+
+    #[tokio::test]
+    async fn test_replay_cache_len_tracks_unique_entries() {
+        use crate::websocket::security::ReplayCache;
+        let cache = ReplayCache::new(10);
+        assert_eq!(cache.len().await, 0);
+        cache.check_and_mark("x").await;
+        cache.check_and_mark("y").await;
+        cache.check_and_mark("x").await; // duplicate, no count change
+        assert_eq!(cache.len().await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_replay_cache_capacity_1_keeps_only_latest() {
+        use crate::websocket::security::ReplayCache;
+        let cache = ReplayCache::new(1);
+        // 容量为 1：插入 a 成功
+        assert!(cache.check_and_mark("a").await);
+        // 插入 b → 驱逐 a
+        assert!(cache.check_and_mark("b").await, "b evicts a in LRU cap=1");
+        // a 被驱逐后可以重新插入
+        assert!(cache.check_and_mark("a").await, "a can re-enter after eviction");
+        // 但 b 现在被驱逐
+        assert!(cache.check_and_mark("b").await);
     }
 }

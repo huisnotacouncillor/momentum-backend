@@ -54,6 +54,7 @@ which = { workspace = true }
 thiserror = { workspace = true }
 validator = { workspace = true }
 async-trait = { workspace = true }
+lru = { workspace = true }
 
 [dev-dependencies]
 reqwest = { workspace = true }
