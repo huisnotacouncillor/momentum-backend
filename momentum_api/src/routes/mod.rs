@@ -11,6 +11,7 @@ pub mod oauth;
 pub mod plugins;
 pub mod project_statuses;
 pub mod projects;
+pub mod refresh_token_store;
 pub mod teams;
 pub mod users;
 pub mod workflows;
@@ -38,6 +39,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/auth/profile", get(auth::get_profile))
         .route("/auth/logout", post(auth::logout))
         .route("/auth/switch-workspace", post(auth::switch_workspace))
+        .route("/auth/refresh", post(auth::refresh_token))
         .route("/workspaces", post(workspaces::create_workspace))
         .route(
             "/workspaces/current",

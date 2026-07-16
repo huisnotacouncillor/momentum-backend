@@ -3,6 +3,7 @@ use momentum_api::middleware::{performance_monitoring_middleware, request_tracki
 use momentum_api::{AppConfig, AppState, websocket};
 use momentum_core::config::Config;
 use momentum_core::db as core_db;
+use momentum_core::services::jwt::JwtService;
 use momentum_core::utils::AssetUrlHelper;
 use std::sync::Arc;
 use tokio::signal;
@@ -74,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         redis,
         asset_helper,
         core_config.bcrypt_cost,
+        JwtService::new(core_config.auth()),
     ));
 
     // CORS configuration

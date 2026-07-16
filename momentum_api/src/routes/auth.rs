@@ -214,3 +214,76 @@ pub async fn logout(
     let response = ApiResponse::<()>::success((), "Logout successful");
     (StatusCode::OK, Json(response)).into_response()
 }
+
+// ===== Issue #10: Refresh Token 旋转 =====
+
+/// Refresh token 请求
+#[derive(Deserialize)]
+pub struct RefreshTokenHttpRequest {
+    pub refresh_token: String,
+}
+
+/// `POST /auth/refresh`
+///
+/// 客户端提交 refresh_token，服务端：
+/// 1. 在 store 中查找
+/// 2. 验证未过期、未被撤销
+/// 3. 旋转：旧 token 标记 Used，签发新 token
+/// 4. 重放检测：见到 Used/Revoked token → 撤销整族
+pub async fn refresh_token(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Json(payload): Json<RefreshTokenHttpRequest>,
+) -> impl IntoResponse {
+    use crate::routes::refresh_token_store::RotateResult;
+
+    // 从 header 拿 trace_id（Issue #1 兼容）
+    let _trace_id = crate::middleware::request_tracking::extract_trace_id(&headers);
+
+    match state
+        .refresh_token_store
+        .rotate(&payload.refresh_token, || uuid::Uuid::new_v4().to_string())
+        .await
+    {
+        RotateResult::Success { new_token, user_id, .. } => {
+            // 重新签发 access_token：复用 startup 时构造的 JwtService
+            let auth_user = momentum_core::db::models::auth::AuthUser {
+                id: user_id,
+                email: String::new(),
+                username: String::new(),
+                name: String::new(),
+                avatar_url: None,
+            };
+            let access_token = match state.jwt_service.generate_access_token(&auth_user) {
+                Ok(t) => t,
+                Err(_) => {
+                    let response = ApiResponse::<()>::internal_error("Failed to sign access token");
+                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(response)).into_response();
+                }
+            };
+            let response = ApiResponse::success(
+                serde_json::json!({
+                    "access_token": access_token,
+                    "refresh_token": new_token,
+                    "token_type": "Bearer",
+                    "expires_in": 3600,
+                }),
+                "Token rotated",
+            );
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        RotateResult::ReplayDetected { .. } => {
+            tracing::warn!("Refresh token replay detected. Revoked family.");
+            let response = ApiResponse::<()>::forbidden("Token replay detected; family revoked");
+            (StatusCode::FORBIDDEN, Json(response)).into_response()
+        }
+        RotateResult::AlreadyUsed { .. } | RotateResult::Unknown => {
+            let response = ApiResponse::<()>::unauthorized("Invalid refresh token");
+            (StatusCode::UNAUTHORIZED, Json(response)).into_response()
+        }
+        RotateResult::Expired => {
+            let response = ApiResponse::<()>::unauthorized("Refresh token expired");
+            (StatusCode::UNAUTHORIZED, Json(response)).into_response()
+        }
+    }
+}
