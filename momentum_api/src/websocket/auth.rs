@@ -102,9 +102,7 @@ impl WebSocketAuth {
     /// Issue #11：Sec-WebSocket-Protocol 头格式
     ///
     /// 客户端连接 WS 时设置：
-    /// ```
-    /// Sec-WebSocket-Protocol: momentum-v1, <JWT>
-    /// ```
+    /// `"momentum-v1, <JWT>"`（服务端提取第一个含 `.` 的 part 作为 JWT）
     /// 服务端提取第一个以 `<` 开头的 protocol（破坏性大小写）
     ///
     /// 返回值：Some(jwt) 表示找到了；None 表示没找到

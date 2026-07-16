@@ -6,7 +6,6 @@ use crate::config::DatabaseConfig;
 use crate::error::{AppError, AppResult};
 use diesel::PgConnection;
 use diesel::r2d2::{self, ConnectionManager as DbConnectionManager};
-use std::sync::Arc;
 
 pub type DbPool = r2d2::Pool<DbConnectionManager<PgConnection>>;
 

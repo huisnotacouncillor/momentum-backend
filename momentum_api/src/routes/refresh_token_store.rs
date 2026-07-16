@@ -76,7 +76,6 @@ pub enum RotateResult {
 pub struct RefreshTokenStore {
     inner: Arc<RwLock<LruCache<String, RefreshTokenEntry>>>,
     ttl: Duration,
-    capacity: usize,
 }
 
 impl RefreshTokenStore {
@@ -85,7 +84,6 @@ impl RefreshTokenStore {
         Self {
             inner: Arc::new(RwLock::new(LruCache::new(cap))),
             ttl,
-            capacity,
         }
     }
 

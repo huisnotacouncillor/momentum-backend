@@ -554,11 +554,16 @@ impl WebSocketCommandHandler {
         let request_id = command.request_id();
         let command_type = command.command_type();
 
-        // Issue #7：基于 user + workspace + payload 计算 idempotency_key，存入 RequestContext
+        // Issue #7 + #15：基于 user + workspace + payload 计算 idempotency_key，存入 RequestContext
         // 而非硬编码 "disabled"。这样：
-        //  - 同 key 重放可以走 IdempotencyCache 命中（如果 handler 配了）
+        //  - 同 key 重放可走 IdempotencyControl 缓存命中，返回原响应（不重跑 command）
         //  - service 层如果支持，也能基于 ctx.idempotency_key 做去重
         let idempotency_key = self.generate_idempotency_key(&command, user);
+
+        // Issue #15：先查缓存，命中则直接返回原响应
+        if let Some(cached) = self.idempotency.is_processed(&idempotency_key).await {
+            return cached;
+        }
 
         // Step 8.5: Try registry dispatch when registry + subscription_manager are wired up
         if let (Some(reg), Some(sub_mgr)) = (&self.registry, &self.subscription_manager) {
@@ -605,7 +610,10 @@ impl WebSocketCommandHandler {
             trace_id: format!("ws-{}", Uuid::new_v4()),
         };
 
-        let result = match command {
+        // Issue #15：包一层 `let response =` 是为了在末尾调 mark_processed 写回缓存。
+        // 同 key 重放会走 is_processed 提前返回（见函数头）。
+        // 每个 arm 返回 Result<serde_json::Value, AppError>，先聚成 Result 再 match。
+        let dispatch_result = match command {
             WebSocketCommand::CreateLabel { data, .. } => self.handle_create_label(ctx, data).await,
             WebSocketCommand::UpdateLabel { label_id, data, .. } => {
                 self.handle_update_label(ctx, label_id, data).await
@@ -806,7 +814,7 @@ impl WebSocketCommandHandler {
             }
         };
 
-        match result {
+        let response = match dispatch_result {
             Ok(data) => {
                 WebSocketCommandResponse::success(command_type, &idempotency_key, request_id, data)
             }
@@ -816,7 +824,13 @@ impl WebSocketCommandHandler {
                 request_id,
                 WebSocketCommandError::business_error("COMMAND_ERROR", &app_error.to_string()),
             ),
-        }
+        };
+
+        // Issue #15：把响应写回幂等缓存，下次同 key 来直接返回
+        self.idempotency
+            .mark_processed(idempotency_key, response.clone())
+            .await;
+        response
     }
 
     // Label handlers (delegate)

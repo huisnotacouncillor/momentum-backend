@@ -119,13 +119,11 @@ impl MessageSigner {
         self.verify_timestamp(message.timestamp)?;
 
         // 2. 验证消息ID是否已被处理过（防重放攻击）
+        // check_and_mark 原子地完成"检查+标记"，无需单独 mark
         self.verify_not_processed(&message.message_id).await?;
 
         // 3. 验证签名
         self.verify_signature(message)?;
-
-        // 4. 将消息ID标记为已处理
-        self.mark_as_processed(&message.message_id).await;
 
         Ok(())
     }
@@ -209,13 +207,6 @@ impl MessageSigner {
         mac.update(data.as_bytes());
         let result = mac.finalize();
         hex::encode(result.into_bytes())
-    }
-
-    /// Issue #5：mark_as_processed 不再需要 —— `verify_not_processed` 用 LRU 的
-    /// `check_and_mark` 原子地完成了"检查并标记"两步。保留此方法以便向后兼容。
-    #[deprecated(note = "use replay_cache.check_and_mark directly (atomic)")]
-    async fn mark_as_processed(&self, _message_id: &str) {
-        // no-op
     }
 
     /// Issue #5：旧的"10000 时随机清一半"清理已删除。

@@ -22,6 +22,7 @@ pub mod subscription;
 pub mod dead_code_guard_test;
 pub mod handlers;
 pub mod idempotency;
+pub mod idempotency_dispatch_guard_test;
 pub mod issue_events;
 
 // Issue #13: previously had events-related modules declared but
