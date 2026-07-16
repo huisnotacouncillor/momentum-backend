@@ -99,11 +99,51 @@ impl WebSocketAuth {
         None
     }
 
+    /// Issue #11：Sec-WebSocket-Protocol 头格式
+    ///
+    /// 客户端连接 WS 时设置：
+    /// ```
+    /// Sec-WebSocket-Protocol: momentum-v1, <JWT>
+    /// ```
+    /// 服务端提取第一个以 `<` 开头的 protocol（破坏性大小写）
+    ///
+    /// 返回值：Some(jwt) 表示找到了；None 表示没找到
+    pub fn extract_token_from_sec_protocol(header_value: Option<&axum::http::HeaderValue>) -> Option<String> {
+        let h = header_value?.to_str().ok()?;
+        for part in h.split(',') {
+            let trimmed = part.trim();
+            // JWT 形如 header.payload.signature（base64，含 `=` / `_` / `-`）
+            // 我们用 "包含至少一个 '.'" + "看起来是 JWT" 作为启发式判断
+            // 更严格的方式：先 base64-decode 三段检查 payload 是否为合法 JSON
+            if trimmed.contains('.') && !trimmed.contains(' ') && !trimmed.contains('"') {
+                return Some(trimmed.to_string());
+            }
+        }
+        None
+    }
+
     /// 验证token格式
     pub fn validate_token_format(token: &str) -> bool {
         // 基本的JWT格式验证（三个部分用.分隔）
         let parts: Vec<&str> = token.split('.').collect();
         parts.len() == 3 && parts.iter().all(|part| !part.is_empty())
+    }
+
+    /// Issue #11：从多个来源按优先级提取 token
+    ///
+    /// 优先级：
+    /// 1. Sec-WebSocket-Protocol 头（新方式，推荐）—— 不进入 URL/access log
+    /// 2. URL query `?token=`（兼容旧客户端，会打 warn 日志，建议尽快迁移）
+    /// 3. URL query `?authorization=Bearer ...`（同上，兼容模式）
+    pub fn extract_token(
+        sec_protocol: Option<&axum::http::HeaderValue>,
+        query_params: &HashMap<String, String>,
+    ) -> Option<String> {
+        if let Some(t) = Self::extract_token_from_sec_protocol(sec_protocol) {
+            return Some(t);
+        }
+        // 兼容旧客户端：从 URL 取，warn 日志由调用方记录
+        Self::extract_token_from_params(query_params)
     }
 
     /// 检查token是否过期
@@ -273,5 +313,78 @@ mod tests {
             jti: Uuid::new_v4().to_string(),
         };
         assert!(WebSocketAuth::is_token_expired(&expired_claims));
+    }
+
+    // ===== Issue #11：JWT 不通过 URL 传递 =====
+    // 单元测试从 Sec-WebSocket-Protocol 头提取 JWT，不读 URL query
+
+    fn sample_jwt() -> String {
+        // 看起来像 JWT 的字符串：3 段 base64 形式
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature_part_here".to_string()
+    }
+
+    #[test]
+    fn extract_token_from_sec_protocol_header_value() {
+        use axum::http::HeaderValue;
+        let jwt = sample_jwt();
+        // 客户端格式：Sec-WebSocket-Protocol: momentum-v1, <JWT>
+        let header = HeaderValue::from_str(&format!("momentum-v1, {}", jwt)).unwrap();
+        let result = WebSocketAuth::extract_token_from_sec_protocol(Some(&header));
+        assert_eq!(result, Some(jwt));
+    }
+
+    #[test]
+    fn extract_token_from_sec_protocol_with_extra_spaces() {
+        use axum::http::HeaderValue;
+        let jwt = sample_jwt();
+        let header = HeaderValue::from_str(&format!("momentum-v1,   {}  ", jwt)).unwrap();
+        let result = WebSocketAuth::extract_token_from_sec_protocol(Some(&header));
+        assert_eq!(result, Some(jwt));
+    }
+
+    #[test]
+    fn extract_token_from_sec_protocol_returns_none_when_no_jwt_in_header() {
+        use axum::http::HeaderValue;
+        let header = HeaderValue::from_static("momentum-v1, momentum-v2, gzip");
+        let result = WebSocketAuth::extract_token_from_sec_protocol(Some(&header));
+        assert_eq!(result, None, "no JWT-shaped token in protocol header");
+    }
+
+    #[test]
+    fn extract_token_from_sec_protocol_returns_none_when_header_missing() {
+        let result = WebSocketAuth::extract_token_from_sec_protocol(None);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn extract_token_prefers_sec_protocol_over_url_query() {
+        // 新协议（Sec-WebSocket-Protocol）优先级应高于 URL query
+        use axum::http::HeaderValue;
+        let jwt = sample_jwt();
+        let url_jwt = "url.token.here".to_string();
+        let header = HeaderValue::from_str(&format!("momentum-v1, {}", jwt)).unwrap();
+
+        let mut query = HashMap::new();
+        query.insert("token".to_string(), url_jwt.clone());
+
+        let result = WebSocketAuth::extract_token(Some(&header), &query);
+        assert_eq!(result, Some(jwt), "must prefer Sec-WebSocket-Protocol over URL token");
+    }
+
+    #[test]
+    fn extract_token_falls_back_to_url_query_when_sec_protocol_missing() {
+        // 兼容旧客户端：URL ?token=JWT 仍可用
+        let jwt = sample_jwt();
+        let mut query = HashMap::new();
+        query.insert("token".to_string(), jwt.clone());
+        let result = WebSocketAuth::extract_token(None, &query);
+        assert_eq!(result, Some(jwt));
+    }
+
+    #[test]
+    fn extract_token_returns_none_when_nothing_present() {
+        let query = HashMap::new();
+        let result = WebSocketAuth::extract_token(None, &query);
+        assert_eq!(result, None);
     }
 }

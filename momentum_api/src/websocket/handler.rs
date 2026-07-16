@@ -3,6 +3,7 @@ use axum::{
         Query, State,
         ws::{WebSocket, WebSocketUpgrade},
     },
+    http::HeaderMap,
     response::Response,
 };
 use std::sync::Arc;
@@ -32,14 +33,44 @@ pub struct WebSocketHandler;
 
 impl WebSocketHandler {
     /// 处理WebSocket升级请求
+    ///
+    /// Issue #11：token 优先从 `Sec-WebSocket-Protocol` 头读取，URL query 留作兼容。
+    /// 客户端模式：
+    /// - 新：`Sec-WebSocket-Protocol: momentum-v1, <JWT>`
+    /// - 旧：`?token=<JWT>`（仍可用，但会触发 warn 日志，建议尽快迁移）
     pub async fn websocket_handler(
         ws: WebSocketUpgrade,
+        headers: HeaderMap,
         Query(query): Query<WebSocketAuthQuery>,
         State(state): State<WebSocketState>,
     ) -> axum::response::Result<Response> {
+        // Issue #11：尝试从 Sec-WebSocket-Protocol 头取 token；回退到 URL query
+        let sec_protocol = headers.get("sec-websocket-protocol");
+        let query_map: std::collections::HashMap<String, String> = query
+            .token
+            .clone()
+            .map(|t| std::collections::HashMap::from([("token".to_string(), t)]))
+            .unwrap_or_default();
+
+        let token = WebSocketAuth::extract_token(sec_protocol, &query_map).or_else(|| {
+            tracing::warn!(
+                "WebSocket client sent token via URL query (legacy). \
+                 Issue #11: please migrate to Sec-WebSocket-Protocol header to avoid token leaking into access logs."
+            );
+            WebSocketAuth::extract_token_from_params(&query_map)
+        });
+
+        let token = match token {
+            Some(t) => t,
+            None => {
+                tracing::warn!("WebSocket authentication failed: missing token");
+                return Err((axum::http::StatusCode::UNAUTHORIZED, "Missing authentication token").into());
+            }
+        };
+
         // 验证认证token
         let authenticated_user =
-            match WebSocketAuth::extract_and_validate_token(state.db.clone(), Query(query)).await {
+            match WebSocketAuth::authenticate_websocket(state.db.clone(), &token).await {
                 Ok(user) => user,
                 Err(error) => {
                     tracing::warn!("WebSocket authentication failed: {}", error);
