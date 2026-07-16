@@ -15,6 +15,7 @@ pub mod refresh_token_store;
 pub mod teams;
 pub mod users;
 pub mod workspace_switch_cache_test;
+pub mod refresh_token_registration_test;
 pub mod workflows;
 pub mod workspace_members;
 pub mod workspaces;

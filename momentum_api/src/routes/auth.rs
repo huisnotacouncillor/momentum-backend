@@ -39,6 +39,16 @@ pub async fn register(
 
     match AuthService::register(&mut conn, &payload, &state.asset_helper, state.bcrypt_cost) {
         Ok(login_response) => {
+            // Issue #14：注册成功要把 refresh_token 注册到 store，
+            // 否则 /auth/refresh 永远 Unknown
+            state
+                .refresh_token_store
+                .register(
+                    login_response.refresh_token.clone(),
+                    login_response.user.id,
+                    crate::routes::refresh_token_store::TokenFamily(uuid::Uuid::new_v4()),
+                )
+                .await;
             let response = ApiResponse::created(login_response, "User registered successfully");
             (StatusCode::CREATED, Json(response)).into_response()
         }
@@ -61,6 +71,15 @@ pub async fn login(
 
     match AuthService::login(&mut conn, &payload, &state.asset_helper) {
         Ok(login_response) => {
+            // Issue #14：登录成功后必须 register refresh_token
+            state
+                .refresh_token_store
+                .register(
+                    login_response.refresh_token.clone(),
+                    login_response.user.id,
+                    crate::routes::refresh_token_store::TokenFamily(uuid::Uuid::new_v4()),
+                )
+                .await;
             let response = ApiResponse::success(login_response, "Login successful");
             (StatusCode::OK, Json(response)).into_response()
         }
