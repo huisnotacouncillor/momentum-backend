@@ -19,14 +19,16 @@ pub mod registry_dispatch;
 pub mod subscription;
 
 // Issue events handler module
+pub mod dead_code_guard_test;
 pub mod handlers;
 pub mod idempotency;
 pub mod issue_events;
 
-// New unified event system modules (temporarily commented out due to compilation issues)
-// pub mod batch_processor;
-// pub mod events;
-// pub mod unified_manager;
+// Issue #13: previously had events-related modules declared but
+// commented out because they were half-implemented dead code
+// (TODO permission checks that nothing actually called).
+// Removed entirely on 2026-07-12. See the dead-code guard test
+// in dead_code_guard_test.rs to understand what is forbidden.
 
 // Re-export commonly used types for convenience
 pub use auth::{AuthenticatedUser, WebSocketAuth, WebSocketAuthError, WebSocketAuthQuery};
