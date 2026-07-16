@@ -151,12 +151,47 @@ pub async fn switch_workspace(
         trace_id: extract_trace_id(&headers),
     };
 
+    let user_id = auth_info.user.id;
     match AuthService::switch_workspace(&mut conn, &ctx, payload.workspace_id) {
         Ok(user) => {
+            // Issue #12：DB 切换成功后必须立即失效 Redis 用户缓存，
+            // 否则 user:{id}/user_workspace:{id} 等 key 仍然指向旧工作区，
+            // 客户端拿到的是过期数据直到 TTL 自然过期。
+            invalidate_user_cache(&state, user_id).await;
             let response = ApiResponse::success(user, "Workspace switched successfully");
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(err) => AppErrorResponse(err).into_response(),
+    }
+}
+
+/// Issue #12：失效用户相关 Redis 缓存键（best-effort，失败仅记录 warn）
+async fn invalidate_user_cache(state: &AppState, user_id: Uuid) {
+    let cache_keys = [
+        format!("user:{}", user_id),
+        format!("user_profile:{}", user_id),
+        format!("user_workspace:{}", user_id),
+    ];
+    match state.redis.get_multiplexed_async_connection().await {
+        Ok(mut conn) => {
+            use redis::AsyncCommands;
+            for key in &cache_keys {
+                if let Err(e) = conn.del::<_, ()>(key).await {
+                    tracing::warn!(key = %key, error = %e, "failed to invalidate user cache after workspace switch");
+                }
+            }
+            tracing::info!(
+                user_id = %user_id,
+                keys = ?cache_keys,
+                "Invalidated user cache after workspace switch"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "could not connect to Redis to invalidate user cache after workspace switch"
+            );
+        }
     }
 }
 
