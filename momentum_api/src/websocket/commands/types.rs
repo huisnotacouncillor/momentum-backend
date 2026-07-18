@@ -436,6 +436,42 @@ pub struct WebSocketResponseMeta {
     pub batch_stats: Option<WebSocketBatchStats>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub business_meta: Option<serde_json::Value>,
+    // P3.1: Command versioning support
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command_version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latest_version: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deprecated: Option<bool>,
+}
+
+impl WebSocketResponseMeta {
+    /// 创建带版本信息的 meta
+    ///
+    /// 当 client 使用的版本 < 最新版本时，deprecated 为 true
+    pub fn with_version(
+        mut self,
+        command_type: &str,
+        client_version: Option<u32>,
+    ) -> Self {
+        use super::version::CommandVersionInfo;
+        let info = CommandVersionInfo::new(command_type, client_version);
+
+        if info.deprecated || info.version != info.latest_version {
+            self.command_version = Some(info.version);
+            self.latest_version = Some(info.latest_version);
+            self.deprecated = Some(info.deprecated);
+        }
+        self
+    }
+
+    /// 创建带执行时间的 meta
+    pub fn with_execution_time(self, ms: u64) -> Self {
+        Self {
+            execution_time_ms: Some(ms),
+            ..self
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

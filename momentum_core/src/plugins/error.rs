@@ -39,6 +39,9 @@ pub enum PluginError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("other error: {0}")]
+    Other(String),
 }
 
 impl From<diesel::result::Error> for PluginError {

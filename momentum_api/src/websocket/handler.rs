@@ -114,7 +114,6 @@ impl WebSocketHandler {
             connected_at: chrono::Utc::now(),
             last_ping: chrono::Utc::now(),
             state: crate::websocket::manager::ConnectionState::Connected,
-            subscriptions: std::collections::HashSet::new(),
             message_queue: std::collections::VecDeque::new(),
             recovery_token: None,
             metadata: std::collections::HashMap::new(),

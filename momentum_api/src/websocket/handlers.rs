@@ -25,31 +25,11 @@ pub async fn handle_issue_events(
     info!("Issue events WebSocket handler called");
 }
 
-/// Subscribe a user to issue events for a workspace
-pub async fn subscribe_to_issue_events(
-    manager: &WebSocketManager,
-    user_id: uuid::Uuid,
-    workspace_id: uuid::Uuid,
-) {
-    let topic = format!("issues:{}", workspace_id);
-    manager.subscribe(user_id, topic).await;
-}
-
-/// Unsubscribe a user from issue events for a workspace
-pub async fn unsubscribe_from_issue_events(
-    manager: &WebSocketManager,
-    user_id: uuid::Uuid,
-    workspace_id: uuid::Uuid,
-) {
-    let topic = format!("issues:{}", workspace_id);
-    manager.unsubscribe(user_id, topic).await;
-}
-
 /// Broadcast an issue created event
 pub async fn broadcast_issue_created(
     manager: &WebSocketManager,
     workspace_id: uuid::Uuid,
-    issue: crate::db::models::issue::IssueResponse,
+    issue: serde_json::Value,
 ) {
     let event = IssueEvent::Created {
         issue,
@@ -62,7 +42,7 @@ pub async fn broadcast_issue_created(
 pub async fn broadcast_issue_updated(
     manager: &WebSocketManager,
     workspace_id: uuid::Uuid,
-    issue: crate::db::models::issue::IssueResponse,
+    issue: serde_json::Value,
     changes: Vec<String>,
 ) {
     let event = IssueEvent::Updated {

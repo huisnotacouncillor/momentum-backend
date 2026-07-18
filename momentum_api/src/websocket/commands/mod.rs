@@ -12,6 +12,8 @@ pub mod user;
 pub mod projects;
 pub mod issues;
 pub mod cycles;
+pub mod version;
 
 pub use types::*;
 pub use handler::*;
+pub use version::*;

@@ -10,8 +10,10 @@ pub mod json_proto;
 pub mod manifest;
 pub mod permission;
 pub mod registry;
+pub mod host;
 
 pub use error::PluginError;
 pub use extension::{AgentService, EventService, FieldService, StorageService};
 pub use manifest::{AgentDef, FieldDef, Manifest, StorageDef, WebhookDef};
 pub use permission::{Permission, check_permission};
+pub use host::{NoOpPluginHost, PluginCommand, PluginResponse, PluginHost};

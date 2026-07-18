@@ -3,7 +3,7 @@
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{RwLock, broadcast};
@@ -54,7 +54,6 @@ pub struct ConnectedUser {
     pub connected_at: chrono::DateTime<chrono::Utc>,
     pub last_ping: chrono::DateTime<chrono::Utc>,
     pub state: ConnectionState,
-    pub subscriptions: HashSet<String>,            // 订阅的主题
     pub message_queue: VecDeque<WebSocketMessage>, // 离线消息队列
     pub recovery_token: Option<String>,            // 恢复令牌
     pub metadata: HashMap<String, String>,         // 连接元数据
@@ -67,7 +66,6 @@ pub struct ConnectionRecoveryInfo {
     pub user_id: Uuid,
     pub recovery_token: String,
     pub expires_at: chrono::DateTime<chrono::Utc>,
-    pub subscriptions: HashSet<String>,
     pub pending_messages: VecDeque<WebSocketMessage>,
 }
 
@@ -77,10 +75,10 @@ pub struct WebSocketManager {
     connections: Arc<RwLock<HashMap<String, ConnectedUser>>>,
     // 广播通道
     broadcast_tx: broadcast::Sender<WebSocketMessage>,
+    // 直接发送通道：connection_id -> sender（用于精确发送）
+    direct_senders: Arc<RwLock<HashMap<String, broadcast::Sender<WebSocketMessage>>>>,
     // 连接恢复信息
     recovery_info: Arc<RwLock<HashMap<Uuid, ConnectionRecoveryInfo>>>,
-    // 订阅管理
-    subscriptions: Arc<RwLock<HashMap<String, HashSet<Uuid>>>>, // topic -> user_ids
     // 配置
     max_queue_size: usize,
     recovery_token_ttl: Duration,
@@ -92,8 +90,8 @@ impl WebSocketManager {
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             broadcast_tx,
+            direct_senders: Arc::new(RwLock::new(HashMap::new())),
             recovery_info: Arc::new(RwLock::new(HashMap::new())),
-            subscriptions: Arc::new(RwLock::new(HashMap::new())),
             max_queue_size: 100,
             recovery_token_ttl: Duration::from_secs(300), // 5分钟
         }
@@ -118,17 +116,15 @@ impl WebSocketManager {
         db: Option<&Arc<momentum_core::db::DbPool>>,
         asset_helper: Option<&Arc<momentum_core::utils::AssetUrlHelper>>,
     ) {
+        // 创建精准发送通道并注册
+        let (direct_tx, _) = broadcast::channel(100);
+        {
+            let mut senders = self.direct_senders.write().await;
+            senders.insert(connection_id.clone(), direct_tx);
+        }
+
         let mut connections = self.connections.write().await;
         connections.insert(connection_id.clone(), user.clone());
-
-        // 更新订阅信息
-        let mut subscriptions = self.subscriptions.write().await;
-        for topic in &user.subscriptions {
-            subscriptions
-                .entry(topic.clone())
-                .or_insert_with(HashSet::new)
-                .insert(user.user_id);
-        }
 
         info!(
             "🔌 WebSocket User {} connected with connection ID {}",
@@ -166,6 +162,12 @@ impl WebSocketManager {
 
     // 移除连接
     pub async fn remove_connection(&self, connection_id: &str) {
+        // 清理精准发送通道
+        {
+            let mut senders = self.direct_senders.write().await;
+            senders.remove(connection_id);
+        }
+
         let mut connections = self.connections.write().await;
         if let Some(user) = connections.remove(connection_id) {
             info!(
@@ -202,7 +204,6 @@ impl WebSocketManager {
             user_id: user.user_id,
             recovery_token: recovery_token.clone(),
             expires_at,
-            subscriptions: user.subscriptions.clone(),
             pending_messages: user.message_queue.clone(),
         };
 
@@ -221,12 +222,8 @@ impl WebSocketManager {
         user_id: Uuid,
         recovery_token: &str,
     ) -> Option<ConnectedUser> {
-        // P1.4 修复：消除嵌套锁，避免死锁
-        // 策略：先获取并立即释放 recovery_info 锁（仅用于验证），
-        // 然后逐个获取 connections 和 subscriptions 锁（顺序一致避免循环）
-
-        // 第一步：验证 recovery_token（短暂持锁）
-        let (subscriptions_to_restore, pending_messages_to_restore) = {
+        // 验证 recovery_token
+        let pending_messages_to_restore = {
             let recovery_map = self.recovery_info.read().await;
             let info = recovery_map.get(&user_id)?;
             if info.recovery_token != recovery_token
@@ -234,40 +231,28 @@ impl WebSocketManager {
             {
                 return None;
             }
-            (info.subscriptions.clone(), info.pending_messages.clone())
-        }; // recovery_info 锁释放
+            info.pending_messages.clone()
+        };
 
-        // 第二步：获取 connections 锁，更新用户状态
+        // 更新用户状态
         let username = {
             let mut connections = self.connections.write().await;
             let user = connections.get_mut(&user_id.to_string())?;
             user.state = ConnectionState::Connected;
-            user.subscriptions = subscriptions_to_restore.clone();
             user.message_queue = pending_messages_to_restore;
             user.recovery_token = None;
             user.username.clone()
-        }; // connections 锁释放
-
-        // 第三步：单独获取 subscriptions 锁（不再嵌套）
-        {
-            let mut subscriptions = self.subscriptions.write().await;
-            for topic in &subscriptions_to_restore {
-                subscriptions
-                    .entry(topic.clone())
-                    .or_insert_with(HashSet::new)
-                    .insert(user_id);
-            }
-        }
+        };
 
         info!(
             "🔄 WebSocket Recovered connection for user {}",
             username
         );
 
-        // 第四步：返回当前状态快照
-        let connections = self.connections.read().await;
-        connections.get(&user_id.to_string()).cloned()
+        // 返回当前状态快照
+        self.get_connection(&user_id.to_string()).await
     }
+
 
     /// 暂停连接（临时断开）
     pub async fn suspend_connection(&self, connection_id: &str) {
@@ -321,36 +306,6 @@ impl WebSocketManager {
             messages
         } else {
             VecDeque::new()
-        }
-    }
-
-    /// 订阅主题
-    pub async fn subscribe(&self, user_id: Uuid, topic: String) {
-        let mut connections = self.connections.write().await;
-        if let Some(user) = connections.get_mut(&user_id.to_string()) {
-            user.subscriptions.insert(topic.clone());
-        }
-
-        let mut subscriptions = self.subscriptions.write().await;
-        subscriptions
-            .entry(topic)
-            .or_insert_with(HashSet::new)
-            .insert(user_id);
-    }
-
-    /// 取消订阅主题
-    pub async fn unsubscribe(&self, user_id: Uuid, topic: String) {
-        let mut connections = self.connections.write().await;
-        if let Some(user) = connections.get_mut(&user_id.to_string()) {
-            user.subscriptions.remove(&topic);
-        }
-
-        let mut subscriptions = self.subscriptions.write().await;
-        if let Some(subscribers) = subscriptions.get_mut(&topic) {
-            subscribers.remove(&user_id);
-            if subscribers.is_empty() {
-                subscriptions.remove(&topic);
-            }
         }
     }
 
@@ -437,6 +392,22 @@ impl WebSocketManager {
     // 获取广播接收器
     pub fn get_broadcast_receiver(&self) -> broadcast::Receiver<WebSocketMessage> {
         self.broadcast_tx.subscribe()
+    }
+
+    /// 精准发送消息给指定连接（不经过全局广播）
+    ///
+    /// 与 broadcast_message 的区别：
+    /// - broadcast：所有订阅者都能收到（经 should_send_to_user 过滤）
+    /// - direct_send：只发给指定 connection_id，精确投递，无过滤
+    pub async fn direct_send(&self, connection_id: &str, message: WebSocketMessage) -> Result<(), String> {
+        let senders = self.direct_senders.read().await;
+        if let Some(tx) = senders.get(connection_id) {
+            tx.send(message)
+                .map(|_| ())
+                .map_err(|e| format!("direct_send failed: {}", e))
+        } else {
+            Err(format!("connection {} not found", connection_id))
+        }
     }
 
     /// 广播 Issue 事件到所有连接的客户端

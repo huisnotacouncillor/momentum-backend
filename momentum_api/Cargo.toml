@@ -3,9 +3,16 @@ name = "momentum_api"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+# 插件功能（gRPC 插件支持）
+# 启用方式: cargo build --features plugins
+plugins = ["momentum_plugin_host"]
+
 [dependencies]
 momentum_core = { path = "../momentum_core" }
-momentum_plugin_host = { path = "../momentum_plugin_host" }
+# 插件主机实现（仅在 plugins feature 开启时编译）
+momentum_plugin_host = { path = "../momentum_plugin_host", optional = true }
 
 # HTTP
 axum = { workspace = true }
