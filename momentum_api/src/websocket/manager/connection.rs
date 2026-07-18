@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::info;
 use uuid::Uuid;
 
-use super::state::{ConnectedUser, ConnectionState, WebSocketMessage};
+use super::state::{ConnectedUser, ConnectionState};
 
 pub struct ConnectionManager {
     connections: Arc<RwLock<HashMap<String, ConnectedUser>>>,
-    max_queue_size: usize,
+    #[allow(dead_code)]
+    max_queue_size: usize,  // Reserved for future use (e.g., per-user queue limits)
 }
 
 impl ConnectionManager {

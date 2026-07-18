@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
-use tracing::{error, warn};
+use tracing::error;
 use uuid::Uuid;
 
 use super::state::{MessageType, WebSocketMessage};

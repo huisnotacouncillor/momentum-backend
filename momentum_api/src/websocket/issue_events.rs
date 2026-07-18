@@ -42,7 +42,7 @@ impl Serialize for IssueEvent {
     {
         let mut state = serializer.serialize_struct("IssueEvent", 2)?;
         match self {
-            IssueEvent::Created { issue, workspace_id } => {
+            IssueEvent::Created { issue, workspace_id: _ } => {
                 state.serialize_field("type", "issue.created")?;
                 state.serialize_field("data", issue)?;
             }

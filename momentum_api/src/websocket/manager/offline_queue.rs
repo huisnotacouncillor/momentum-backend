@@ -3,7 +3,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::connection::ConnectionManager;
-use super::state::{ConnectedUser, WebSocketMessage};
+use super::state::WebSocketMessage;
 
 pub struct OfflineQueueManager {
     conn: Arc<ConnectionManager>,
