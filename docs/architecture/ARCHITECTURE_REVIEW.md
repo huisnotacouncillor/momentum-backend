@@ -538,7 +538,7 @@ PostgreSQL 的 `statement_timeout` GUC 未设置，Diesel 无 query-level 超时
 | ~~P2 - 中优~~ | ~~双订阅系统不同步~~ | 行为不一致 | 中 | ✅ 已修复 | subscription/ 已合并到 manager/，单一 SubscriptionManager |
 | **P3 - 低优** | 无 API 版本化 | 演进困难 | 中 | ⏳ 待处理 |
 | **P3 - 低优** | 日志配置不生效 | 运维受限 | 低 | ✅ 已修复 |
-| **P3 - 低优** | 无 Prometheus 导出 | 监控盲区 | 中 | ⏳ 待处理 |
+| ~~**P3 - 低优**~~ | ~~无 Prometheus 导出~~ | 监控盲区 | 中 | ✅ 已修复 | WebSocketMonitor 指标已连接到 METRICS 导出系统 |
 | **P3 - 低优** | 插件系统耦合 | 扩展性受限 | 高 | ⏳ 待处理 |
 
 ---
