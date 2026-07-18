@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use momentum_core::services::context::RequestContext;
 
 use crate::websocket::registry::{CommandHandler, HandlerConfig, HandlerError};
-use crate::websocket::subscription::Topic;
+use crate::websocket::manager::subscription::Topic;
 
 use super::session::SubscriptionSession;
 
@@ -85,7 +85,7 @@ impl CommandHandler for UnsubscribeHandler {
 mod tests {
     use super::*;
     use crate::websocket::registry::HandlerRegistry;
-    use crate::websocket::subscription::SubscriptionManager;
+    use crate::websocket::manager::subscription::SubscriptionManager;
 
     fn make_session() -> Arc<SubscriptionSession> {
         let mgr = Arc::new(SubscriptionManager::new());

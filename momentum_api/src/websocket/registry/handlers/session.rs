@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use crate::websocket::subscription::{
+use crate::websocket::manager::subscription::{
     SubscribeResult, SubscriptionManager, UnsubscribeResult,
 };
 
@@ -28,11 +28,11 @@ impl SubscriptionSession {
         }
     }
 
-    pub async fn subscribe(&self, topics: &[crate::websocket::subscription::Topic]) -> SubscribeResult {
+    pub async fn subscribe(&self, topics: &[crate::websocket::manager::subscription::Topic]) -> SubscribeResult {
         self.manager.subscribe(&self.connection_id, topics).await
     }
 
-    pub async fn unsubscribe(&self, topics: &[crate::websocket::subscription::Topic]) -> UnsubscribeResult {
+    pub async fn unsubscribe(&self, topics: &[crate::websocket::manager::subscription::Topic]) -> UnsubscribeResult {
         self.manager.unsubscribe(&self.connection_id, topics).await
     }
 

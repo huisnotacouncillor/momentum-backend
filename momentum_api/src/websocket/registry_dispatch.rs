@@ -23,7 +23,7 @@ use crate::websocket::commands::types::{
 use crate::websocket::registry::{HandlerError, HandlerRegistry};
 use crate::websocket::registry::handlers::{SubscribeHandler, UnsubscribeHandler};
 use crate::websocket::registry::handlers::SubscriptionSession;
-use crate::websocket::subscription::SubscriptionManager;
+use crate::websocket::manager::subscription::SubscriptionManager;
 
 /// 优先尝试 registry；如果 registry 没有该命令，返回 None。
 ///
@@ -125,7 +125,7 @@ fn uuid_nil() -> uuid::Uuid {
 mod tests {
     use super::*;
     use crate::websocket::registry::handlers::{PingHandler, GetConnectionInfoHandler};
-    use crate::websocket::subscription::SubscriptionManager;
+    use crate::websocket::manager::subscription::SubscriptionManager;
     use chrono::{DateTime, Utc};
 
     fn authed_user() -> AuthenticatedUser {

@@ -23,7 +23,7 @@ pub struct WebSocketCommandHandler {
     registry: Option<Arc<crate::websocket::registry::HandlerRegistry>>,
     /// Optional SubscriptionManager for Step 8.5 — used with registry dispatch
     /// to handle subscribe/unsubscribe via SubscriptionSession.
-    subscription_manager: Option<Arc<crate::websocket::subscription::SubscriptionManager>>,
+    subscription_manager: Option<Arc<crate::websocket::manager::subscription::SubscriptionManager>>,
 }
 
 impl WebSocketCommandHandler {
@@ -40,7 +40,7 @@ impl WebSocketCommandHandler {
 
     pub fn with_subscription_manager(
         mut self,
-        mgr: Arc<crate::websocket::subscription::SubscriptionManager>,
+        mgr: Arc<crate::websocket::manager::subscription::SubscriptionManager>,
     ) -> Self {
         self.subscription_manager = Some(mgr);
         self
