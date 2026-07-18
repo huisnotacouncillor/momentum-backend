@@ -223,22 +223,21 @@ mod topic_tests {
     }
 }
 
-//! SubscriptionManager (spec §6.2)
-//!
-//! 服务端 fanout 注册表：
-//!   topic_key -> [connection_id]
-//!   connection_id -> [topic_key]
-//!
-//! 设计原则：
-//! - **不假设**任何具体 connection 类型；只用 `connection_id: String` 作为键
-//!   避免与 `WebSocketManager` 强耦合（Step 8 之前不接 manager，单独可测）
-//! - **不阻塞**：所有读写都走 `tokio::sync::RwLock`
-//! - **匹配**对外暴露 `subscribers_of(event: &Topic) -> Vec<String>`，fanout
-//!   端只需遍历此结果
+// SubscriptionManager (spec §6.2)
+//
+// 服务端 fanout 注册表：
+//   topic_key -> [connection_id]
+//   connection_id -> [topic_key]
+//
+// 设计原则：
+// - **不假设**任何具体 connection 类型；只用 `connection_id: String` 作为键
+//   避免与 `WebSocketManager` 强耦合（Step 8 之前不接 manager，单独可测）
+// - **不阻塞**：所有读写都走 `tokio::sync::RwLock`
+// - **匹配**对外暴露 `subscribers_of(event: &Topic) -> Vec<String>`，fanout
+//   端只需遍历此结果
 
 use std::collections::{HashMap, HashSet};
 
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

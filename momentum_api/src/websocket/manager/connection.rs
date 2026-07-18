@@ -23,6 +23,8 @@ impl ConnectionManager {
         &self,
         connection_id: String,
         user: ConnectedUser,
+        _db: Option<&Arc<momentum_core::db::DbPool>>,
+        _asset_helper: Option<&Arc<momentum_core::utils::AssetUrlHelper>>,
     ) {
         let mut connections = self.connections.write().await;
         connections.insert(connection_id.clone(), user.clone());

@@ -18,6 +18,7 @@ use std::collections::VecDeque;
 
 // ============ Facade ============
 
+#[derive(Clone)]
 pub struct WebSocketManager {
     pub(crate) conn: Arc<ConnectionManager>,
     pub(crate) broadcast: Arc<BroadcastManager>,
@@ -129,11 +130,132 @@ impl WebSocketManager {
 
     // === Subscription (委托) ===
     pub async fn subscribe(&self, connection_id: &str, topic: Topic) -> SubscribeResult {
-        self.subscription.subscribe(connection_id, topic).await
+        self.subscription.subscribe(connection_id, &[topic]).await
     }
 
     pub async fn unsubscribe(&self, connection_id: &str, topic: Topic) -> UnsubscribeResult {
-        self.subscription.unsubscribe(connection_id, topic).await
+        self.subscription.unsubscribe(connection_id, &[topic]).await
+    }
+
+    // === User messaging ===
+    pub async fn send_to_user(&self, user_id: Uuid, message: WebSocketMessage) {
+        // Find connection by user_id and send message
+        let connections = self.conn.get_connections_by_user(user_id).await;
+        for conn_id in connections {
+            let _ = self.direct_send(&conn_id, message.clone()).await;
+        }
+    }
+
+    /// Handle a WebSocket connection (delegated to connection manager)
+    pub async fn handle_socket(
+        &self,
+        mut socket: axum::extract::ws::WebSocket,
+        connection_id: String,
+        user: ConnectedUser,
+        command_handler: Option<crate::websocket::WebSocketCommandHandler>,
+        monitor: Option<crate::websocket::WebSocketMonitor>,
+        db: Option<Arc<momentum_core::db::DbPool>>,
+        asset_helper: Option<Arc<momentum_core::utils::AssetUrlHelper>>,
+    ) {
+        use axum::extract::ws::Message;
+        use futures_util::{SinkExt, StreamExt};
+
+        // Add connection
+        self.add_connection(
+            connection_id.clone(),
+            user.clone(),
+            db.as_ref(),
+            asset_helper.as_ref(),
+        )
+        .await;
+
+        // Record connection in monitor
+        if let Some(ref monitor) = monitor {
+            monitor.record_connection(user.user_id, connection_id.clone()).await;
+        }
+
+        // Subscribe to broadcast messages
+        let mut rx = self.get_broadcast_receiver();
+
+        // Send welcome message
+        let welcome = WebSocketMessage {
+            id: Some(Uuid::new_v4().to_string()),
+            message_type: MessageType::SystemMessage,
+            data: serde_json::json!({
+                "message": "Connected successfully",
+                "connection_id": connection_id
+            }),
+            timestamp: Some(chrono::Utc::now()),
+        };
+        if let Ok(text) = serde_json::to_string(&welcome) {
+            let _ = socket.send(Message::Text(text)).await;
+        }
+
+        // Split socket
+        let (mut sender, mut receiver) = socket.split();
+        let manager = self.clone();
+        let connection_id_clone = connection_id.clone();
+
+        // Spawn receive task
+        tokio::spawn(async move {
+            while let Some(msg) = receiver.next().await {
+                if let Ok(Message::Text(text)) = msg {
+                    if let Ok(ws_message) = serde_json::from_str::<WebSocketMessage>(&text) {
+                        match ws_message.message_type {
+                            MessageType::Ping => {
+                                let pong = WebSocketMessage {
+                                    id: Some(Uuid::new_v4().to_string()),
+                                    message_type: MessageType::Pong,
+                                    data: serde_json::json!({"timestamp": chrono::Utc::now()}),
+                                    timestamp: Some(chrono::Utc::now()),
+                                };
+                                manager.broadcast_message(pong).await;
+                            }
+                            MessageType::Command => {
+                                if let Some(ref handler) = command_handler {
+                                    if let Ok(command) = serde_json::from_value(ws_message.data.clone()) {
+                                        let auth_user = crate::websocket::auth::AuthenticatedUser {
+                                            user_id: user.user_id,
+                                            username: user.username.clone(),
+                                            email: String::new(),
+                                            name: user.username.clone(),
+                                            avatar_url: None,
+                                            current_workspace_id: user.current_workspace_id,
+                                        };
+                                        let response = handler.handle_command(
+                                            command,
+                                            &auth_user,
+                                            &connection_id_clone,
+                                        ).await;
+                                        let resp_msg = WebSocketMessage {
+                                            id: Some(Uuid::new_v4().to_string()),
+                                            message_type: MessageType::CommandResponse,
+                                            data: serde_json::to_value(&response).unwrap(),
+                                            timestamp: Some(chrono::Utc::now()),
+                                        };
+                                        manager.broadcast_message(resp_msg).await;
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            // Cleanup on disconnect
+            manager.remove_connection(&connection_id_clone).await;
+        });
+
+        // Forward broadcast messages to socket
+        tokio::spawn(async move {
+            while let Ok(msg) = rx.recv().await {
+                if let Ok(text) = serde_json::to_string(&msg) {
+                    if sender.send(Message::Text(text)).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
     }
 }
 

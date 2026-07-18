@@ -39,6 +39,22 @@ pub struct ConnectedUser {
     pub current_workspace_id: Option<Uuid>,
 }
 
+impl Default for ConnectedUser {
+    fn default() -> Self {
+        Self {
+            user_id: Uuid::nil(),
+            username: String::new(),
+            connected_at: chrono::Utc::now(),
+            last_ping: chrono::Utc::now(),
+            state: ConnectionState::Disconnected,
+            message_queue: VecDeque::new(),
+            recovery_token: None,
+            metadata: HashMap::new(),
+            current_workspace_id: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionRecoveryInfo {
     pub user_id: Uuid,

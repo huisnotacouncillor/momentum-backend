@@ -5,7 +5,7 @@ use tracing::{error, warn};
 use uuid::Uuid;
 
 use super::state::{MessageType, WebSocketMessage};
-use super::issue_events::IssueEvent;
+use crate::websocket::issue_events::IssueEvent;
 
 pub struct BroadcastManager {
     broadcast_tx: broadcast::Sender<WebSocketMessage>,
