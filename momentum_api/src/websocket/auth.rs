@@ -36,12 +36,14 @@ pub struct WebSocketAuth;
 
 impl WebSocketAuth {
     /// 验证WebSocket连接的JWT token
+    ///
+    /// 使用传入的 `auth_config` 而非从环境变量读取，确保与 HTTP API 使用相同的 JWT 密钥
     pub async fn authenticate_websocket(
         pool: Arc<DbPool>,
+        auth_config: &AuthConfig,
         token: &str,
     ) -> Result<AuthenticatedUser, WebSocketAuthError> {
-        // P2.2 修复：从环境变量严格读取，不使用默认密钥
-        let auth_service = AuthService::new(AuthConfig::from_env_strict());
+        let auth_service = AuthService::new(auth_config.clone());
 
         // 验证JWT token
         let claims = auth_service.verify_token(token).map_err(|e| {
@@ -72,6 +74,7 @@ impl WebSocketAuth {
     /// 从查询参数中提取并验证token
     pub async fn extract_and_validate_token(
         pool: Arc<DbPool>,
+        auth_config: &AuthConfig,
         query: Query<WebSocketAuthQuery>,
     ) -> Result<AuthenticatedUser, WebSocketAuthError> {
         let token = query
@@ -79,7 +82,7 @@ impl WebSocketAuth {
             .as_ref()
             .ok_or(WebSocketAuthError::MissingToken)?;
 
-        Self::authenticate_websocket(pool, token).await
+        Self::authenticate_websocket(pool, auth_config, token).await
     }
 
     /// 从URL参数或Header中提取token

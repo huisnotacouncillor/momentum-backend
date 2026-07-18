@@ -1,6 +1,8 @@
 // Legacy modules (kept for backward compatibility)
 pub mod auth;
 pub mod commands;
+
+use crate::middleware::auth::AuthConfig;
 pub mod error_mapper;
 pub mod handler;
 pub mod manager;
@@ -99,6 +101,7 @@ use std::sync::Arc;
 pub fn create_websocket_state(
     db: Arc<DbPool>,
     config: &momentum_core::config::Config,
+    auth_config: AuthConfig,
 ) -> WebSocketState {
     let ws_manager = WebSocketManager::new();
     let message_signer = Arc::new(MessageSigner::new(config));
@@ -132,6 +135,7 @@ pub fn create_websocket_state(
         retry_timeout_manager,
         monitor,
         message_signer: (*message_signer).clone(),
+        auth_config,
     }
 }
 

@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use momentum_core::db::DbPool;
 use crate::{
+    middleware::auth::AuthConfig,
     websocket::{
         auth::{WebSocketAuth, WebSocketAuthQuery},
         manager::{ConnectedUser, WebSocketManager},
@@ -27,6 +28,7 @@ pub struct WebSocketState {
     pub retry_timeout_manager: crate::websocket::RetryTimeoutManager,
     pub monitor: crate::websocket::WebSocketMonitor,
     pub message_signer: crate::websocket::MessageSigner,
+    pub auth_config: AuthConfig,
 }
 
 pub struct WebSocketHandler;
@@ -70,7 +72,7 @@ impl WebSocketHandler {
 
         // 验证认证token
         let authenticated_user =
-            match WebSocketAuth::authenticate_websocket(state.db.clone(), &token).await {
+            match WebSocketAuth::authenticate_websocket(state.db.clone(), &state.auth_config, &token).await {
                 Ok(user) => user,
                 Err(error) => {
                     tracing::warn!("WebSocket authentication failed: {}", error);

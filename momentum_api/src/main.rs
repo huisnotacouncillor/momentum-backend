@@ -97,8 +97,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .allow_headers(Any)
     };
 
+    // Build router - apply auth middleware only to routes that need it
+    // P2.2 修复：通过 layer 注入 AuthConfig，避免 default() 密钥回退
+    use momentum_api::middleware::auth::AuthConfig;
+    let auth_config = AuthConfig::from_config(&core_config);
+
     // Create WebSocket state and start cleanup task
-    let ws_state = websocket::create_websocket_state(Arc::new(state.db.clone()), &core_config);
+    let ws_state = websocket::create_websocket_state(Arc::new(state.db.clone()), &core_config, auth_config.clone());
     let ws_manager = ws_state.ws_manager.clone();
 
     // Start WebSocket cleanup task
@@ -118,11 +123,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .merge(momentum_api::routes::oauth::routes())
         .with_state(state.clone());
-
-    // Build router - apply auth middleware only to routes that need it
-    // P2.2 修复：通过 layer 注入 AuthConfig，避免 default() 密钥回退
-    use momentum_api::middleware::auth::AuthConfig;
-    let auth_config = AuthConfig::from_config(&core_config);
 
     let protected_routes = momentum_api::routes::create_router(state.clone())
         .layer(axum::middleware::from_fn_with_state(
