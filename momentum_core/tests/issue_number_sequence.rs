@@ -145,6 +145,7 @@ async fn test_issue_number_sequence_per_team() {
         user_id,
         workspace_id,
         idempotency_key: None,
+        trace_id: uuid::Uuid::new_v4().to_string(),
     };
 
     // Create 3 issues for Team A - verify numbers 1, 2, 3
@@ -213,6 +214,7 @@ async fn test_issue_number_sequence_per_team() {
         user_id,
         workspace_id,
         idempotency_key: None,
+        trace_id: uuid::Uuid::new_v4().to_string(),
     };
 
     // Create 2 issues for Team B - verify numbers 1, 2 (independent sequence)

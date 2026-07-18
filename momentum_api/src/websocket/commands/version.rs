@@ -17,6 +17,7 @@
 /// # Example
 ///
 /// ```
+/// use momentum_api::websocket::commands::command_latest_version;
 /// assert_eq!(command_latest_version("create_issue"), 1);
 /// ```
 pub fn command_latest_version(command_type: &str) -> u32 {

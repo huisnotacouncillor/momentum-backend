@@ -130,6 +130,7 @@ async fn test_create_returns_issue_response_with_relations() {
         user_id,
         workspace_id,
         idempotency_key: None,
+        trace_id: uuid::Uuid::new_v4().to_string(),
     };
 
     // Create issue with labels
@@ -294,6 +295,7 @@ async fn test_update_returns_issue_response_with_relations() {
         user_id,
         workspace_id,
         idempotency_key: None,
+        trace_id: uuid::Uuid::new_v4().to_string(),
     };
 
     // First create an issue without labels
