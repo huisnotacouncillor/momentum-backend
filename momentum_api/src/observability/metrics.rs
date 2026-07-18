@@ -63,6 +63,12 @@ impl LabeledMetric {
         value.count.fetch_add(amount, Ordering::Relaxed);
     }
 
+    /// 减少计数器（Gauge 下调）
+    pub async fn dec(&self, labels: &[&str]) {
+        let value = self.get_or_create(labels).await;
+        value.count.fetch_sub(1, Ordering::Relaxed);
+    }
+
     /// 设置瞬时值（Gauge）
     pub async fn set(&self, labels: &[&str], val: u64) {
         let value = self.get_or_create(labels).await;

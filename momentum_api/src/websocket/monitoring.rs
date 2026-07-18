@@ -6,6 +6,8 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::observability::metrics::metrics;
+
 /// 性能指标
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceMetrics {
@@ -159,26 +161,35 @@ impl WebSocketMonitor {
 
     /// 记录新连接
     pub async fn record_connection(&self, user_id: Uuid, connection_id: String) {
-        let mut metrics = self.metrics.write().unwrap();
-        metrics.total_connections += 1;
-        metrics.active_connections += 1;
-        metrics.last_updated = Utc::now();
+        let connection_id_clone = connection_id.clone();
+
+        // 先更新内部指标（持有锁期间不做 await）
+        {
+            let mut perf = self.metrics.write().unwrap();
+            perf.total_connections += 1;
+            perf.active_connections += 1;
+            perf.last_updated = Utc::now();
+        }
 
         // 初始化连接质量数据
-        let mut quality_map = self.connection_quality.write().unwrap();
-        let connection_id_clone = connection_id.clone();
-        quality_map.insert(
-            connection_id_clone.clone(),
-            ConnectionQuality {
-                user_id,
-                connection_id: connection_id_clone.clone(),
-                latency_ms: 0.0,
-                packet_loss_rate: 0.0,
-                last_ping_time: Utc::now(),
-                connection_stability: 1.0,
-                bandwidth_usage: 0,
-            },
-        );
+        {
+            let mut quality_map = self.connection_quality.write().unwrap();
+            quality_map.insert(
+                connection_id_clone.clone(),
+                ConnectionQuality {
+                    user_id,
+                    connection_id: connection_id_clone.clone(),
+                    latency_ms: 0.0,
+                    packet_loss_rate: 0.0,
+                    last_ping_time: Utc::now(),
+                    connection_stability: 1.0,
+                    bandwidth_usage: 0,
+                },
+            );
+        }
+
+        // 同步到 Prometheus METRICS（无锁）
+        metrics().ws_connections.inc(&["active"]).await;
 
         info!(
             "New connection recorded: user_id={}, connection_id={}",
@@ -188,12 +199,20 @@ impl WebSocketMonitor {
 
     /// 记录连接断开
     pub async fn record_disconnection(&self, connection_id: &str) {
-        let mut metrics = self.metrics.write().unwrap();
-        metrics.active_connections = metrics.active_connections.saturating_sub(1);
-        metrics.last_updated = Utc::now();
+        // 先更新内部指标（持有锁期间不做 await）
+        {
+            let mut perf = self.metrics.write().unwrap();
+            perf.active_connections = perf.active_connections.saturating_sub(1);
+            perf.last_updated = Utc::now();
+        }
 
-        let mut quality_map = self.connection_quality.write().unwrap();
-        quality_map.remove(connection_id);
+        {
+            let mut quality_map = self.connection_quality.write().unwrap();
+            quality_map.remove(connection_id);
+        }
+
+        // 同步到 Prometheus METRICS（无锁）
+        metrics().ws_connections.dec(&["active"]).await;
 
         debug!(
             "Connection disconnection recorded: connection_id={}",
@@ -203,15 +222,22 @@ impl WebSocketMonitor {
 
     /// 记录消息发送
     pub async fn record_message_sent(&self, connection_id: &str, message_size: usize) {
-        let mut metrics = self.metrics.write().unwrap();
-        metrics.total_messages_sent += 1;
-        metrics.last_updated = Utc::now();
-
-        // 更新带宽使用
-        let mut quality_map = self.connection_quality.write().unwrap();
-        if let Some(quality) = quality_map.get_mut(connection_id) {
-            quality.bandwidth_usage += message_size as u64;
+        // 先更新内部指标（持有锁期间不做 await）
+        {
+            let mut perf = self.metrics.write().unwrap();
+            perf.total_messages_sent += 1;
+            perf.last_updated = Utc::now();
         }
+
+        {
+            let mut quality_map = self.connection_quality.write().unwrap();
+            if let Some(quality) = quality_map.get_mut(connection_id) {
+                quality.bandwidth_usage += message_size as u64;
+            }
+        }
+
+        // 同步到 Prometheus METRICS（无锁）
+        metrics().ws_messages_total.inc(&["sent"]).await;
 
         debug!(
             "Message sent recorded: connection_id={}, size={}",
@@ -221,15 +247,22 @@ impl WebSocketMonitor {
 
     /// 记录消息接收
     pub async fn record_message_received(&self, connection_id: &str, message_size: usize) {
-        let mut metrics = self.metrics.write().unwrap();
-        metrics.total_messages_received += 1;
-        metrics.last_updated = Utc::now();
-
-        // 更新带宽使用
-        let mut quality_map = self.connection_quality.write().unwrap();
-        if let Some(quality) = quality_map.get_mut(connection_id) {
-            quality.bandwidth_usage += message_size as u64;
+        // 先更新内部指标（持有锁期间不做 await）
+        {
+            let mut perf = self.metrics.write().unwrap();
+            perf.total_messages_received += 1;
+            perf.last_updated = Utc::now();
         }
+
+        {
+            let mut quality_map = self.connection_quality.write().unwrap();
+            if let Some(quality) = quality_map.get_mut(connection_id) {
+                quality.bandwidth_usage += message_size as u64;
+            }
+        }
+
+        // 同步到 Prometheus METRICS（无锁）
+        metrics().ws_messages_total.inc(&["received"]).await;
 
         debug!(
             "Message received recorded: connection_id={}, size={}",
@@ -239,37 +272,51 @@ impl WebSocketMonitor {
 
     /// 记录命令处理
     pub async fn record_command_processed(&self, response_time: Duration, success: bool) {
-        let mut metrics = self.metrics.write().unwrap();
-        metrics.total_commands_processed += 1;
-        metrics.last_updated = Utc::now();
+        // 先计算需要更新的值，避免锁和 await 混合
+        let is_error = !success;
 
-        // 记录响应时间
-        let mut response_times = self.response_times.write().unwrap();
-        response_times.push(response_time);
-        if response_times.len() > self.config.max_response_time_samples {
-            response_times.remove(0);
-        }
+        // 更新内部指标（持有锁期间不做 await）
+        {
+            let mut perf = self.metrics.write().unwrap();
+            perf.total_commands_processed += 1;
+            perf.last_updated = Utc::now();
 
-        // 计算平均响应时间
-        let total_ms: f64 = response_times.iter().map(|d| d.as_millis() as f64).sum();
-        metrics.average_response_time_ms = total_ms / response_times.len() as f64;
+            let mut response_times = self.response_times.write().unwrap();
+            response_times.push(response_time);
+            if response_times.len() > self.config.max_response_time_samples {
+                response_times.remove(0);
+            }
 
-        // 更新错误率
-        if !success {
-            let mut error_summary = self.error_summary.write().unwrap();
-            *error_summary
-                .entry("command_failed".to_string())
-                .or_insert(0) += 1;
+            let total_ms: f64 = response_times.iter().map(|d| d.as_millis() as f64).sum();
+            perf.average_response_time_ms = total_ms / response_times.len() as f64;
+
+            if is_error {
+                let mut error_summary = self.error_summary.write().unwrap();
+                *error_summary
+                    .entry("command_failed".to_string())
+                    .or_insert(0) += 1;
+            }
         }
 
         // 计算错误率
-        let total_commands = metrics.total_commands_processed;
+        let total_commands = self.metrics.read().unwrap().total_commands_processed;
         let total_errors: u64 = self.error_summary.read().unwrap().values().sum();
-        metrics.error_rate = if total_commands > 0 {
+        let error_rate = if total_commands > 0 {
             total_errors as f64 / total_commands as f64
         } else {
             0.0
         };
+        {
+            let mut perf = self.metrics.write().unwrap();
+            perf.error_rate = error_rate;
+        }
+
+        // 同步到 Prometheus METRICS（无锁）
+        if is_error {
+            metrics().errors_total.inc(&["command"]).await;
+        }
+        let response_ms = response_time.as_millis() as u64;
+        metrics().http_request_duration_ms.observe(&[], response_ms, &[5, 10, 25, 50, 100, 250, 500, 1000]).await;
 
         debug!(
             "Command processed recorded: response_time={:?}, success={}",
