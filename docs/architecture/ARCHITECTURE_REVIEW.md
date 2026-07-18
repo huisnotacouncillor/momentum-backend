@@ -154,16 +154,9 @@ let updated_user = AuthRepo::update_current_workspace(conn, ctx.user_id, workspa
 
 #### 漏洞 3：WebSocket 广播无工作区过滤
 
-**位置**：`momentum_api/src/websocket/manager.rs:822-823`
+**位置**：`momentum_api/src/websocket/manager.rs:822-823`（已删除，代码已重构）
 
-```rust
-let should_send = true; // ❌ 硬编码 true，过滤逻辑未实现
-```
-
-**影响**：
-- 所有广播消息发送给**所有连接**
-- 工作区 A 的事件泄漏给工作区 B
-- 一个工作区的私密事件可以被其他工作区用户接收
+**状态**：✅ 已修复 - 原 `should_send_to_user` 过滤函数已移除，`broadcast_to_workspace` 现在基于 `get_connections_in_workspace` 进行工作区隔离
 
 #### 漏洞 4：无 RBAC（基于角色的访问控制）
 
@@ -191,7 +184,7 @@ pub fn add(...) -> Result<...> {
 | JWT 中间件默认密钥 | `AuthConfig::default()` 回退到 `"your-secret-key"` | `middleware/auth.rs:42-50` |
 | Refresh Token 无旋转 | 7 天有效期内可重复使用，无撤销机制 | `auth_service.rs:288-289` |
 | 消息签名 Replay 缓存 | 无界增长 + 随机驱逐 50% | `websocket/security.rs:177-193` |
-| 恢复 Token 是明文 UUID | 无哈希、无签名 | `manager.rs:197` |
+| 恢复 Token 是明文 UUID | 无哈希、无签名 | `manager/recovery.rs:24` |
 | 无 HTTPS | 仅 HTTP 明文传输 | `main.rs:101` |
 
 ### 🟡 Medium - 中级安全问题
@@ -397,7 +390,7 @@ let user_keys: Vec<String> = conn.keys(format!("{}*", USER_CACHE_PREFIX)).await?
 | `permission_cache` | `events/middleware.rs:310-316` | 永不清理，无界增长 |
 | `processed_messages` | `security.rs:35` | 仅当 > 10000 时随机减半 |
 | `metrics_tx` | `monitoring.rs:87` | `UnboundedSender` 无背压 |
-| `topic_subs`/`conn_topics` | `subscription/manager.rs:35-37` | 无过期清理 |
+| `topic_subs`/`conn_topics` | `manager/subscription.rs:257-259` | 无过期清理 |
 
 ### 问题 5：Issue 编号分配竞态
 
@@ -542,7 +535,7 @@ PostgreSQL 的 `statement_timeout` GUC 未设置，Diesel 无 query-level 超时
 | ~~P1 - 高优~~ | ~~WebSocket Registry 未激活~~ | 维护混乱 | 中 | ✅ 已激活 |
 | ~~P1 - 高优~~ | ~~幂等性死代码~~ | 重试不安全 | 中 | ✅ 已修复 |
 | ~~P2 - 中优~~ | ~~服务层可测试性~~ | 测试困难 | 高 | ✅ 已修复 |
-| **P2 - 中优** | 双订阅系统不同步 | 行为不一致 | 中 | ⏳ 待处理 |
+| ~~P2 - 中优~~ | ~~双订阅系统不同步~~ | 行为不一致 | 中 | ✅ 已修复 | subscription/ 已合并到 manager/，单一 SubscriptionManager |
 | **P3 - 低优** | 无 API 版本化 | 演进困难 | 中 | ⏳ 待处理 |
 | **P3 - 低优** | 日志配置不生效 | 运维受限 | 低 | ✅ 已修复 |
 | **P3 - 低优** | 无 Prometheus 导出 | 监控盲区 | 中 | ⏳ 待处理 |
@@ -551,6 +544,12 @@ PostgreSQL 的 `statement_timeout` GUC 未设置，Diesel 无 query-level 超时
 ---
 
 ## 文档勘误与现状对照（2026-07-18 更新）
+
+### 勘误 0：manager.rs 已重构为 manager/ 目录
+
+**事实**：`momentum_api/src/websocket/manager.rs` 已拆分为 `momentum_api/src/websocket/manager/` 模块目录，包含 connection.rs、broadcast.rs、recovery.rs、offline_queue.rs、subscription.rs、state.rs、mod.rs。
+
+**影响**：文档中所有对 `manager.rs` 的引用需要更新路径。
 
 ### 勘误 1：handler.rs 引用错误
 **状态**：✅ 已修正 - 引用路径已更正为 `commands/handler.rs`
@@ -721,5 +720,14 @@ PostgreSQL 的 `statement_timeout` GUC 未设置，Diesel 无 query-level 超时
 **momentum_api:**
 - `src/main.rs` - 添加迁移运行调用
 - `src/routes/teams.rs` - 使用 TeamsService 实例方法
-- `src/websocket/manager.rs` - 领域事件广播
+- `src/websocket/manager.rs` - 领域事件广播（已删除，重构为 manager/ 目录）
 - `src/websocket/registry_dispatch.rs` - idempotency_key 传递
+- `src/websocket/manager/` - **WebSocketManager 重构为模块目录**
+  - `manager/mod.rs` - Facade 统一暴露
+  - `manager/connection.rs` - 连接生命周期
+  - `manager/broadcast.rs` - 广播 + 精准发送
+  - `manager/recovery.rs` - 断连恢复
+  - `manager/offline_queue.rs` - 离线消息队列
+  - `manager/subscription.rs` - 订阅管理（合并自 subscription/）
+  - `manager/state.rs` - 共享类型
+- `src/websocket/subscription/` - 已删除，内容合并到 manager/subscription.rs
